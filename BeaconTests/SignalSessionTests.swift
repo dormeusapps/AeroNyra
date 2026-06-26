@@ -114,13 +114,21 @@ final class SignalSessionTests: XCTestCase {
         let bobToAlice = try bob.session(with: alice.localIdentity)
         _ = try bobToAlice.open(first)
 
-        // A normal message, with one byte flipped in the body.
+        // Bob replies so Alice's session leaves the prekey phase and ratchets to
+        // normal (whisper) messages — the same state a real conversation reaches.
+        let reply = try bobToAlice.seal(data("ack"))
+        _ = try aliceToBob.open(reply)
+
+        // Now a normal ratchet message, tampered in the body.
         var tampered = try aliceToBob.seal(data("trust me"))
-        tampered[tampered.count - 1] ^= 0xFF
+        // Flip a byte past the 1-byte type prefix, inside the message body, so the
+        // corruption lands in the authenticated ciphertext rather than a tolerant
+        // trailing field.
+        let target = tampered.count / 2
+        tampered[target] ^= 0xFF
 
         XCTAssertThrowsError(try bobToAlice.open(tampered))
     }
-
     // MARK: A third party cannot read
 
     func testThirdPartyCannotDecrypt() throws {
