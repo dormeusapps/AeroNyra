@@ -35,9 +35,32 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
     /// Cache of live per-peer sessions, keyed by the peer's user id (hex).
     private var sessions: [String: SignalSession] = [:]
 
-    /// Create a store with a fresh libsignal identity (in-memory pass).
-    public init() {
-        let identity = IdentityKeyPair.generate()
+    /// Convenience: stand up a store with a fresh app identity. Used by tests
+    /// and any standalone path that doesn't (yet) have the Enclave-bound
+    /// identity to hand in. Routes through the same bridge as production, so it
+    /// exercises the real identity path rather than a throwaway one.
+    public convenience init() {
+        // A generated app identity has the same shape as the real one; the only
+        // difference in production is that the real one is Enclave-bound.
+        self.init(appIdentity: IdentityKeypair.generate())
+    }
+
+    /// Designated init (PASS 2, Option A): the libsignal session identity is
+    /// DERIVED from the app's Enclave-bound Curve25519 identity, so there is one
+    /// identity, not two (see SignalIdentityBridge.swift). The representation the
+    /// store exposes is unchanged — still libsignal's serialized identity key —
+    /// so addresses, peer identity, and safety numbers are unaffected; only the
+    /// key's ORIGIN changed (app key vs. a fresh random one).
+    public init(appIdentity: IdentityKeypair) {
+        // Bridge the app identity into libsignal. For a CryptoKit-generated key
+        // this cannot fail; trap loudly if it ever does, matching the file's
+        // existing "validated input, fail fast" stance (failableAddress below).
+        let identity: IdentityKeyPair
+        do {
+            identity = try appIdentity.libsignalIdentityKeyPair()
+        } catch {
+            fatalError("Bridging app identity into libsignal failed for a validated key: \(error)")
+        }
         let registrationId = UInt32.random(in: 1...0x3FFF)
         self.store = InMemoryBeaconStore(identity: identity, registrationId: registrationId)
         self.context = NullContext()
