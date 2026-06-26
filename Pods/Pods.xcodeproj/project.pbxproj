@@ -1,0 +1,1580 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03D66A768F096D5394E103F7634D6CB2 /* BackupAuthCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B14CE2777C9A2BF37F6D8FC148D9A7 /* BackupAuthCredential.swift */; };
+		06B1ECFF41AFB239EA32841D71A59369 /* Pods-Beacon-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 91F4BB5CFB798C66AC00A49DAF0B81B4 /* Pods-Beacon-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		06CDC379FFBEB94FAC74BCB2FED16CA3 /* DeviceId.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81583604E1DB7CF96ABCC2BEB54FDEF9 /* DeviceId.swift */; };
+		092C5CB90414D58FF43051150996F96A /* CreateCallLinkCredentialRequestContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D8D2473FF662625B501759648FA1F9F /* CreateCallLinkCredentialRequestContext.swift */; };
+		095027F50F3EAF6C6349B1D71462D342 /* ServiceId.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEE5D26713AC44F37F6E38CA5020FBF6 /* ServiceId.swift */; };
+		09877EA0E190DB401DB8E3DF3B86F6BF /* ProfileKeyCommitment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97D7F9DD254367025152882EABD8BEF /* ProfileKeyCommitment.swift */; };
+		0B5495A795D1C2BA7D726FDD526AD7F7 /* ServerZkProfileOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 127D822714A816ED3FB319C95E0713E0 /* ServerZkProfileOperations.swift */; };
+		0D4EF2F90C4E59E27963E17DAFF7E47B /* BackupAuthCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED91BEF3FF200AC1B0DC08588BAEADF /* BackupAuthCredentialResponse.swift */; };
+		0E8D2B942DDF8DA84731C737B8C7664B /* PlaintextContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 336528D5E0FDC58E4A95700A49229573 /* PlaintextContent.swift */; };
+		0F1CEA68A527E4C589B82EB5E4CF4D18 /* AuthMessagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 258E80C2B999F61EBFB61E03A48625EA /* AuthMessagesService.swift */; };
+		0FBC2194008EF3FD38D7D6D29479C193 /* Pods-Beacon-BeaconUITests-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = C42709107FAC8B9A5F33F1DC99A21644 /* Pods-Beacon-BeaconUITests-dummy.m */; };
+		12641E3E3F6715949539800F0CCC7BF7 /* ExpiringProfileKeyCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF9E3F8D9B9AE0B17BB9C112675A5B67 /* ExpiringProfileKeyCredentialResponse.swift */; };
+		12882DF9B30C06854212F8907D04B54F /* CallLinkAuthCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = F15AB50E383024627622A71FCBFDDC37 /* CallLinkAuthCredentialResponse.swift */; };
+		1288D078513353CB4FB573E50332774B /* NotarySignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = F553F185F3499D978E0978E3CE21964B /* NotarySignature.swift */; };
+		135E7169FCACD89E3F793E68D94A2406 /* GroupSecretParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B9D378F796F356ED032D70B5BFAD465 /* GroupSecretParams.swift */; };
+		1420EB94FFB2DF19B93DC6B8F595C918 /* Cds2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 092FA939BE295CB701BAA26AB473D267 /* Cds2.swift */; };
+		1830F916FE9D81B143F52C227F98B9C5 /* SealedSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = E86CC9A5C318D5388E7DCC35AD26DC66 /* SealedSender.swift */; };
+		191D2F00D2E7A6A1045F19F2B8A1CBA9 /* Username.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338A5684D902629421148C75D0B25B48 /* Username.swift */; };
+		19AE47254AD02DFD5E1EAB56D5403373 /* CiphertextMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD40160AD6AF7231FB4177B33C4B688C /* CiphertextMessage.swift */; };
+		1B024A67EF9EF1C8D735A7E6F95F860C /* ServerPublicParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD06CA3FA354BCEBBFB7AE7A6167F6F9 /* ServerPublicParams.swift */; };
+		1D35F9D6D8AD5D49C0288021A05F0B4E /* NativeHandleOwner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5AA9E735DE850E1C8CBA957B2DCDCA9 /* NativeHandleOwner.swift */; };
+		20046A7F3D56FE4E00DB2F77A6ABE5FE /* Pods-BeaconTests-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = 5F4C2018C7BF51E6BF5717BB2A2C0355 /* Pods-BeaconTests-dummy.m */; };
+		2020B1FDC77FAABE1B30AF246035D280 /* ChatServiceTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCA8AD4C6285B216B9A784C77DD17FF2 /* ChatServiceTypes.swift */; };
+		206E6C593A08F4E406E4397F78C0A126 /* UnauthProfilesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3A3093205B7EC079D2CB0B4A46FB432 /* UnauthProfilesService.swift */; };
+		20723D97BDB500765E2B0DF73E911FAA /* LibSignalClient-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 8723E781ABEA97E38D1B0EFF45FC6970 /* LibSignalClient-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		20B33F677A9F1D35CD64CB7630BA86FB /* Fingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7B758D6B7DEDEEF7F3E2C1F1CC1F166 /* Fingerprint.swift */; };
+		2338DF664E459FDE21B934F21CA63E0F /* UuidCiphertext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B8C2859CB1A8AEF7B91B2AEC838DC61 /* UuidCiphertext.swift */; };
+		25C3B2142F0D60001C69F697F18CFC56 /* GenericServerPublicParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7345555EF75FD737FB80B2FB01CFC1C8 /* GenericServerPublicParams.swift */; };
+		2809B1D8E2F65CA3574CD2DC1ED8F62E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
+		2846FEADCC64E00E89AF8AF1D89174EE /* CallLinkAuthCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81224806AE434314AD7E1AF2586C9ED1 /* CallLinkAuthCredential.swift */; };
+		2AA5558FB1F8239EC4A30F6552D602B9 /* ExpiringProfileKeyCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93317E16C3755BCD37E1CB2CAF68EE9 /* ExpiringProfileKeyCredential.swift */; };
+		2E8A8E1F34E678A37D7CFC6A3FF53376 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
+		2FC28576D14D285E40634975C7D308D7 /* CreateCallLinkCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF860AD6D60E2DC26009647648786504 /* CreateCallLinkCredentialPresentation.swift */; };
+		3036173D427FCF2CA61DAB739E531571 /* NiceBridgingUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A077A31ABF3170177C01C29CC672EAB /* NiceBridgingUtils.swift */; };
+		3317E8B6EEDDD5724E1528A941DEC41D /* ChatConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BABADED318B8E0A8602A049203E68E49 /* ChatConnection.swift */; };
+		34ED56447E88972AB673DBC2CC267979 /* GroupPublicParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A9831D03DF43583BF61133548F649BA /* GroupPublicParams.swift */; };
+		35634C572214D7DEEC13A470BE03D3D0 /* BorrowUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E97842DA7DEC97FC54CFC4BEC209B345 /* BorrowUtils.swift */; };
+		35D55774712772B4A5F9EF90A9AF294F /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D30D25B58AEB3564C4F9AA68F0B408F /* Services.swift */; };
+		36CE04B09843972D9746C543E95C237A /* IncrementalMac.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53068A35B4113A8D0FF503FFE01A2E6A /* IncrementalMac.swift */; };
+		3942C180A09C023A6EA1E720D8D316D0 /* Error.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A5DD1ED7B2844B465745ECE1F48ADE /* Error.swift */; };
+		3B29FC09ECD125FBF35B58D1BA1409E4 /* UserBasedAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 122BE68625E7F1EA1E3219AF1C1DF0CF /* UserBasedAuthorization.swift */; };
+		3BBA0EA0FBBE49597212DE017E5DAF6B /* ReceiptCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D38700A459F1CA5D8392CF84F33B53A /* ReceiptCredential.swift */; };
+		3DD63C398836E751C59A4302C0925218 /* AvatarUploadCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F73E941D538AC6C220CE36F3276CF3E /* AvatarUploadCredential.swift */; };
+		3F73486B3DC3BA67E56749A18321AEAF /* IoProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = 912FEF4E32994595BE497CE5F5C2A43E /* IoProtocols.swift */; };
+		40A4CFF3C8B19B6226691453046E94D9 /* Aes256GcmSiv.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24C6F5DF57FDDDB7BECC0B62E7EA078 /* Aes256GcmSiv.swift */; };
+		4262D37C1BCE81D8A4FAAC73FB7782CB /* Sgx.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC2F9173A4FFE2CB4A2047E9CFFB0D18 /* Sgx.swift */; };
+		48C98B569B69C13B5C282D05F0E3C0EF /* RegistrationServiceTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17EF2977E7BE9F36E2868C96402271B /* RegistrationServiceTypes.swift */; };
+		4C8E8F307DA0F87817D08789E77FB30E /* Aes256Gcm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B15E714829692093DEF8DE254FB25EC /* Aes256Gcm.swift */; };
+		4E4B7911F4631E47DD01EBEF3020D700 /* BackupAuthCredentialRequestContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53DB1D675F86F1AC22C80AC91E1EF130 /* BackupAuthCredentialRequestContext.swift */; };
+		514B383E8DA32F8309841F72AD00B8F4 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90BD742D325C6706601F32BAA7FC01C4 /* Logging.swift */; };
+		5405EF7A138DE152EDFCC3A4CE7ADAFE /* ReceiptSerial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12A63A7EBA28B8C47F24BDF1F2934D96 /* ReceiptSerial.swift */; };
+		5592667A4349E8318A41C0FAA6B1BFFF /* ClientZkAuthOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6AD807FC29390154A4A20A76854DB65 /* ClientZkAuthOperations.swift */; };
+		55F339F57FA1F95B717C508461D71C4A /* AuthDevicesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663E1EE89F6305BAA01D3C103CB46187 /* AuthDevicesService.swift */; };
+		5CDC6D9DA90129B9EDB32ED5292A38EE /* ComparableBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FEDB34A3B777F885B81AADAAEA45F03 /* ComparableBackup.swift */; };
+		5E4963CAC60D39F7B6CDE483F8DFEBB8 /* MessageBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A3B3E84E7F771C747CC85D467E2C28E /* MessageBackup.swift */; };
+		63BC7A81C8978846D7BFD4C5378BA24C /* Media.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAE99974AE824D373F33F37C52A066EA /* Media.swift */; };
+		63DB3FFC85AA76731A19B4F71F3101B1 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
+		63EC39451DCAF192A5B26C12D7E8F9F8 /* PublicKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2B48A62ED30EE379C8AA4C986693D2 /* PublicKey.swift */; };
+		64D6159B33BC2BAED084E305C2DE0C6B /* ClientZkProfileOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = C49433E9CA1DE010AC742237FF77B5BD /* ClientZkProfileOperations.swift */; };
+		65B8E84A582703617DA1B8A42ABD04E5 /* GroupSendDerivedKeyPair.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAA8A697ECBAC891678BE0753C8D8075 /* GroupSendDerivedKeyPair.swift */; };
+		65CB13E9312A583D0C703E8CF711DF87 /* GroupSendEndorsement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D332C89ACCF5FDB84A69E27F201BF87 /* GroupSendEndorsement.swift */; };
+		672ADC3195AEDAB6DFEF3856A46330FA /* Pods-Beacon-BeaconUITests-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 6419A82FBCCB9A98E2501B1EAB9925D4 /* Pods-Beacon-BeaconUITests-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		6AA50DAFDAD02542A0EE3AA72AE4DBD6 /* PreKeyRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = C784666996788DA97593230A047BE54B /* PreKeyRecord.swift */; };
+		6C30BEDFA60A65DB8BAAF6B6C32134D5 /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D33F2644D5BFAC9394B0007AFE2B8C0B /* Protocol.swift */; };
+		6D58AC10B044111B297448D858E1A8A9 /* ServerSecretParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE8041A258F51406F55246F6D9BB7C5 /* ServerSecretParams.swift */; };
+		6E14C38BE587B4A220CA6B2601B4EC02 /* Kdf.swift in Sources */ = {isa = PBXBuildFile; fileRef = 244D253D284E83040653F8D78B11BFA4 /* Kdf.swift */; };
+		6EE3D824CB45E31A77907CF330B95E55 /* ReceiptCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45F1BB4ADD04CCE73D64696D8CA5B41 /* ReceiptCredentialResponse.swift */; };
+		6F71A37E25DE71EBB36C080BC9A4258E /* UnauthMessagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B3F9AF0AE46DB4DD446CBA4303C703 /* UnauthMessagesService.swift */; };
+		6FE63A651E6418981D8772D3AB739750 /* CallLinkPublicParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 962FFFF80A892C771A4FDF686F7D7351 /* CallLinkPublicParams.swift */; };
+		70CE6ED7575FA27BBCD365C670B18831 /* ProfileKeyCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D379BD39C98EA2558BA95A29913156 /* ProfileKeyCredentialPresentation.swift */; };
+		7135F3EB798E4EA31553981B383955C5 /* ClientZkReceiptOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74F30E9499CC6369DA97A5C4D3E72049 /* ClientZkReceiptOperations.swift */; };
+		729455B044A061C25DF098DBE9222F00 /* CreateCallLinkCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA5E63D2B771CEEDEB957896C0AB0F18 /* CreateCallLinkCredential.swift */; };
+		738167F31AB9098A5E606F271B6EB958 /* UnauthUsernamesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5195909BF5B1B3C402E1387FE5E67E01 /* UnauthUsernamesService.swift */; };
+		75385805C65DEAD130830C02DCADDA8B /* SignedPreKeyRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05BCDB3144BA2D0052460F2363335806 /* SignedPreKeyRecord.swift */; };
+		799106B2B18136733DD4F41BE48FB7A4 /* CdsTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF6247DE46059A6D707EA63B6142C283 /* CdsTypes.swift */; };
+		7A4756C2C2B191706FCC04DDC6FF48D0 /* AccountKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45DB018A8246BCF8050EB694BB3FEC1E /* AccountKeys.swift */; };
+		7AD2C3F5748AF0BCAB15C69DA83909AE /* DataStoreUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B809064CCEE3D707A85229ACED6D95F /* DataStoreUtils.swift */; };
+		7ED0AC4B239EADEA19EBFA05DFE42F96 /* GenericServerSecretParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43154BCA2D0963D05C47A66E13FEEA29 /* GenericServerSecretParams.swift */; };
+		83A4325056AA877D6E1C3A556DDBA8BF /* ProfileKeyCredentialRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31173685B0361A863B4E72547618F272 /* ProfileKeyCredentialRequest.swift */; };
+		83B35AD6A29149DDBAADCF4BF37DC067 /* UnauthKeysService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB8ED1F8B987B74D137C511082623C9 /* UnauthKeysService.swift */; };
+		859930AE20D5789AC29FE8F219A26E5F /* SingleOutboundMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5C7AFE47110D4553B11611479844540 /* SingleOutboundMessage.swift */; };
+		85F41D886C627852FC633E3EFD498FFB /* KeyTransparency.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95E8396855C0F22377ED778287C1CCB8 /* KeyTransparency.swift */; };
+		877C275633103D5C1D5312CC166D154B /* SecureValueRecoveryBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48F9AAA53A47A0EAE39DC9F86A1C3BE /* SecureValueRecoveryBackup.swift */; };
+		88D02F350DB1EF702085AE23108A9796 /* ProfileKeyCiphertext.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE73A88F855D693F112A64FAA8B13985 /* ProfileKeyCiphertext.swift */; };
+		8CE419817EB641366D9EEA422F007B87 /* GroupSendFullToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9B6A1FCD206D24CA5EC0C4FD484B736 /* GroupSendFullToken.swift */; };
+		8D84896C1C1F1E85D39C458316DE7303 /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48B73ABF341B0549FC08622EFD0D2CB2 /* SessionRecord.swift */; };
+		8EA0D8C95437C260CE3CD1CFE017A866 /* CreateCallLinkCredentialRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EB76866E7B3C7ECF7C76A4173025716 /* CreateCallLinkCredentialRequest.swift */; };
+		8FFE1A47BE387B1255EA85FDAE70C602 /* SenderKeyMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC11F7B62891F5E1682AB08785E6461B /* SenderKeyMessage.swift */; };
+		984673D2EC11F3C6A7A647E64E3C0DFC /* CallLinkAuthCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF8F62462E0B209119A0E0DB78431496 /* CallLinkAuthCredentialPresentation.swift */; };
+		98EF2DFCCA963830B8A11D0C9BD290C6 /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F04924FA05B03FF79D654E85DAD27B4 /* Utils.swift */; };
+		9A0F7A41F9377D62A095333D521A4BF3 /* Pods-Beacon-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = FDA8D7C7F6DA2D1D0ECBD5D8F64959FB /* Pods-Beacon-dummy.m */; };
+		9A17054896CB1263B9824D2CCE09FC14 /* SignalMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9350D176C769D2D435A9C542B5F83356 /* SignalMessage.swift */; };
+		9B1C694C0F23E13D2BDD9574D9102494 /* AsyncUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6CDD62AAB5DE3431D0BF4C88635E08 /* AsyncUtils.swift */; };
+		9C3BFA8B021606D801283E841920F0E6 /* ProfileKeyCredentialRequestContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C820517333777A13D89C85B198777C /* ProfileKeyCredentialRequestContext.swift */; };
+		9C494244395EF52549705B10EC13FBB1 /* Pods-BeaconTests-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 8AFB0A86C2A0AAD86BD4A01E91445EA3 /* Pods-BeaconTests-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		9D4ACE880F363E0DC00DFEF8DB3FDC8C /* SenderKeyRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 124D97C3B3B07A106CE6EC0D2DFE57D3 /* SenderKeyRecord.swift */; };
+		9D85AA3CB1894D273051E9947B6883B0 /* TokioAsyncContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656FC4385ABB879102F531A049285C2A /* TokioAsyncContext.swift */; };
+		9FFAC54341A746DB6842F5EEA33FB2BF /* Randomness.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFC793A973AE8F4496A0B5EECF00CB00 /* Randomness.swift */; };
+		A5CC78451A8BAB5F244B5FA2AC9FAB74 /* ReceiptCredentialRequestContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C3E765DF65C23459DE0F9CD7F89C5BA /* ReceiptCredentialRequestContext.swift */; };
+		A675A7B09287D0517A18C61197C2DE06 /* SignedPublicPreKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 941745EDC97BE1CF50BF1B0B5561926A /* SignedPublicPreKey.swift */; };
+		A7A02B3726CCA9D39A9921161675ED08 /* BackupAuthCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6184171FE7682D2E3A6F95723BD589A1 /* BackupAuthCredentialPresentation.swift */; };
+		A7F21D27DDD601BB479F8ED8EB53DCF9 /* SenderKeyDistributionMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4E36857EC3CD536A2E124EA5E9866D7 /* SenderKeyDistributionMessage.swift */; };
+		A81D6C45D04FDA63BDB046610DC9AA71 /* HsmEnclave.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3A349CCE5033F996C2D1504578CE226 /* HsmEnclave.swift */; };
+		A8A4646E26F91DECB6DA04722C7E54A9 /* ZkCredentialKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DF0C848A0BC730375CE2407D4C415EC /* ZkCredentialKey.swift */; };
+		ABCF45E916554B7000BF8E5916CD82BD /* DataStoreProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D91E4CCA3DD23E4969426B711F719E4 /* DataStoreProtocols.swift */; };
+		ADCD2831126D772FC11CED4551207C78 /* AuthCredentialWithPni.swift in Sources */ = {isa = PBXBuildFile; fileRef = D756C3BD5BBC899E3C3AE172D08BFEDC /* AuthCredentialWithPni.swift */; };
+		AF30048D1E073BC6E37EE5F5E5DD8C24 /* ProfileKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED5DB0AAF829A4F56D669C07AC9C884 /* ProfileKey.swift */; };
+		B0DAF5266838BA44CE14CBE5BCC3D7EB /* BackupLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6293D573D6DC691A1647FAC855BB6615 /* BackupLevel.swift */; };
+		B12823B2AA3CD08AC5EEBD7866F527D7 /* ChatListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = F59B6223FE4311170D77A5F66A7B6F33 /* ChatListener.swift */; };
+		B318DAB876455A7A9E4C8B6F47DCFE59 /* ChatConnection+Fake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12A65027CD72136F8AD7C3F40A15B01D /* ChatConnection+Fake.swift */; };
+		B48E0AF00624141FC0DFA7E32D099980 /* CallLinkSecretParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = D250684F12703009CE406FDE3E752586 /* CallLinkSecretParams.swift */; };
+		B779BBDE18FDD816CA26A25433F8352C /* Kem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0443048BE59648E619121BDED64BCBFC /* Kem.swift */; };
+		B89FD04B8610CA0D689B6A01CF991960 /* KyberPreKeyRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0FD9F6A21B465B42B9B36A902DC41ED /* KyberPreKeyRecord.swift */; };
+		B9449091B47E8768D3444579F6A49522 /* CreateCallLinkCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E1C511FEA08F0572068CE69932A260 /* CreateCallLinkCredentialResponse.swift */; };
+		BAD826E999FB532D9CF9D487AA761C6B /* ProvisioningConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A65419A2503EAD10BE781B100D88C46 /* ProvisioningConnection.swift */; };
+		BBE7A93C74309205667D7D2C19359F2A /* DonationPermit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47A38F40A117112E21C4E996103E58C0 /* DonationPermit.swift */; };
+		C15D1C199BE763FF70F3839A116937DC /* Aes256Ctr.swift in Sources */ = {isa = PBXBuildFile; fileRef = B073EDA493EF055C4535248265715E8C /* Aes256Ctr.swift */; };
+		C3C07D24F34178E92EE080A31EAAAC93 /* PrivateKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6A6E5CFA9084CEF74A7E3446089EB13 /* PrivateKey.swift */; };
+		C45E0C92A6FCC604B84366DD3526E4ED /* AuthUsernamesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9522D7AEF446192E22FECBD19DBBBEC4 /* AuthUsernamesService.swift */; };
+		C7A42883B916665FB47CA1BDE7B42C10 /* PreKeyBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 642446BFF549E4A5584A9672A5C2C94C /* PreKeyBundle.swift */; };
+		C85C6CC6329FA891CE857E48C125B6E8 /* IoUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71194C4FC71541D5FD86511177800841 /* IoUtils.swift */; };
+		C8C28DA52D297C5C0D044CCA8DAA8F2D /* ProfileKeyVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 292468A1EDCD5BFEF28D537EC72D33FB /* ProfileKeyVersion.swift */; };
+		C9D4012E375C80D1B9D6B5326C6E6C6A /* BackupAuthCredentialRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 816186CE83904516B2488647565760AB /* BackupAuthCredentialRequest.swift */; };
+		CEBA580A74211FC8D85C8A85EB7440E5 /* UnauthBackupsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3CA25EBB0B95B26A292A26143CBBC28 /* UnauthBackupsService.swift */; };
+		D2ACEA475561253115CC80E91FDBDCD8 /* UploadForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = 034EBA24BA8696E7F45FD7ECF781814C /* UploadForm.swift */; };
+		D4602E4381471113E5CF54A0226235BA /* LibSignalClient-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = EA8FF8B5BC6F653A09973E24F92F64E6 /* LibSignalClient-dummy.m */; };
+		D518555129DB5AC063F81B93F87A4420 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
+		D6AE189E0BA81842EF31D603E5EDB26A /* NativeNice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2546530B56A2DD0425A4EDEB62485C28 /* NativeNice.swift */; };
+		D6C662A0F71263C3B088A6AEC1771B9D /* Svr2.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1142C0F2E93E3957E00E72285E06C3E /* Svr2.swift */; };
+		DB7833DDFE6AAC73C9482300F8892D36 /* IdentityKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18B5BD57F4B092E55BB87D609ED10CF7 /* IdentityKey.swift */; };
+		E0077ACD4989F24DEA3AD0795523739A /* Net.swift in Sources */ = {isa = PBXBuildFile; fileRef = C747CDC6850E11C3B391EEBF1F50AA78 /* Net.swift */; };
+		E24F850B04910E5B6CE34393717E7B83 /* AuthCredentialWithPniResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28A3612418F06956CD6C3CD97FF3567 /* AuthCredentialWithPniResponse.swift */; };
+		E57017695E7FB140616C39ECA799CA9E /* DeviceTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10583FE1AD2D454461FD5669048CFF6C /* DeviceTransfer.swift */; };
+		E644C4209DB89AF2D0D3A6FCB0B874B1 /* ClientZkGroupCipher.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECFD85BFC810DC646431E609833CAEC4 /* ClientZkGroupCipher.swift */; };
+		E7992A9AE4D4FD740CABAF54310346EA /* ReceiptCredentialRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000706FABF2EB62F02A1387152F87F7 /* ReceiptCredentialRequest.swift */; };
+		E9723A6D2D444ADB8C834434FF91A551 /* ReceiptCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46475B8FDC15291BB7ECF52BE274FAD7 /* ReceiptCredentialPresentation.swift */; };
+		EA7BB45B12266F5ED949E13F64024723 /* PreKeySignalMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C1337F9F67A44CAA1ED7BFB83883AC6 /* PreKeySignalMessage.swift */; };
+		EAF336382A8DE8219062E39B363B87A4 /* GroupIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A9164F64C774724A1DE03D23D00046 /* GroupIdentifier.swift */; };
+		EECFFDC6163698A86A26A845F28DCC07 /* DataStoreInMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C1535296592C09E39698C251A86BADA /* DataStoreInMemory.swift */; };
+		EFBDB170F0E1950C2C8443CA85E712E5 /* ByteArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 066D0B67D31ACB72E2EE017D70D9C43A /* ByteArray.swift */; };
+		F1CEAE2C27172CFF42AF9D1A06FA2D1C /* AuthCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C274FD548FACF456DEEFE007D2A67E0F /* AuthCredentialPresentation.swift */; };
+		F3D5F20B58F398534E2CC14DFFABDA1F /* GroupSendEndorsementsResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 960E7EC801AA4AB7B038350D9DCEC7E2 /* GroupSendEndorsementsResponse.swift */; };
+		F5EEA159EE1B2279428D692E1B8183D5 /* ServerZkAuthOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1402E9113A48C9CEA0B434F50E0F39A /* ServerZkAuthOperations.swift */; };
+		F6DCC5AE163908EBC5ACC05EAF8E328C /* SealedSenderCertificates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F69ED69237E487ADC1B55B2A7C3C149 /* SealedSenderCertificates.swift */; };
+		F814FA5AAA4DD0DFD832805EE0D0A0AF /* RegistrationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3838A7B2A838E2D0FED2E59FAC76379 /* RegistrationService.swift */; };
+		F820F1AF47BC728190EF0888327303A3 /* GroupMasterKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA49FF26853432E291C18A98AE66200F /* GroupMasterKey.swift */; };
+		FA28175E0F81D181FFBA4FEE23F49912 /* ServerZkReceiptOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2633413BD1FCDFDE6BC7AEB841AB5D5B /* ServerZkReceiptOperations.swift */; };
+		FDC27FBF7D5421B91DB96DF1B84CE848 /* Address.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DD00B55E14457381CB4B97931DC9817 /* Address.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		28C31BC94723360DFFE9EAB25473CB93 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D77A98059641D2A99D7DD3EBCA4606AE;
+			remoteInfo = LibSignalClient;
+		};
+		505EE1A2F48C79EA7475AE18FE718081 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 04BDD72EAE718614B413E19FEAEAA671;
+			remoteInfo = "Pods-Beacon";
+		};
+		6F5DB6BB70E1B8100A65605DF629B158 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D77A98059641D2A99D7DD3EBCA4606AE;
+			remoteInfo = LibSignalClient;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		030530C17FD080D5DDAE51576D6B6D41 /* Pods-BeaconTests-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-BeaconTests-Info.plist"; sourceTree = "<group>"; };
+		034EBA24BA8696E7F45FD7ECF781814C /* UploadForm.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UploadForm.swift; path = swift/Sources/LibSignalClient/UploadForm.swift; sourceTree = "<group>"; };
+		03A5DD1ED7B2844B465745ECE1F48ADE /* Error.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Error.swift; path = swift/Sources/LibSignalClient/Error.swift; sourceTree = "<group>"; };
+		0443048BE59648E619121BDED64BCBFC /* Kem.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Kem.swift; path = swift/Sources/LibSignalClient/Kem.swift; sourceTree = "<group>"; };
+		05BCDB3144BA2D0052460F2363335806 /* SignedPreKeyRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SignedPreKeyRecord.swift; path = swift/Sources/LibSignalClient/state/SignedPreKeyRecord.swift; sourceTree = "<group>"; };
+		066D0B67D31ACB72E2EE017D70D9C43A /* ByteArray.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ByteArray.swift; path = swift/Sources/LibSignalClient/zkgroup/ByteArray.swift; sourceTree = "<group>"; };
+		092FA939BE295CB701BAA26AB473D267 /* Cds2.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Cds2.swift; path = swift/Sources/LibSignalClient/Cds2.swift; sourceTree = "<group>"; };
+		099C6CD3DDF1BD5983BA1E7661B02D50 /* Pods-BeaconTests-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-BeaconTests-acknowledgements.plist"; sourceTree = "<group>"; };
+		0B8C2859CB1A8AEF7B91B2AEC838DC61 /* UuidCiphertext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UuidCiphertext.swift; path = swift/Sources/LibSignalClient/zkgroup/UuidCiphertext.swift; sourceTree = "<group>"; };
+		0C1337F9F67A44CAA1ED7BFB83883AC6 /* PreKeySignalMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PreKeySignalMessage.swift; path = swift/Sources/LibSignalClient/messages/PreKeySignalMessage.swift; sourceTree = "<group>"; };
+		0D38700A459F1CA5D8392CF84F33B53A /* ReceiptCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredential.swift; sourceTree = "<group>"; };
+		0D8D2473FF662625B501759648FA1F9F /* CreateCallLinkCredentialRequestContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredentialRequestContext.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredentialRequestContext.swift; sourceTree = "<group>"; };
+		0DF0C848A0BC730375CE2407D4C415EC /* ZkCredentialKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ZkCredentialKey.swift; path = swift/Sources/LibSignalClient/zkgroup/ZkCredentialKey.swift; sourceTree = "<group>"; };
+		0F69ED69237E487ADC1B55B2A7C3C149 /* SealedSenderCertificates.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SealedSenderCertificates.swift; path = swift/Sources/LibSignalClient/SealedSenderCertificates.swift; sourceTree = "<group>"; };
+		10583FE1AD2D454461FD5669048CFF6C /* DeviceTransfer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DeviceTransfer.swift; path = swift/Sources/LibSignalClient/DeviceTransfer.swift; sourceTree = "<group>"; };
+		122BE68625E7F1EA1E3219AF1C1DF0CF /* UserBasedAuthorization.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UserBasedAuthorization.swift; path = swift/Sources/LibSignalClient/chat/UserBasedAuthorization.swift; sourceTree = "<group>"; };
+		124D97C3B3B07A106CE6EC0D2DFE57D3 /* SenderKeyRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SenderKeyRecord.swift; path = swift/Sources/LibSignalClient/state/SenderKeyRecord.swift; sourceTree = "<group>"; };
+		127D822714A816ED3FB319C95E0713E0 /* ServerZkProfileOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerZkProfileOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerZkProfileOperations.swift; sourceTree = "<group>"; };
+		12A63A7EBA28B8C47F24BDF1F2934D96 /* ReceiptSerial.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptSerial.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptSerial.swift; sourceTree = "<group>"; };
+		12A65027CD72136F8AD7C3F40A15B01D /* ChatConnection+Fake.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = "ChatConnection+Fake.swift"; path = "swift/Sources/LibSignalClient/ChatConnection+Fake.swift"; sourceTree = "<group>"; };
+		12D1C76E59E0CA5CD77E27B5043E6B28 /* Pods-Beacon-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-Beacon-acknowledgements.markdown"; sourceTree = "<group>"; };
+		13E2E83C71308E37F42521CA2848E96F /* LibSignalClient-prefix.pch */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "LibSignalClient-prefix.pch"; sourceTree = "<group>"; };
+		18B5BD57F4B092E55BB87D609ED10CF7 /* IdentityKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IdentityKey.swift; path = swift/Sources/LibSignalClient/IdentityKey.swift; sourceTree = "<group>"; };
+		1E70447BB76F472DAAEBEA71CA6CB1CF /* Pods-Beacon-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-Beacon-Info.plist"; sourceTree = "<group>"; };
+		244D253D284E83040653F8D78B11BFA4 /* Kdf.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Kdf.swift; path = swift/Sources/LibSignalClient/Kdf.swift; sourceTree = "<group>"; };
+		2546530B56A2DD0425A4EDEB62485C28 /* NativeNice.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NativeNice.swift; path = swift/Sources/LibSignalClient/NativeNice.swift; sourceTree = "<group>"; };
+		258E80C2B999F61EBFB61E03A48625EA /* AuthMessagesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthMessagesService.swift; path = swift/Sources/LibSignalClient/chat/AuthMessagesService.swift; sourceTree = "<group>"; };
+		2633413BD1FCDFDE6BC7AEB841AB5D5B /* ServerZkReceiptOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerZkReceiptOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerZkReceiptOperations.swift; sourceTree = "<group>"; };
+		292468A1EDCD5BFEF28D537EC72D33FB /* ProfileKeyVersion.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyVersion.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyVersion.swift; sourceTree = "<group>"; };
+		2A3B3E84E7F771C747CC85D467E2C28E /* MessageBackup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MessageBackup.swift; path = swift/Sources/LibSignalClient/MessageBackup.swift; sourceTree = "<group>"; };
+		2A9831D03DF43583BF61133548F649BA /* GroupPublicParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupPublicParams.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupPublicParams.swift; sourceTree = "<group>"; };
+		2AF9E893182F195C6D5846F3F462CEB1 /* LibSignalClient.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = LibSignalClient.modulemap; sourceTree = "<group>"; };
+		2F04924FA05B03FF79D654E85DAD27B4 /* Utils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Utils.swift; path = swift/Sources/LibSignalClient/Utils.swift; sourceTree = "<group>"; };
+		2F73E941D538AC6C220CE36F3276CF3E /* AvatarUploadCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AvatarUploadCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/AvatarUploadCredential.swift; sourceTree = "<group>"; };
+		31173685B0361A863B4E72547618F272 /* ProfileKeyCredentialRequest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCredentialRequest.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCredentialRequest.swift; sourceTree = "<group>"; };
+		336528D5E0FDC58E4A95700A49229573 /* PlaintextContent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PlaintextContent.swift; path = swift/Sources/LibSignalClient/messages/PlaintextContent.swift; sourceTree = "<group>"; };
+		338A5684D902629421148C75D0B25B48 /* Username.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Username.swift; path = swift/Sources/LibSignalClient/Username.swift; sourceTree = "<group>"; };
+		37501C5870C1CFDC9906455487F445B5 /* Pods-Beacon-BeaconUITests-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-Beacon-BeaconUITests-Info.plist"; sourceTree = "<group>"; };
+		384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		3C3E765DF65C23459DE0F9CD7F89C5BA /* ReceiptCredentialRequestContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredentialRequestContext.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredentialRequestContext.swift; sourceTree = "<group>"; };
+		3FEDB34A3B777F885B81AADAAEA45F03 /* ComparableBackup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ComparableBackup.swift; path = swift/Sources/LibSignalClient/ComparableBackup.swift; sourceTree = "<group>"; };
+		43154BCA2D0963D05C47A66E13FEEA29 /* GenericServerSecretParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GenericServerSecretParams.swift; path = swift/Sources/LibSignalClient/zkgroup/GenericServerSecretParams.swift; sourceTree = "<group>"; };
+		45DB018A8246BCF8050EB694BB3FEC1E /* AccountKeys.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AccountKeys.swift; path = swift/Sources/LibSignalClient/AccountKeys.swift; sourceTree = "<group>"; };
+		46475B8FDC15291BB7ECF52BE274FAD7 /* ReceiptCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredentialPresentation.swift; sourceTree = "<group>"; };
+		47A38F40A117112E21C4E996103E58C0 /* DonationPermit.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DonationPermit.swift; path = swift/Sources/LibSignalClient/zkgroup/DonationPermit.swift; sourceTree = "<group>"; };
+		47E5E61D9E8FCC9AE3E43AB2B9A5BFB5 /* Pods-Beacon-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-Beacon-acknowledgements.plist"; sourceTree = "<group>"; };
+		48B73ABF341B0549FC08622EFD0D2CB2 /* SessionRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SessionRecord.swift; path = swift/Sources/LibSignalClient/state/SessionRecord.swift; sourceTree = "<group>"; };
+		4A077A31ABF3170177C01C29CC672EAB /* NiceBridgingUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NiceBridgingUtils.swift; path = swift/Sources/LibSignalClient/NiceBridgingUtils.swift; sourceTree = "<group>"; };
+		4A623A0BA1BFC2862E7640667CF780DF /* Pods-BeaconTests */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-BeaconTests"; path = Pods_BeaconTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		4B15E714829692093DEF8DE254FB25EC /* Aes256Gcm.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Aes256Gcm.swift; path = swift/Sources/LibSignalClient/Aes256Gcm.swift; sourceTree = "<group>"; };
+		4B809064CCEE3D707A85229ACED6D95F /* DataStoreUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DataStoreUtils.swift; path = swift/Sources/LibSignalClient/DataStoreUtils.swift; sourceTree = "<group>"; };
+		4C1535296592C09E39698C251A86BADA /* DataStoreInMemory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DataStoreInMemory.swift; path = swift/Sources/LibSignalClient/DataStoreInMemory.swift; sourceTree = "<group>"; };
+		5195909BF5B1B3C402E1387FE5E67E01 /* UnauthUsernamesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthUsernamesService.swift; path = swift/Sources/LibSignalClient/chat/UnauthUsernamesService.swift; sourceTree = "<group>"; };
+		53068A35B4113A8D0FF503FFE01A2E6A /* IncrementalMac.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IncrementalMac.swift; path = swift/Sources/LibSignalClient/IncrementalMac.swift; sourceTree = "<group>"; };
+		53DB1D675F86F1AC22C80AC91E1EF130 /* BackupAuthCredentialRequestContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredentialRequestContext.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredentialRequestContext.swift; sourceTree = "<group>"; };
+		58C176B27FCEF6A8005909F4352947CC /* LibSignalClient.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = LibSignalClient.release.xcconfig; sourceTree = "<group>"; };
+		5A65419A2503EAD10BE781B100D88C46 /* ProvisioningConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProvisioningConnection.swift; path = swift/Sources/LibSignalClient/ProvisioningConnection.swift; sourceTree = "<group>"; };
+		5CB8ED1F8B987B74D137C511082623C9 /* UnauthKeysService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthKeysService.swift; path = swift/Sources/LibSignalClient/chat/UnauthKeysService.swift; sourceTree = "<group>"; };
+		5D30D25B58AEB3564C4F9AA68F0B408F /* Services.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Services.swift; path = swift/Sources/LibSignalClient/chat/Services.swift; sourceTree = "<group>"; };
+		5D9ED229038F215A7F1A44170229212F /* Pods-Beacon-frameworks.sh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.script.sh; path = "Pods-Beacon-frameworks.sh"; sourceTree = "<group>"; };
+		5F4C2018C7BF51E6BF5717BB2A2C0355 /* Pods-BeaconTests-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-BeaconTests-dummy.m"; sourceTree = "<group>"; };
+		5F6CDD62AAB5DE3431D0BF4C88635E08 /* AsyncUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AsyncUtils.swift; path = swift/Sources/LibSignalClient/AsyncUtils.swift; sourceTree = "<group>"; };
+		6184171FE7682D2E3A6F95723BD589A1 /* BackupAuthCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredentialPresentation.swift; sourceTree = "<group>"; };
+		6293D573D6DC691A1647FAC855BB6615 /* BackupLevel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupLevel.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupLevel.swift; sourceTree = "<group>"; };
+		6419A82FBCCB9A98E2501B1EAB9925D4 /* Pods-Beacon-BeaconUITests-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-Beacon-BeaconUITests-umbrella.h"; sourceTree = "<group>"; };
+		642446BFF549E4A5584A9672A5C2C94C /* PreKeyBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PreKeyBundle.swift; path = swift/Sources/LibSignalClient/state/PreKeyBundle.swift; sourceTree = "<group>"; };
+		6493D19A608C5464F51644B05BFFF956 /* Pods-BeaconTests-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-BeaconTests-acknowledgements.markdown"; sourceTree = "<group>"; };
+		656FC4385ABB879102F531A049285C2A /* TokioAsyncContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TokioAsyncContext.swift; path = swift/Sources/LibSignalClient/TokioAsyncContext.swift; sourceTree = "<group>"; };
+		663E1EE89F6305BAA01D3C103CB46187 /* AuthDevicesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthDevicesService.swift; path = swift/Sources/LibSignalClient/chat/AuthDevicesService.swift; sourceTree = "<group>"; };
+		6AB75A4B8A9D2BD399F1F68111420FA9 /* Pods-Beacon-BeaconUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-Beacon-BeaconUITests.debug.xcconfig"; sourceTree = "<group>"; };
+		6C3CA1D5E86B11C3852B9465BCF71FB3 /* LibSignalClient-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "LibSignalClient-Info.plist"; sourceTree = "<group>"; };
+		6EE8041A258F51406F55246F6D9BB7C5 /* ServerSecretParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerSecretParams.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerSecretParams.swift; sourceTree = "<group>"; };
+		71194C4FC71541D5FD86511177800841 /* IoUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IoUtils.swift; path = swift/Sources/LibSignalClient/IoUtils.swift; sourceTree = "<group>"; };
+		7345555EF75FD737FB80B2FB01CFC1C8 /* GenericServerPublicParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GenericServerPublicParams.swift; path = swift/Sources/LibSignalClient/zkgroup/GenericServerPublicParams.swift; sourceTree = "<group>"; };
+		74F30E9499CC6369DA97A5C4D3E72049 /* ClientZkReceiptOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClientZkReceiptOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ClientZkReceiptOperations.swift; sourceTree = "<group>"; };
+		753D290A9A6DE0933EA45B9C22A42AE4 /* Pods-Beacon-BeaconUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-Beacon-BeaconUITests.release.xcconfig"; sourceTree = "<group>"; };
+		773EBD951A2DD3E0FE256122739F1933 /* Pods-Beacon.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-Beacon.modulemap"; sourceTree = "<group>"; };
+		7B9D378F796F356ED032D70B5BFAD465 /* GroupSecretParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSecretParams.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSecretParams.swift; sourceTree = "<group>"; };
+		7DDE78A642B63AAEC805FC586F95B15C /* Pods-BeaconTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-BeaconTests.release.xcconfig"; sourceTree = "<group>"; };
+		7ED91BEF3FF200AC1B0DC08588BAEADF /* BackupAuthCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredentialResponse.swift; sourceTree = "<group>"; };
+		80D379BD39C98EA2558BA95A29913156 /* ProfileKeyCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCredentialPresentation.swift; sourceTree = "<group>"; };
+		81224806AE434314AD7E1AF2586C9ED1 /* CallLinkAuthCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkAuthCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkAuthCredential.swift; sourceTree = "<group>"; };
+		81583604E1DB7CF96ABCC2BEB54FDEF9 /* DeviceId.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DeviceId.swift; path = swift/Sources/LibSignalClient/DeviceId.swift; sourceTree = "<group>"; };
+		816186CE83904516B2488647565760AB /* BackupAuthCredentialRequest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredentialRequest.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredentialRequest.swift; sourceTree = "<group>"; };
+		82B3F9AF0AE46DB4DD446CBA4303C703 /* UnauthMessagesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthMessagesService.swift; path = swift/Sources/LibSignalClient/chat/UnauthMessagesService.swift; sourceTree = "<group>"; };
+		85E3065F7BAB811D331187F681F3A7E0 /* Pods-Beacon-BeaconUITests-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-Beacon-BeaconUITests-acknowledgements.plist"; sourceTree = "<group>"; };
+		864E70B6AC266D1E9E21CBDB4BEECDC0 /* Pods-Beacon-BeaconUITests.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-Beacon-BeaconUITests.modulemap"; sourceTree = "<group>"; };
+		8723E781ABEA97E38D1B0EFF45FC6970 /* LibSignalClient-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "LibSignalClient-umbrella.h"; sourceTree = "<group>"; };
+		8AFB0A86C2A0AAD86BD4A01E91445EA3 /* Pods-BeaconTests-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-BeaconTests-umbrella.h"; sourceTree = "<group>"; };
+		8EB76866E7B3C7ECF7C76A4173025716 /* CreateCallLinkCredentialRequest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredentialRequest.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredentialRequest.swift; sourceTree = "<group>"; };
+		90BD742D325C6706601F32BAA7FC01C4 /* Logging.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Logging.swift; path = swift/Sources/LibSignalClient/Logging.swift; sourceTree = "<group>"; };
+		912FEF4E32994595BE497CE5F5C2A43E /* IoProtocols.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IoProtocols.swift; path = swift/Sources/LibSignalClient/IoProtocols.swift; sourceTree = "<group>"; };
+		91C93F788E6D3D49F78327CF24F79379 /* Pods-Beacon-BeaconUITests-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-Beacon-BeaconUITests-acknowledgements.markdown"; sourceTree = "<group>"; };
+		91F4BB5CFB798C66AC00A49DAF0B81B4 /* Pods-Beacon-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-Beacon-umbrella.h"; sourceTree = "<group>"; };
+		9350D176C769D2D435A9C542B5F83356 /* SignalMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SignalMessage.swift; path = swift/Sources/LibSignalClient/messages/SignalMessage.swift; sourceTree = "<group>"; };
+		941745EDC97BE1CF50BF1B0B5561926A /* SignedPublicPreKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SignedPublicPreKey.swift; path = swift/Sources/LibSignalClient/SignedPublicPreKey.swift; sourceTree = "<group>"; };
+		9522D7AEF446192E22FECBD19DBBBEC4 /* AuthUsernamesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthUsernamesService.swift; path = swift/Sources/LibSignalClient/chat/AuthUsernamesService.swift; sourceTree = "<group>"; };
+		95E8396855C0F22377ED778287C1CCB8 /* KeyTransparency.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = KeyTransparency.swift; path = swift/Sources/LibSignalClient/KeyTransparency.swift; sourceTree = "<group>"; };
+		960E7EC801AA4AB7B038350D9DCEC7E2 /* GroupSendEndorsementsResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSendEndorsementsResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSendEndorsementsResponse.swift; sourceTree = "<group>"; };
+		962FFFF80A892C771A4FDF686F7D7351 /* CallLinkPublicParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkPublicParams.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkPublicParams.swift; sourceTree = "<group>"; };
+		9D332C89ACCF5FDB84A69E27F201BF87 /* GroupSendEndorsement.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSendEndorsement.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSendEndorsement.swift; sourceTree = "<group>"; };
+		9D91E4CCA3DD23E4969426B711F719E4 /* DataStoreProtocols.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DataStoreProtocols.swift; path = swift/Sources/LibSignalClient/DataStoreProtocols.swift; sourceTree = "<group>"; };
+		9D940727FF8FB9C785EB98E56350EF41 /* Podfile */ = {isa = PBXFileReference; explicitFileType = text.script.ruby; includeInIndex = 1; indentWidth = 2; lastKnownFileType = text; name = Podfile; path = ../Podfile; sourceTree = SOURCE_ROOT; tabWidth = 2; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
+		9DD00B55E14457381CB4B97931DC9817 /* Address.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Address.swift; path = swift/Sources/LibSignalClient/Address.swift; sourceTree = "<group>"; };
+		A000706FABF2EB62F02A1387152F87F7 /* ReceiptCredentialRequest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredentialRequest.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredentialRequest.swift; sourceTree = "<group>"; };
+		A1142C0F2E93E3957E00E72285E06C3E /* Svr2.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Svr2.swift; path = swift/Sources/LibSignalClient/Svr2.swift; sourceTree = "<group>"; };
+		A3838A7B2A838E2D0FED2E59FAC76379 /* RegistrationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RegistrationService.swift; path = swift/Sources/LibSignalClient/RegistrationService.swift; sourceTree = "<group>"; };
+		A48F9AAA53A47A0EAE39DC9F86A1C3BE /* SecureValueRecoveryBackup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SecureValueRecoveryBackup.swift; path = swift/Sources/LibSignalClient/SecureValueRecoveryBackup.swift; sourceTree = "<group>"; };
+		A6A6E5CFA9084CEF74A7E3446089EB13 /* PrivateKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PrivateKey.swift; path = swift/Sources/LibSignalClient/PrivateKey.swift; sourceTree = "<group>"; };
+		A93317E16C3755BCD37E1CB2CAF68EE9 /* ExpiringProfileKeyCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpiringProfileKeyCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/ExpiringProfileKeyCredential.swift; sourceTree = "<group>"; };
+		A97D7F9DD254367025152882EABD8BEF /* ProfileKeyCommitment.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCommitment.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCommitment.swift; sourceTree = "<group>"; };
+		AC2B48A62ED30EE379C8AA4C986693D2 /* PublicKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PublicKey.swift; path = swift/Sources/LibSignalClient/PublicKey.swift; sourceTree = "<group>"; };
+		AC5D327C9D2E839658453B96F2215279 /* Pods-Beacon-BeaconUITests-frameworks.sh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.script.sh; path = "Pods-Beacon-BeaconUITests-frameworks.sh"; sourceTree = "<group>"; };
+		AD3FCBB50843DBAB81BC353A15B0AF64 /* Pods-BeaconTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-BeaconTests.debug.xcconfig"; sourceTree = "<group>"; };
+		B073EDA493EF055C4535248265715E8C /* Aes256Ctr.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Aes256Ctr.swift; path = swift/Sources/LibSignalClient/Aes256Ctr.swift; sourceTree = "<group>"; };
+		B07C3CC32848187A7A9461204ADFBB11 /* Pods-Beacon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-Beacon.release.xcconfig"; sourceTree = "<group>"; };
+		B3A349CCE5033F996C2D1504578CE226 /* HsmEnclave.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HsmEnclave.swift; path = swift/Sources/LibSignalClient/HsmEnclave.swift; sourceTree = "<group>"; };
+		BABADED318B8E0A8602A049203E68E49 /* ChatConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatConnection.swift; path = swift/Sources/LibSignalClient/ChatConnection.swift; sourceTree = "<group>"; };
+		BCA8AD4C6285B216B9A784C77DD17FF2 /* ChatServiceTypes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatServiceTypes.swift; path = swift/Sources/LibSignalClient/ChatServiceTypes.swift; sourceTree = "<group>"; };
+		BF6247DE46059A6D707EA63B6142C283 /* CdsTypes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CdsTypes.swift; path = swift/Sources/LibSignalClient/CdsTypes.swift; sourceTree = "<group>"; };
+		BF8A8CB254D8ED5AC5E9C13DD9820FD2 /* Pods-Beacon-BeaconUITests */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-Beacon-BeaconUITests"; path = Pods_Beacon_BeaconUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		BFC793A973AE8F4496A0B5EECF00CB00 /* Randomness.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Randomness.swift; path = swift/Sources/LibSignalClient/zkgroup/Randomness.swift; sourceTree = "<group>"; };
+		C274FD548FACF456DEEFE007D2A67E0F /* AuthCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/AuthCredentialPresentation.swift; sourceTree = "<group>"; };
+		C28A3612418F06956CD6C3CD97FF3567 /* AuthCredentialWithPniResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthCredentialWithPniResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/AuthCredentialWithPniResponse.swift; sourceTree = "<group>"; };
+		C3FE2137D5836EB6E8775595ABEFCFF3 /* Pods-Beacon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-Beacon.debug.xcconfig"; sourceTree = "<group>"; };
+		C42709107FAC8B9A5F33F1DC99A21644 /* Pods-Beacon-BeaconUITests-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-Beacon-BeaconUITests-dummy.m"; sourceTree = "<group>"; };
+		C49433E9CA1DE010AC742237FF77B5BD /* ClientZkProfileOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClientZkProfileOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ClientZkProfileOperations.swift; sourceTree = "<group>"; };
+		C4E1C511FEA08F0572068CE69932A260 /* CreateCallLinkCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredentialResponse.swift; sourceTree = "<group>"; };
+		C747CDC6850E11C3B391EEBF1F50AA78 /* Net.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Net.swift; path = swift/Sources/LibSignalClient/Net.swift; sourceTree = "<group>"; };
+		C784666996788DA97593230A047BE54B /* PreKeyRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PreKeyRecord.swift; path = swift/Sources/LibSignalClient/state/PreKeyRecord.swift; sourceTree = "<group>"; };
+		C8EBC4D116BB153A1D674374A53E19F1 /* Pods-BeaconTests.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-BeaconTests.modulemap"; sourceTree = "<group>"; };
+		C9B6A1FCD206D24CA5EC0C4FD484B736 /* GroupSendFullToken.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSendFullToken.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSendFullToken.swift; sourceTree = "<group>"; };
+		CC2F9173A4FFE2CB4A2047E9CFFB0D18 /* Sgx.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Sgx.swift; path = swift/Sources/LibSignalClient/Sgx.swift; sourceTree = "<group>"; };
+		CF8F62462E0B209119A0E0DB78431496 /* CallLinkAuthCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkAuthCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkAuthCredentialPresentation.swift; sourceTree = "<group>"; };
+		CF9E3F8D9B9AE0B17BB9C112675A5B67 /* ExpiringProfileKeyCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpiringProfileKeyCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/ExpiringProfileKeyCredentialResponse.swift; sourceTree = "<group>"; };
+		D0FD9F6A21B465B42B9B36A902DC41ED /* KyberPreKeyRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = KyberPreKeyRecord.swift; path = swift/Sources/LibSignalClient/state/KyberPreKeyRecord.swift; sourceTree = "<group>"; };
+		D11761D6988B5F29BB319D5189B9EF5E /* LibSignalClient */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = LibSignalClient; path = LibSignalClient.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		D24C6F5DF57FDDDB7BECC0B62E7EA078 /* Aes256GcmSiv.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Aes256GcmSiv.swift; path = swift/Sources/LibSignalClient/Aes256GcmSiv.swift; sourceTree = "<group>"; };
+		D250684F12703009CE406FDE3E752586 /* CallLinkSecretParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkSecretParams.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkSecretParams.swift; sourceTree = "<group>"; };
+		D33F2644D5BFAC9394B0007AFE2B8C0B /* Protocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Protocol.swift; path = swift/Sources/LibSignalClient/Protocol.swift; sourceTree = "<group>"; };
+		D5C7AFE47110D4553B11611479844540 /* SingleOutboundMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SingleOutboundMessage.swift; path = swift/Sources/LibSignalClient/chat/SingleOutboundMessage.swift; sourceTree = "<group>"; };
+		D756C3BD5BBC899E3C3AE172D08BFEDC /* AuthCredentialWithPni.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthCredentialWithPni.swift; path = swift/Sources/LibSignalClient/zkgroup/AuthCredentialWithPni.swift; sourceTree = "<group>"; };
+		D8C820517333777A13D89C85B198777C /* ProfileKeyCredentialRequestContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCredentialRequestContext.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCredentialRequestContext.swift; sourceTree = "<group>"; };
+		DA49FF26853432E291C18A98AE66200F /* GroupMasterKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupMasterKey.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupMasterKey.swift; sourceTree = "<group>"; };
+		DD06CA3FA354BCEBBFB7AE7A6167F6F9 /* ServerPublicParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerPublicParams.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerPublicParams.swift; sourceTree = "<group>"; };
+		DF860AD6D60E2DC26009647648786504 /* CreateCallLinkCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredentialPresentation.swift; sourceTree = "<group>"; };
+		E17EF2977E7BE9F36E2868C96402271B /* RegistrationServiceTypes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RegistrationServiceTypes.swift; path = swift/Sources/LibSignalClient/RegistrationServiceTypes.swift; sourceTree = "<group>"; };
+		E1A9164F64C774724A1DE03D23D00046 /* GroupIdentifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupIdentifier.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupIdentifier.swift; sourceTree = "<group>"; };
+		E45F1BB4ADD04CCE73D64696D8CA5B41 /* ReceiptCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredentialResponse.swift; sourceTree = "<group>"; };
+		E4E36857EC3CD536A2E124EA5E9866D7 /* SenderKeyDistributionMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SenderKeyDistributionMessage.swift; path = swift/Sources/LibSignalClient/messages/SenderKeyDistributionMessage.swift; sourceTree = "<group>"; };
+		E5AA9E735DE850E1C8CBA957B2DCDCA9 /* NativeHandleOwner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NativeHandleOwner.swift; path = swift/Sources/LibSignalClient/NativeHandleOwner.swift; sourceTree = "<group>"; };
+		E6AD807FC29390154A4A20A76854DB65 /* ClientZkAuthOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClientZkAuthOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ClientZkAuthOperations.swift; sourceTree = "<group>"; };
+		E86CC9A5C318D5388E7DCC35AD26DC66 /* SealedSender.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SealedSender.swift; path = swift/Sources/LibSignalClient/SealedSender.swift; sourceTree = "<group>"; };
+		E97842DA7DEC97FC54CFC4BEC209B345 /* BorrowUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BorrowUtils.swift; path = swift/Sources/LibSignalClient/BorrowUtils.swift; sourceTree = "<group>"; };
+		EA8FF8B5BC6F653A09973E24F92F64E6 /* LibSignalClient-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "LibSignalClient-dummy.m"; sourceTree = "<group>"; };
+		EAE99974AE824D373F33F37C52A066EA /* Media.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Media.swift; path = swift/Sources/LibSignalClient/Media.swift; sourceTree = "<group>"; };
+		ECFD85BFC810DC646431E609833CAEC4 /* ClientZkGroupCipher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClientZkGroupCipher.swift; path = swift/Sources/LibSignalClient/zkgroup/ClientZkGroupCipher.swift; sourceTree = "<group>"; };
+		EE73A88F855D693F112A64FAA8B13985 /* ProfileKeyCiphertext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCiphertext.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCiphertext.swift; sourceTree = "<group>"; };
+		EED5DB0AAF829A4F56D669C07AC9C884 /* ProfileKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKey.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKey.swift; sourceTree = "<group>"; };
+		F1402E9113A48C9CEA0B434F50E0F39A /* ServerZkAuthOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerZkAuthOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerZkAuthOperations.swift; sourceTree = "<group>"; };
+		F15AB50E383024627622A71FCBFDDC37 /* CallLinkAuthCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkAuthCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkAuthCredentialResponse.swift; sourceTree = "<group>"; };
+		F3A3093205B7EC079D2CB0B4A46FB432 /* UnauthProfilesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthProfilesService.swift; path = swift/Sources/LibSignalClient/chat/UnauthProfilesService.swift; sourceTree = "<group>"; };
+		F3CA25EBB0B95B26A292A26143CBBC28 /* UnauthBackupsService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthBackupsService.swift; path = swift/Sources/LibSignalClient/chat/UnauthBackupsService.swift; sourceTree = "<group>"; };
+		F553F185F3499D978E0978E3CE21964B /* NotarySignature.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NotarySignature.swift; path = swift/Sources/LibSignalClient/zkgroup/NotarySignature.swift; sourceTree = "<group>"; };
+		F59B6223FE4311170D77A5F66A7B6F33 /* ChatListener.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatListener.swift; path = swift/Sources/LibSignalClient/ChatListener.swift; sourceTree = "<group>"; };
+		F6B14CE2777C9A2BF37F6D8FC148D9A7 /* BackupAuthCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredential.swift; sourceTree = "<group>"; };
+		F7B758D6B7DEDEEF7F3E2C1F1CC1F166 /* Fingerprint.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Fingerprint.swift; path = swift/Sources/LibSignalClient/Fingerprint.swift; sourceTree = "<group>"; };
+		FA5E63D2B771CEEDEB957896C0AB0F18 /* CreateCallLinkCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredential.swift; sourceTree = "<group>"; };
+		FAA8A697ECBAC891678BE0753C8D8075 /* GroupSendDerivedKeyPair.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSendDerivedKeyPair.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSendDerivedKeyPair.swift; sourceTree = "<group>"; };
+		FAA9FAF4980655586357B837C578F642 /* Pods-Beacon */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-Beacon"; path = Pods_Beacon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		FB7683775087574D0D5654C0BE2C593A /* LibSignalClient.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = LibSignalClient.debug.xcconfig; sourceTree = "<group>"; };
+		FC11F7B62891F5E1682AB08785E6461B /* SenderKeyMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SenderKeyMessage.swift; path = swift/Sources/LibSignalClient/messages/SenderKeyMessage.swift; sourceTree = "<group>"; };
+		FD40160AD6AF7231FB4177B33C4B688C /* CiphertextMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CiphertextMessage.swift; path = swift/Sources/LibSignalClient/messages/CiphertextMessage.swift; sourceTree = "<group>"; };
+		FDA8D7C7F6DA2D1D0ECBD5D8F64959FB /* Pods-Beacon-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-Beacon-dummy.m"; sourceTree = "<group>"; };
+		FEE5D26713AC44F37F6E38CA5020FBF6 /* ServiceId.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServiceId.swift; path = swift/Sources/LibSignalClient/ServiceId.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		13253269C4C37EB1FDFE90EE086C6917 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2E8A8E1F34E678A37D7CFC6A3FF53376 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		230CBDFEBDC5BD07EE06BC94D581E045 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2809B1D8E2F65CA3574CD2DC1ED8F62E /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7252A27DAB436FD0F3A11EFCBD1AFA1C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				63DB3FFC85AA76731A19B4F71F3101B1 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F24D2F330892FB690FD7370C1A562E89 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D518555129DB5AC063F81B93F87A4420 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0DE6A6A89320A63A8054C66B9F1C7986 /* Pods-Beacon */ = {
+			isa = PBXGroup;
+			children = (
+				773EBD951A2DD3E0FE256122739F1933 /* Pods-Beacon.modulemap */,
+				12D1C76E59E0CA5CD77E27B5043E6B28 /* Pods-Beacon-acknowledgements.markdown */,
+				47E5E61D9E8FCC9AE3E43AB2B9A5BFB5 /* Pods-Beacon-acknowledgements.plist */,
+				FDA8D7C7F6DA2D1D0ECBD5D8F64959FB /* Pods-Beacon-dummy.m */,
+				5D9ED229038F215A7F1A44170229212F /* Pods-Beacon-frameworks.sh */,
+				1E70447BB76F472DAAEBEA71CA6CB1CF /* Pods-Beacon-Info.plist */,
+				91F4BB5CFB798C66AC00A49DAF0B81B4 /* Pods-Beacon-umbrella.h */,
+				C3FE2137D5836EB6E8775595ABEFCFF3 /* Pods-Beacon.debug.xcconfig */,
+				B07C3CC32848187A7A9461204ADFBB11 /* Pods-Beacon.release.xcconfig */,
+			);
+			name = "Pods-Beacon";
+			path = "Target Support Files/Pods-Beacon";
+			sourceTree = "<group>";
+		};
+		48F948713429953137B24E7C850F7117 /* LibSignalClient */ = {
+			isa = PBXGroup;
+			children = (
+				45DB018A8246BCF8050EB694BB3FEC1E /* AccountKeys.swift */,
+				9DD00B55E14457381CB4B97931DC9817 /* Address.swift */,
+				B073EDA493EF055C4535248265715E8C /* Aes256Ctr.swift */,
+				4B15E714829692093DEF8DE254FB25EC /* Aes256Gcm.swift */,
+				D24C6F5DF57FDDDB7BECC0B62E7EA078 /* Aes256GcmSiv.swift */,
+				5F6CDD62AAB5DE3431D0BF4C88635E08 /* AsyncUtils.swift */,
+				C274FD548FACF456DEEFE007D2A67E0F /* AuthCredentialPresentation.swift */,
+				D756C3BD5BBC899E3C3AE172D08BFEDC /* AuthCredentialWithPni.swift */,
+				C28A3612418F06956CD6C3CD97FF3567 /* AuthCredentialWithPniResponse.swift */,
+				663E1EE89F6305BAA01D3C103CB46187 /* AuthDevicesService.swift */,
+				258E80C2B999F61EBFB61E03A48625EA /* AuthMessagesService.swift */,
+				9522D7AEF446192E22FECBD19DBBBEC4 /* AuthUsernamesService.swift */,
+				2F73E941D538AC6C220CE36F3276CF3E /* AvatarUploadCredential.swift */,
+				F6B14CE2777C9A2BF37F6D8FC148D9A7 /* BackupAuthCredential.swift */,
+				6184171FE7682D2E3A6F95723BD589A1 /* BackupAuthCredentialPresentation.swift */,
+				816186CE83904516B2488647565760AB /* BackupAuthCredentialRequest.swift */,
+				53DB1D675F86F1AC22C80AC91E1EF130 /* BackupAuthCredentialRequestContext.swift */,
+				7ED91BEF3FF200AC1B0DC08588BAEADF /* BackupAuthCredentialResponse.swift */,
+				6293D573D6DC691A1647FAC855BB6615 /* BackupLevel.swift */,
+				E97842DA7DEC97FC54CFC4BEC209B345 /* BorrowUtils.swift */,
+				066D0B67D31ACB72E2EE017D70D9C43A /* ByteArray.swift */,
+				81224806AE434314AD7E1AF2586C9ED1 /* CallLinkAuthCredential.swift */,
+				CF8F62462E0B209119A0E0DB78431496 /* CallLinkAuthCredentialPresentation.swift */,
+				F15AB50E383024627622A71FCBFDDC37 /* CallLinkAuthCredentialResponse.swift */,
+				962FFFF80A892C771A4FDF686F7D7351 /* CallLinkPublicParams.swift */,
+				D250684F12703009CE406FDE3E752586 /* CallLinkSecretParams.swift */,
+				092FA939BE295CB701BAA26AB473D267 /* Cds2.swift */,
+				BF6247DE46059A6D707EA63B6142C283 /* CdsTypes.swift */,
+				BABADED318B8E0A8602A049203E68E49 /* ChatConnection.swift */,
+				12A65027CD72136F8AD7C3F40A15B01D /* ChatConnection+Fake.swift */,
+				F59B6223FE4311170D77A5F66A7B6F33 /* ChatListener.swift */,
+				BCA8AD4C6285B216B9A784C77DD17FF2 /* ChatServiceTypes.swift */,
+				FD40160AD6AF7231FB4177B33C4B688C /* CiphertextMessage.swift */,
+				E6AD807FC29390154A4A20A76854DB65 /* ClientZkAuthOperations.swift */,
+				ECFD85BFC810DC646431E609833CAEC4 /* ClientZkGroupCipher.swift */,
+				C49433E9CA1DE010AC742237FF77B5BD /* ClientZkProfileOperations.swift */,
+				74F30E9499CC6369DA97A5C4D3E72049 /* ClientZkReceiptOperations.swift */,
+				3FEDB34A3B777F885B81AADAAEA45F03 /* ComparableBackup.swift */,
+				FA5E63D2B771CEEDEB957896C0AB0F18 /* CreateCallLinkCredential.swift */,
+				DF860AD6D60E2DC26009647648786504 /* CreateCallLinkCredentialPresentation.swift */,
+				8EB76866E7B3C7ECF7C76A4173025716 /* CreateCallLinkCredentialRequest.swift */,
+				0D8D2473FF662625B501759648FA1F9F /* CreateCallLinkCredentialRequestContext.swift */,
+				C4E1C511FEA08F0572068CE69932A260 /* CreateCallLinkCredentialResponse.swift */,
+				4C1535296592C09E39698C251A86BADA /* DataStoreInMemory.swift */,
+				9D91E4CCA3DD23E4969426B711F719E4 /* DataStoreProtocols.swift */,
+				4B809064CCEE3D707A85229ACED6D95F /* DataStoreUtils.swift */,
+				81583604E1DB7CF96ABCC2BEB54FDEF9 /* DeviceId.swift */,
+				10583FE1AD2D454461FD5669048CFF6C /* DeviceTransfer.swift */,
+				47A38F40A117112E21C4E996103E58C0 /* DonationPermit.swift */,
+				03A5DD1ED7B2844B465745ECE1F48ADE /* Error.swift */,
+				A93317E16C3755BCD37E1CB2CAF68EE9 /* ExpiringProfileKeyCredential.swift */,
+				CF9E3F8D9B9AE0B17BB9C112675A5B67 /* ExpiringProfileKeyCredentialResponse.swift */,
+				F7B758D6B7DEDEEF7F3E2C1F1CC1F166 /* Fingerprint.swift */,
+				7345555EF75FD737FB80B2FB01CFC1C8 /* GenericServerPublicParams.swift */,
+				43154BCA2D0963D05C47A66E13FEEA29 /* GenericServerSecretParams.swift */,
+				E1A9164F64C774724A1DE03D23D00046 /* GroupIdentifier.swift */,
+				DA49FF26853432E291C18A98AE66200F /* GroupMasterKey.swift */,
+				2A9831D03DF43583BF61133548F649BA /* GroupPublicParams.swift */,
+				7B9D378F796F356ED032D70B5BFAD465 /* GroupSecretParams.swift */,
+				FAA8A697ECBAC891678BE0753C8D8075 /* GroupSendDerivedKeyPair.swift */,
+				9D332C89ACCF5FDB84A69E27F201BF87 /* GroupSendEndorsement.swift */,
+				960E7EC801AA4AB7B038350D9DCEC7E2 /* GroupSendEndorsementsResponse.swift */,
+				C9B6A1FCD206D24CA5EC0C4FD484B736 /* GroupSendFullToken.swift */,
+				B3A349CCE5033F996C2D1504578CE226 /* HsmEnclave.swift */,
+				18B5BD57F4B092E55BB87D609ED10CF7 /* IdentityKey.swift */,
+				53068A35B4113A8D0FF503FFE01A2E6A /* IncrementalMac.swift */,
+				912FEF4E32994595BE497CE5F5C2A43E /* IoProtocols.swift */,
+				71194C4FC71541D5FD86511177800841 /* IoUtils.swift */,
+				244D253D284E83040653F8D78B11BFA4 /* Kdf.swift */,
+				0443048BE59648E619121BDED64BCBFC /* Kem.swift */,
+				95E8396855C0F22377ED778287C1CCB8 /* KeyTransparency.swift */,
+				D0FD9F6A21B465B42B9B36A902DC41ED /* KyberPreKeyRecord.swift */,
+				90BD742D325C6706601F32BAA7FC01C4 /* Logging.swift */,
+				EAE99974AE824D373F33F37C52A066EA /* Media.swift */,
+				2A3B3E84E7F771C747CC85D467E2C28E /* MessageBackup.swift */,
+				E5AA9E735DE850E1C8CBA957B2DCDCA9 /* NativeHandleOwner.swift */,
+				2546530B56A2DD0425A4EDEB62485C28 /* NativeNice.swift */,
+				C747CDC6850E11C3B391EEBF1F50AA78 /* Net.swift */,
+				4A077A31ABF3170177C01C29CC672EAB /* NiceBridgingUtils.swift */,
+				F553F185F3499D978E0978E3CE21964B /* NotarySignature.swift */,
+				336528D5E0FDC58E4A95700A49229573 /* PlaintextContent.swift */,
+				642446BFF549E4A5584A9672A5C2C94C /* PreKeyBundle.swift */,
+				C784666996788DA97593230A047BE54B /* PreKeyRecord.swift */,
+				0C1337F9F67A44CAA1ED7BFB83883AC6 /* PreKeySignalMessage.swift */,
+				A6A6E5CFA9084CEF74A7E3446089EB13 /* PrivateKey.swift */,
+				EED5DB0AAF829A4F56D669C07AC9C884 /* ProfileKey.swift */,
+				EE73A88F855D693F112A64FAA8B13985 /* ProfileKeyCiphertext.swift */,
+				A97D7F9DD254367025152882EABD8BEF /* ProfileKeyCommitment.swift */,
+				80D379BD39C98EA2558BA95A29913156 /* ProfileKeyCredentialPresentation.swift */,
+				31173685B0361A863B4E72547618F272 /* ProfileKeyCredentialRequest.swift */,
+				D8C820517333777A13D89C85B198777C /* ProfileKeyCredentialRequestContext.swift */,
+				292468A1EDCD5BFEF28D537EC72D33FB /* ProfileKeyVersion.swift */,
+				D33F2644D5BFAC9394B0007AFE2B8C0B /* Protocol.swift */,
+				5A65419A2503EAD10BE781B100D88C46 /* ProvisioningConnection.swift */,
+				AC2B48A62ED30EE379C8AA4C986693D2 /* PublicKey.swift */,
+				BFC793A973AE8F4496A0B5EECF00CB00 /* Randomness.swift */,
+				0D38700A459F1CA5D8392CF84F33B53A /* ReceiptCredential.swift */,
+				46475B8FDC15291BB7ECF52BE274FAD7 /* ReceiptCredentialPresentation.swift */,
+				A000706FABF2EB62F02A1387152F87F7 /* ReceiptCredentialRequest.swift */,
+				3C3E765DF65C23459DE0F9CD7F89C5BA /* ReceiptCredentialRequestContext.swift */,
+				E45F1BB4ADD04CCE73D64696D8CA5B41 /* ReceiptCredentialResponse.swift */,
+				12A63A7EBA28B8C47F24BDF1F2934D96 /* ReceiptSerial.swift */,
+				A3838A7B2A838E2D0FED2E59FAC76379 /* RegistrationService.swift */,
+				E17EF2977E7BE9F36E2868C96402271B /* RegistrationServiceTypes.swift */,
+				E86CC9A5C318D5388E7DCC35AD26DC66 /* SealedSender.swift */,
+				0F69ED69237E487ADC1B55B2A7C3C149 /* SealedSenderCertificates.swift */,
+				A48F9AAA53A47A0EAE39DC9F86A1C3BE /* SecureValueRecoveryBackup.swift */,
+				E4E36857EC3CD536A2E124EA5E9866D7 /* SenderKeyDistributionMessage.swift */,
+				FC11F7B62891F5E1682AB08785E6461B /* SenderKeyMessage.swift */,
+				124D97C3B3B07A106CE6EC0D2DFE57D3 /* SenderKeyRecord.swift */,
+				DD06CA3FA354BCEBBFB7AE7A6167F6F9 /* ServerPublicParams.swift */,
+				6EE8041A258F51406F55246F6D9BB7C5 /* ServerSecretParams.swift */,
+				F1402E9113A48C9CEA0B434F50E0F39A /* ServerZkAuthOperations.swift */,
+				127D822714A816ED3FB319C95E0713E0 /* ServerZkProfileOperations.swift */,
+				2633413BD1FCDFDE6BC7AEB841AB5D5B /* ServerZkReceiptOperations.swift */,
+				FEE5D26713AC44F37F6E38CA5020FBF6 /* ServiceId.swift */,
+				5D30D25B58AEB3564C4F9AA68F0B408F /* Services.swift */,
+				48B73ABF341B0549FC08622EFD0D2CB2 /* SessionRecord.swift */,
+				CC2F9173A4FFE2CB4A2047E9CFFB0D18 /* Sgx.swift */,
+				9350D176C769D2D435A9C542B5F83356 /* SignalMessage.swift */,
+				05BCDB3144BA2D0052460F2363335806 /* SignedPreKeyRecord.swift */,
+				941745EDC97BE1CF50BF1B0B5561926A /* SignedPublicPreKey.swift */,
+				D5C7AFE47110D4553B11611479844540 /* SingleOutboundMessage.swift */,
+				A1142C0F2E93E3957E00E72285E06C3E /* Svr2.swift */,
+				656FC4385ABB879102F531A049285C2A /* TokioAsyncContext.swift */,
+				F3CA25EBB0B95B26A292A26143CBBC28 /* UnauthBackupsService.swift */,
+				5CB8ED1F8B987B74D137C511082623C9 /* UnauthKeysService.swift */,
+				82B3F9AF0AE46DB4DD446CBA4303C703 /* UnauthMessagesService.swift */,
+				F3A3093205B7EC079D2CB0B4A46FB432 /* UnauthProfilesService.swift */,
+				5195909BF5B1B3C402E1387FE5E67E01 /* UnauthUsernamesService.swift */,
+				034EBA24BA8696E7F45FD7ECF781814C /* UploadForm.swift */,
+				122BE68625E7F1EA1E3219AF1C1DF0CF /* UserBasedAuthorization.swift */,
+				338A5684D902629421148C75D0B25B48 /* Username.swift */,
+				2F04924FA05B03FF79D654E85DAD27B4 /* Utils.swift */,
+				0B8C2859CB1A8AEF7B91B2AEC838DC61 /* UuidCiphertext.swift */,
+				0DF0C848A0BC730375CE2407D4C415EC /* ZkCredentialKey.swift */,
+				695883225EFBFD2E20B010DCDB1B3FFC /* Support Files */,
+			);
+			name = LibSignalClient;
+			path = LibSignalClient;
+			sourceTree = "<group>";
+		};
+		58319F5C3E30EEC35F5C7054AA32AD2D /* Pods-BeaconTests */ = {
+			isa = PBXGroup;
+			children = (
+				C8EBC4D116BB153A1D674374A53E19F1 /* Pods-BeaconTests.modulemap */,
+				6493D19A608C5464F51644B05BFFF956 /* Pods-BeaconTests-acknowledgements.markdown */,
+				099C6CD3DDF1BD5983BA1E7661B02D50 /* Pods-BeaconTests-acknowledgements.plist */,
+				5F4C2018C7BF51E6BF5717BB2A2C0355 /* Pods-BeaconTests-dummy.m */,
+				030530C17FD080D5DDAE51576D6B6D41 /* Pods-BeaconTests-Info.plist */,
+				8AFB0A86C2A0AAD86BD4A01E91445EA3 /* Pods-BeaconTests-umbrella.h */,
+				AD3FCBB50843DBAB81BC353A15B0AF64 /* Pods-BeaconTests.debug.xcconfig */,
+				7DDE78A642B63AAEC805FC586F95B15C /* Pods-BeaconTests.release.xcconfig */,
+			);
+			name = "Pods-BeaconTests";
+			path = "Target Support Files/Pods-BeaconTests";
+			sourceTree = "<group>";
+		};
+		695883225EFBFD2E20B010DCDB1B3FFC /* Support Files */ = {
+			isa = PBXGroup;
+			children = (
+				2AF9E893182F195C6D5846F3F462CEB1 /* LibSignalClient.modulemap */,
+				EA8FF8B5BC6F653A09973E24F92F64E6 /* LibSignalClient-dummy.m */,
+				6C3CA1D5E86B11C3852B9465BCF71FB3 /* LibSignalClient-Info.plist */,
+				13E2E83C71308E37F42521CA2848E96F /* LibSignalClient-prefix.pch */,
+				8723E781ABEA97E38D1B0EFF45FC6970 /* LibSignalClient-umbrella.h */,
+				FB7683775087574D0D5654C0BE2C593A /* LibSignalClient.debug.xcconfig */,
+				58C176B27FCEF6A8005909F4352947CC /* LibSignalClient.release.xcconfig */,
+			);
+			name = "Support Files";
+			path = "../Target Support Files/LibSignalClient";
+			sourceTree = "<group>";
+		};
+		AD33AE108008A9604A83D19A92730C6C /* Targets Support Files */ = {
+			isa = PBXGroup;
+			children = (
+				0DE6A6A89320A63A8054C66B9F1C7986 /* Pods-Beacon */,
+				EFBE841C6EC867A4F55727196F8A5AD1 /* Pods-Beacon-BeaconUITests */,
+				58319F5C3E30EEC35F5C7054AA32AD2D /* Pods-BeaconTests */,
+			);
+			name = "Targets Support Files";
+			sourceTree = "<group>";
+		};
+		CAC6B48B82AEBFFCDE39D1CF7F877026 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D11761D6988B5F29BB319D5189B9EF5E /* LibSignalClient */,
+				FAA9FAF4980655586357B837C578F642 /* Pods-Beacon */,
+				BF8A8CB254D8ED5AC5E9C13DD9820FD2 /* Pods-Beacon-BeaconUITests */,
+				4A623A0BA1BFC2862E7640667CF780DF /* Pods-BeaconTests */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CF1408CF629C7361332E53B88F7BD30C = {
+			isa = PBXGroup;
+			children = (
+				9D940727FF8FB9C785EB98E56350EF41 /* Podfile */,
+				D210D550F4EA176C3123ED886F8F87F5 /* Frameworks */,
+				ED16DB04B159833820CC37C27F0075C0 /* Pods */,
+				CAC6B48B82AEBFFCDE39D1CF7F877026 /* Products */,
+				AD33AE108008A9604A83D19A92730C6C /* Targets Support Files */,
+			);
+			sourceTree = "<group>";
+		};
+		D210D550F4EA176C3123ED886F8F87F5 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				E4801F62A6B08CD9B5410329F1A18FDE /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		E4801F62A6B08CD9B5410329F1A18FDE /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		ED16DB04B159833820CC37C27F0075C0 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				48F948713429953137B24E7C850F7117 /* LibSignalClient */,
+			);
+			name = Pods;
+			sourceTree = "<group>";
+		};
+		EFBE841C6EC867A4F55727196F8A5AD1 /* Pods-Beacon-BeaconUITests */ = {
+			isa = PBXGroup;
+			children = (
+				864E70B6AC266D1E9E21CBDB4BEECDC0 /* Pods-Beacon-BeaconUITests.modulemap */,
+				91C93F788E6D3D49F78327CF24F79379 /* Pods-Beacon-BeaconUITests-acknowledgements.markdown */,
+				85E3065F7BAB811D331187F681F3A7E0 /* Pods-Beacon-BeaconUITests-acknowledgements.plist */,
+				C42709107FAC8B9A5F33F1DC99A21644 /* Pods-Beacon-BeaconUITests-dummy.m */,
+				AC5D327C9D2E839658453B96F2215279 /* Pods-Beacon-BeaconUITests-frameworks.sh */,
+				37501C5870C1CFDC9906455487F445B5 /* Pods-Beacon-BeaconUITests-Info.plist */,
+				6419A82FBCCB9A98E2501B1EAB9925D4 /* Pods-Beacon-BeaconUITests-umbrella.h */,
+				6AB75A4B8A9D2BD399F1F68111420FA9 /* Pods-Beacon-BeaconUITests.debug.xcconfig */,
+				753D290A9A6DE0933EA45B9C22A42AE4 /* Pods-Beacon-BeaconUITests.release.xcconfig */,
+			);
+			name = "Pods-Beacon-BeaconUITests";
+			path = "Target Support Files/Pods-Beacon-BeaconUITests";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		0C460EF810E8A94F1FFA1F78B3758502 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				20723D97BDB500765E2B0DF73E911FAA /* LibSignalClient-umbrella.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3971B2E945BF81AB0C5F0C268DAA5143 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9C494244395EF52549705B10EC13FBB1 /* Pods-BeaconTests-umbrella.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8EA19570D1C03C1CCA0D142348A1145E /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				672ADC3195AEDAB6DFEF3856A46330FA /* Pods-Beacon-BeaconUITests-umbrella.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F47E1B223EA3E698B97A34B4AD9FBEDD /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				06B1ECFF41AFB239EA32841D71A59369 /* Pods-Beacon-umbrella.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		04BDD72EAE718614B413E19FEAEAA671 /* Pods-Beacon */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 138179E0616A4D9BBFB11569506DA1E1 /* Build configuration list for PBXNativeTarget "Pods-Beacon" */;
+			buildPhases = (
+				F47E1B223EA3E698B97A34B4AD9FBEDD /* Headers */,
+				B34371B608E0CEB549078F69BD14AE25 /* Sources */,
+				F24D2F330892FB690FD7370C1A562E89 /* Frameworks */,
+				F71A3F48A0BEF14D1890F3DC80BBDE92 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4BA9C1918B51F50C37D4704ADA987240 /* PBXTargetDependency */,
+			);
+			name = "Pods-Beacon";
+			productName = Pods_Beacon;
+			productReference = FAA9FAF4980655586357B837C578F642 /* Pods-Beacon */;
+			productType = "com.apple.product-type.framework";
+		};
+		08134EC50659767D223022E0D1FA0CEF /* Pods-Beacon-BeaconUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3C581964E4A9CD42B417F1C5C6AD7684 /* Build configuration list for PBXNativeTarget "Pods-Beacon-BeaconUITests" */;
+			buildPhases = (
+				8EA19570D1C03C1CCA0D142348A1145E /* Headers */,
+				5FFDA25279017E9A09DAC71E1595E667 /* Sources */,
+				13253269C4C37EB1FDFE90EE086C6917 /* Frameworks */,
+				E4D76606BD1048521690944F891A03FF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9062A2587C6B4A4B4064D6072F1B02F4 /* PBXTargetDependency */,
+			);
+			name = "Pods-Beacon-BeaconUITests";
+			productName = Pods_Beacon_BeaconUITests;
+			productReference = BF8A8CB254D8ED5AC5E9C13DD9820FD2 /* Pods-Beacon-BeaconUITests */;
+			productType = "com.apple.product-type.framework";
+		};
+		BDD643C73C0AE976B68989859B178E1E /* Pods-BeaconTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F654BD3060B53B3FF7BCE8E22EA64B5F /* Build configuration list for PBXNativeTarget "Pods-BeaconTests" */;
+			buildPhases = (
+				3971B2E945BF81AB0C5F0C268DAA5143 /* Headers */,
+				97E32612FAFD882EC26854B5DFD3FBEA /* Sources */,
+				7252A27DAB436FD0F3A11EFCBD1AFA1C /* Frameworks */,
+				CD3AA264A18B92E18B90BC0166B24172 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C0EFA67BA4A6F5BCF83F30189E3B3EC9 /* PBXTargetDependency */,
+			);
+			name = "Pods-BeaconTests";
+			productName = Pods_BeaconTests;
+			productReference = 4A623A0BA1BFC2862E7640667CF780DF /* Pods-BeaconTests */;
+			productType = "com.apple.product-type.framework";
+		};
+		D77A98059641D2A99D7DD3EBCA4606AE /* LibSignalClient */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C5A200B75F30802080E435043FE2FEBE /* Build configuration list for PBXNativeTarget "LibSignalClient" */;
+			buildPhases = (
+				0C460EF810E8A94F1FFA1F78B3758502 /* Headers */,
+				1549A806F9DD640C9C5FC8320572781D /* [CP-User] Download libsignal-ffi if not in cache */,
+				75520C056F4CFC9CE8C41125C638E55C /* [CP-User] Extract libsignal-ffi prebuild */,
+				1452C29F7D7ECCC32ED31C850337F699 /* Sources */,
+				230CBDFEBDC5BD07EE06BC94D581E045 /* Frameworks */,
+				47319529CA130DB55AD6C73277940F9C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = LibSignalClient;
+			productName = LibSignalClient;
+			productReference = D11761D6988B5F29BB319D5189B9EF5E /* LibSignalClient */;
+			productType = "com.apple.product-type.framework";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BFDFE7DC352907FC980B868725387E98 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = 4821239608C13582E20E6DA73FD5F1F9 /* Build configuration list for PBXProject "Pods" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = CF1408CF629C7361332E53B88F7BD30C;
+			minimizedProjectReferenceProxies = 0;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = CAC6B48B82AEBFFCDE39D1CF7F877026 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D77A98059641D2A99D7DD3EBCA4606AE /* LibSignalClient */,
+				04BDD72EAE718614B413E19FEAEAA671 /* Pods-Beacon */,
+				08134EC50659767D223022E0D1FA0CEF /* Pods-Beacon-BeaconUITests */,
+				BDD643C73C0AE976B68989859B178E1E /* Pods-BeaconTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		47319529CA130DB55AD6C73277940F9C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CD3AA264A18B92E18B90BC0166B24172 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E4D76606BD1048521690944F891A03FF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F71A3F48A0BEF14D1890F3DC80BBDE92 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		1549A806F9DD640C9C5FC8320572781D /* [CP-User] Download libsignal-ffi if not in cache */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			name = "[CP-User] Download libsignal-ffi if not in cache";
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\n        set -euo pipefail\n        if [ -e \"${PODS_TARGET_SRCROOT}/swift/build_ffi.sh\" ]; then\n          # Local development\n          exit 0\n        fi\n        \"${PODS_TARGET_SRCROOT}\"/bin/fetch_archive.py -u \"https://build-artifacts.signal.org/libraries/${LIBSIGNAL_FFI_PREBUILD_ARCHIVE}\" -c \"${LIBSIGNAL_FFI_PREBUILD_CHECKSUM}\" -o \"${USER_LIBRARY_DIR}/Caches/org.signal.libsignal\"\n      ";
+		};
+		75520C056F4CFC9CE8C41125C638E55C /* [CP-User] Extract libsignal-ffi prebuild */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(USER_LIBRARY_DIR)/Caches/org.signal.libsignal/$(LIBSIGNAL_FFI_PREBUILD_ARCHIVE)",
+			);
+			name = "[CP-User] Extract libsignal-ffi prebuild";
+			outputPaths = (
+				"$(LIBSIGNAL_FFI_LIB_TO_LINK)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\n        set -euo pipefail\n        rm -rf \"${LIBSIGNAL_FFI_TEMP_DIR}\"\n        if [ -e \"${PODS_TARGET_SRCROOT}/swift/build_ffi.sh\" ]; then\n          # Local development\n          ln -fns \"${PODS_TARGET_SRCROOT}\" \"${LIBSIGNAL_FFI_TEMP_DIR}\"\n        elif [ -e \"${SCRIPT_INPUT_FILE_0}\" ]; then\n          mkdir -p \"${LIBSIGNAL_FFI_TEMP_DIR}\"\n          cd \"${LIBSIGNAL_FFI_TEMP_DIR}\"\n          tar -m -x -f \"${SCRIPT_INPUT_FILE_0}\"\n        else\n          echo 'error: could not download libsignal_ffi.a; please provide LIBSIGNAL_FFI_PREBUILD_CHECKSUM' >&2\n          exit 1\n        fi\n      ";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1452C29F7D7ECCC32ED31C850337F699 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A4756C2C2B191706FCC04DDC6FF48D0 /* AccountKeys.swift in Sources */,
+				FDC27FBF7D5421B91DB96DF1B84CE848 /* Address.swift in Sources */,
+				C15D1C199BE763FF70F3839A116937DC /* Aes256Ctr.swift in Sources */,
+				4C8E8F307DA0F87817D08789E77FB30E /* Aes256Gcm.swift in Sources */,
+				40A4CFF3C8B19B6226691453046E94D9 /* Aes256GcmSiv.swift in Sources */,
+				9B1C694C0F23E13D2BDD9574D9102494 /* AsyncUtils.swift in Sources */,
+				F1CEAE2C27172CFF42AF9D1A06FA2D1C /* AuthCredentialPresentation.swift in Sources */,
+				ADCD2831126D772FC11CED4551207C78 /* AuthCredentialWithPni.swift in Sources */,
+				E24F850B04910E5B6CE34393717E7B83 /* AuthCredentialWithPniResponse.swift in Sources */,
+				55F339F57FA1F95B717C508461D71C4A /* AuthDevicesService.swift in Sources */,
+				0F1CEA68A527E4C589B82EB5E4CF4D18 /* AuthMessagesService.swift in Sources */,
+				C45E0C92A6FCC604B84366DD3526E4ED /* AuthUsernamesService.swift in Sources */,
+				3DD63C398836E751C59A4302C0925218 /* AvatarUploadCredential.swift in Sources */,
+				03D66A768F096D5394E103F7634D6CB2 /* BackupAuthCredential.swift in Sources */,
+				A7A02B3726CCA9D39A9921161675ED08 /* BackupAuthCredentialPresentation.swift in Sources */,
+				C9D4012E375C80D1B9D6B5326C6E6C6A /* BackupAuthCredentialRequest.swift in Sources */,
+				4E4B7911F4631E47DD01EBEF3020D700 /* BackupAuthCredentialRequestContext.swift in Sources */,
+				0D4EF2F90C4E59E27963E17DAFF7E47B /* BackupAuthCredentialResponse.swift in Sources */,
+				B0DAF5266838BA44CE14CBE5BCC3D7EB /* BackupLevel.swift in Sources */,
+				35634C572214D7DEEC13A470BE03D3D0 /* BorrowUtils.swift in Sources */,
+				EFBDB170F0E1950C2C8443CA85E712E5 /* ByteArray.swift in Sources */,
+				2846FEADCC64E00E89AF8AF1D89174EE /* CallLinkAuthCredential.swift in Sources */,
+				984673D2EC11F3C6A7A647E64E3C0DFC /* CallLinkAuthCredentialPresentation.swift in Sources */,
+				12882DF9B30C06854212F8907D04B54F /* CallLinkAuthCredentialResponse.swift in Sources */,
+				6FE63A651E6418981D8772D3AB739750 /* CallLinkPublicParams.swift in Sources */,
+				B48E0AF00624141FC0DFA7E32D099980 /* CallLinkSecretParams.swift in Sources */,
+				1420EB94FFB2DF19B93DC6B8F595C918 /* Cds2.swift in Sources */,
+				799106B2B18136733DD4F41BE48FB7A4 /* CdsTypes.swift in Sources */,
+				3317E8B6EEDDD5724E1528A941DEC41D /* ChatConnection.swift in Sources */,
+				B318DAB876455A7A9E4C8B6F47DCFE59 /* ChatConnection+Fake.swift in Sources */,
+				B12823B2AA3CD08AC5EEBD7866F527D7 /* ChatListener.swift in Sources */,
+				2020B1FDC77FAABE1B30AF246035D280 /* ChatServiceTypes.swift in Sources */,
+				19AE47254AD02DFD5E1EAB56D5403373 /* CiphertextMessage.swift in Sources */,
+				5592667A4349E8318A41C0FAA6B1BFFF /* ClientZkAuthOperations.swift in Sources */,
+				E644C4209DB89AF2D0D3A6FCB0B874B1 /* ClientZkGroupCipher.swift in Sources */,
+				64D6159B33BC2BAED084E305C2DE0C6B /* ClientZkProfileOperations.swift in Sources */,
+				7135F3EB798E4EA31553981B383955C5 /* ClientZkReceiptOperations.swift in Sources */,
+				5CDC6D9DA90129B9EDB32ED5292A38EE /* ComparableBackup.swift in Sources */,
+				729455B044A061C25DF098DBE9222F00 /* CreateCallLinkCredential.swift in Sources */,
+				2FC28576D14D285E40634975C7D308D7 /* CreateCallLinkCredentialPresentation.swift in Sources */,
+				8EA0D8C95437C260CE3CD1CFE017A866 /* CreateCallLinkCredentialRequest.swift in Sources */,
+				092C5CB90414D58FF43051150996F96A /* CreateCallLinkCredentialRequestContext.swift in Sources */,
+				B9449091B47E8768D3444579F6A49522 /* CreateCallLinkCredentialResponse.swift in Sources */,
+				EECFFDC6163698A86A26A845F28DCC07 /* DataStoreInMemory.swift in Sources */,
+				ABCF45E916554B7000BF8E5916CD82BD /* DataStoreProtocols.swift in Sources */,
+				7AD2C3F5748AF0BCAB15C69DA83909AE /* DataStoreUtils.swift in Sources */,
+				06CDC379FFBEB94FAC74BCB2FED16CA3 /* DeviceId.swift in Sources */,
+				E57017695E7FB140616C39ECA799CA9E /* DeviceTransfer.swift in Sources */,
+				BBE7A93C74309205667D7D2C19359F2A /* DonationPermit.swift in Sources */,
+				3942C180A09C023A6EA1E720D8D316D0 /* Error.swift in Sources */,
+				2AA5558FB1F8239EC4A30F6552D602B9 /* ExpiringProfileKeyCredential.swift in Sources */,
+				12641E3E3F6715949539800F0CCC7BF7 /* ExpiringProfileKeyCredentialResponse.swift in Sources */,
+				20B33F677A9F1D35CD64CB7630BA86FB /* Fingerprint.swift in Sources */,
+				25C3B2142F0D60001C69F697F18CFC56 /* GenericServerPublicParams.swift in Sources */,
+				7ED0AC4B239EADEA19EBFA05DFE42F96 /* GenericServerSecretParams.swift in Sources */,
+				EAF336382A8DE8219062E39B363B87A4 /* GroupIdentifier.swift in Sources */,
+				F820F1AF47BC728190EF0888327303A3 /* GroupMasterKey.swift in Sources */,
+				34ED56447E88972AB673DBC2CC267979 /* GroupPublicParams.swift in Sources */,
+				135E7169FCACD89E3F793E68D94A2406 /* GroupSecretParams.swift in Sources */,
+				65B8E84A582703617DA1B8A42ABD04E5 /* GroupSendDerivedKeyPair.swift in Sources */,
+				65CB13E9312A583D0C703E8CF711DF87 /* GroupSendEndorsement.swift in Sources */,
+				F3D5F20B58F398534E2CC14DFFABDA1F /* GroupSendEndorsementsResponse.swift in Sources */,
+				8CE419817EB641366D9EEA422F007B87 /* GroupSendFullToken.swift in Sources */,
+				A81D6C45D04FDA63BDB046610DC9AA71 /* HsmEnclave.swift in Sources */,
+				DB7833DDFE6AAC73C9482300F8892D36 /* IdentityKey.swift in Sources */,
+				36CE04B09843972D9746C543E95C237A /* IncrementalMac.swift in Sources */,
+				3F73486B3DC3BA67E56749A18321AEAF /* IoProtocols.swift in Sources */,
+				C85C6CC6329FA891CE857E48C125B6E8 /* IoUtils.swift in Sources */,
+				6E14C38BE587B4A220CA6B2601B4EC02 /* Kdf.swift in Sources */,
+				B779BBDE18FDD816CA26A25433F8352C /* Kem.swift in Sources */,
+				85F41D886C627852FC633E3EFD498FFB /* KeyTransparency.swift in Sources */,
+				B89FD04B8610CA0D689B6A01CF991960 /* KyberPreKeyRecord.swift in Sources */,
+				D4602E4381471113E5CF54A0226235BA /* LibSignalClient-dummy.m in Sources */,
+				514B383E8DA32F8309841F72AD00B8F4 /* Logging.swift in Sources */,
+				63BC7A81C8978846D7BFD4C5378BA24C /* Media.swift in Sources */,
+				5E4963CAC60D39F7B6CDE483F8DFEBB8 /* MessageBackup.swift in Sources */,
+				1D35F9D6D8AD5D49C0288021A05F0B4E /* NativeHandleOwner.swift in Sources */,
+				D6AE189E0BA81842EF31D603E5EDB26A /* NativeNice.swift in Sources */,
+				E0077ACD4989F24DEA3AD0795523739A /* Net.swift in Sources */,
+				3036173D427FCF2CA61DAB739E531571 /* NiceBridgingUtils.swift in Sources */,
+				1288D078513353CB4FB573E50332774B /* NotarySignature.swift in Sources */,
+				0E8D2B942DDF8DA84731C737B8C7664B /* PlaintextContent.swift in Sources */,
+				C7A42883B916665FB47CA1BDE7B42C10 /* PreKeyBundle.swift in Sources */,
+				6AA50DAFDAD02542A0EE3AA72AE4DBD6 /* PreKeyRecord.swift in Sources */,
+				EA7BB45B12266F5ED949E13F64024723 /* PreKeySignalMessage.swift in Sources */,
+				C3C07D24F34178E92EE080A31EAAAC93 /* PrivateKey.swift in Sources */,
+				AF30048D1E073BC6E37EE5F5E5DD8C24 /* ProfileKey.swift in Sources */,
+				88D02F350DB1EF702085AE23108A9796 /* ProfileKeyCiphertext.swift in Sources */,
+				09877EA0E190DB401DB8E3DF3B86F6BF /* ProfileKeyCommitment.swift in Sources */,
+				70CE6ED7575FA27BBCD365C670B18831 /* ProfileKeyCredentialPresentation.swift in Sources */,
+				83A4325056AA877D6E1C3A556DDBA8BF /* ProfileKeyCredentialRequest.swift in Sources */,
+				9C3BFA8B021606D801283E841920F0E6 /* ProfileKeyCredentialRequestContext.swift in Sources */,
+				C8C28DA52D297C5C0D044CCA8DAA8F2D /* ProfileKeyVersion.swift in Sources */,
+				6C30BEDFA60A65DB8BAAF6B6C32134D5 /* Protocol.swift in Sources */,
+				BAD826E999FB532D9CF9D487AA761C6B /* ProvisioningConnection.swift in Sources */,
+				63EC39451DCAF192A5B26C12D7E8F9F8 /* PublicKey.swift in Sources */,
+				9FFAC54341A746DB6842F5EEA33FB2BF /* Randomness.swift in Sources */,
+				3BBA0EA0FBBE49597212DE017E5DAF6B /* ReceiptCredential.swift in Sources */,
+				E9723A6D2D444ADB8C834434FF91A551 /* ReceiptCredentialPresentation.swift in Sources */,
+				E7992A9AE4D4FD740CABAF54310346EA /* ReceiptCredentialRequest.swift in Sources */,
+				A5CC78451A8BAB5F244B5FA2AC9FAB74 /* ReceiptCredentialRequestContext.swift in Sources */,
+				6EE3D824CB45E31A77907CF330B95E55 /* ReceiptCredentialResponse.swift in Sources */,
+				5405EF7A138DE152EDFCC3A4CE7ADAFE /* ReceiptSerial.swift in Sources */,
+				F814FA5AAA4DD0DFD832805EE0D0A0AF /* RegistrationService.swift in Sources */,
+				48C98B569B69C13B5C282D05F0E3C0EF /* RegistrationServiceTypes.swift in Sources */,
+				1830F916FE9D81B143F52C227F98B9C5 /* SealedSender.swift in Sources */,
+				F6DCC5AE163908EBC5ACC05EAF8E328C /* SealedSenderCertificates.swift in Sources */,
+				877C275633103D5C1D5312CC166D154B /* SecureValueRecoveryBackup.swift in Sources */,
+				A7F21D27DDD601BB479F8ED8EB53DCF9 /* SenderKeyDistributionMessage.swift in Sources */,
+				8FFE1A47BE387B1255EA85FDAE70C602 /* SenderKeyMessage.swift in Sources */,
+				9D4ACE880F363E0DC00DFEF8DB3FDC8C /* SenderKeyRecord.swift in Sources */,
+				1B024A67EF9EF1C8D735A7E6F95F860C /* ServerPublicParams.swift in Sources */,
+				6D58AC10B044111B297448D858E1A8A9 /* ServerSecretParams.swift in Sources */,
+				F5EEA159EE1B2279428D692E1B8183D5 /* ServerZkAuthOperations.swift in Sources */,
+				0B5495A795D1C2BA7D726FDD526AD7F7 /* ServerZkProfileOperations.swift in Sources */,
+				FA28175E0F81D181FFBA4FEE23F49912 /* ServerZkReceiptOperations.swift in Sources */,
+				095027F50F3EAF6C6349B1D71462D342 /* ServiceId.swift in Sources */,
+				35D55774712772B4A5F9EF90A9AF294F /* Services.swift in Sources */,
+				8D84896C1C1F1E85D39C458316DE7303 /* SessionRecord.swift in Sources */,
+				4262D37C1BCE81D8A4FAAC73FB7782CB /* Sgx.swift in Sources */,
+				9A17054896CB1263B9824D2CCE09FC14 /* SignalMessage.swift in Sources */,
+				75385805C65DEAD130830C02DCADDA8B /* SignedPreKeyRecord.swift in Sources */,
+				A675A7B09287D0517A18C61197C2DE06 /* SignedPublicPreKey.swift in Sources */,
+				859930AE20D5789AC29FE8F219A26E5F /* SingleOutboundMessage.swift in Sources */,
+				D6C662A0F71263C3B088A6AEC1771B9D /* Svr2.swift in Sources */,
+				9D85AA3CB1894D273051E9947B6883B0 /* TokioAsyncContext.swift in Sources */,
+				CEBA580A74211FC8D85C8A85EB7440E5 /* UnauthBackupsService.swift in Sources */,
+				83B35AD6A29149DDBAADCF4BF37DC067 /* UnauthKeysService.swift in Sources */,
+				6F71A37E25DE71EBB36C080BC9A4258E /* UnauthMessagesService.swift in Sources */,
+				206E6C593A08F4E406E4397F78C0A126 /* UnauthProfilesService.swift in Sources */,
+				738167F31AB9098A5E606F271B6EB958 /* UnauthUsernamesService.swift in Sources */,
+				D2ACEA475561253115CC80E91FDBDCD8 /* UploadForm.swift in Sources */,
+				3B29FC09ECD125FBF35B58D1BA1409E4 /* UserBasedAuthorization.swift in Sources */,
+				191D2F00D2E7A6A1045F19F2B8A1CBA9 /* Username.swift in Sources */,
+				98EF2DFCCA963830B8A11D0C9BD290C6 /* Utils.swift in Sources */,
+				2338DF664E459FDE21B934F21CA63E0F /* UuidCiphertext.swift in Sources */,
+				A8A4646E26F91DECB6DA04722C7E54A9 /* ZkCredentialKey.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5FFDA25279017E9A09DAC71E1595E667 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0FBC2194008EF3FD38D7D6D29479C193 /* Pods-Beacon-BeaconUITests-dummy.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		97E32612FAFD882EC26854B5DFD3FBEA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				20046A7F3D56FE4E00DB2F77A6ABE5FE /* Pods-BeaconTests-dummy.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B34371B608E0CEB549078F69BD14AE25 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9A0F7A41F9377D62A095333D521A4BF3 /* Pods-Beacon-dummy.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4BA9C1918B51F50C37D4704ADA987240 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LibSignalClient;
+			target = D77A98059641D2A99D7DD3EBCA4606AE /* LibSignalClient */;
+			targetProxy = 6F5DB6BB70E1B8100A65605DF629B158 /* PBXContainerItemProxy */;
+		};
+		9062A2587C6B4A4B4064D6072F1B02F4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = LibSignalClient;
+			target = D77A98059641D2A99D7DD3EBCA4606AE /* LibSignalClient */;
+			targetProxy = 28C31BC94723360DFFE9EAB25473CB93 /* PBXContainerItemProxy */;
+		};
+		C0EFA67BA4A6F5BCF83F30189E3B3EC9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = "Pods-Beacon";
+			target = 04BDD72EAE718614B413E19FEAEAA671 /* Pods-Beacon */;
+			targetProxy = 505EE1A2F48C79EA7475AE18FE718081 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		47B84CF88E7E30F0C0CB530B3FEEB0D7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = C3FE2137D5836EB6E8775595ABEFCFF3 /* Pods-Beacon.debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"",
+				);
+				INFOPLIST_FILE = "Target Support Files/Pods-Beacon/Pods-Beacon-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-Beacon/Pods-Beacon.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) \"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		6A5C026ED62BBFE3380CD257EEFAEB20 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"POD_CONFIGURATION_DEBUG=1",
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRIP_INSTALLED_PRODUCT = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				SYMROOT = "${SRCROOT}/../build";
+			};
+			name = Debug;
+		};
+		8112F85E0A83FF5EB6DFCC1C5D4E5215 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6AB75A4B8A9D2BD399F1F68111420FA9 /* Pods-Beacon-BeaconUITests.debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				INFOPLIST_FILE = "Target Support Files/Pods-Beacon-BeaconUITests/Pods-Beacon-BeaconUITests-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-Beacon-BeaconUITests/Pods-Beacon-BeaconUITests.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		8932D42FF95F2E44156246E8701D0124 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7DDE78A642B63AAEC805FC586F95B15C /* Pods-BeaconTests.release.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"",
+				);
+				INFOPLIST_FILE = "Target Support Files/Pods-BeaconTests/Pods-BeaconTests-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-BeaconTests/Pods-BeaconTests.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) \"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+		98278F50790863FE21F77C365F917A72 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 753D290A9A6DE0933EA45B9C22A42AE4 /* Pods-Beacon-BeaconUITests.release.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				INFOPLIST_FILE = "Target Support Files/Pods-Beacon-BeaconUITests/Pods-Beacon-BeaconUITests-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-Beacon-BeaconUITests/Pods-Beacon-BeaconUITests.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+		CE6D86FD939C6F1275DC59B188CE7D24 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AD3FCBB50843DBAB81BC353A15B0AF64 /* Pods-BeaconTests.debug.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"",
+				);
+				INFOPLIST_FILE = "Target Support Files/Pods-BeaconTests/Pods-BeaconTests-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-BeaconTests/Pods-BeaconTests.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) \"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		E09AB4BB4D8FBF1E825BB61A3D320C1D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = FB7683775087574D0D5654C0BE2C593A /* LibSignalClient.debug.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_PREFIX_HEADER = "Target Support Files/LibSignalClient/LibSignalClient-prefix.pch";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Target Support Files/LibSignalClient/LibSignalClient-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MODULEMAP_FILE = "Target Support Files/LibSignalClient/LibSignalClient.modulemap";
+				PRODUCT_MODULE_NAME = LibSignalClient;
+				PRODUCT_NAME = LibSignalClient;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ";
+				SWIFT_INSTALL_OBJC_HEADER = YES;
+				SWIFT_VERSION = 5;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		E873CA97BD124B21839AF13C9BE1CD18 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"POD_CONFIGURATION_RELEASE=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRIP_INSTALLED_PRODUCT = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				SYMROOT = "${SRCROOT}/../build";
+			};
+			name = Release;
+		};
+		F1152FB0712B54D9CA0959B92AB83E64 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B07C3CC32848187A7A9461204ADFBB11 /* Pods-Beacon.release.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"",
+				);
+				INFOPLIST_FILE = "Target Support Files/Pods-Beacon/Pods-Beacon-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-Beacon/Pods-Beacon.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) \"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+		FDC43C7ED72026F6CC3C5F75B92DFAFC /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 58C176B27FCEF6A8005909F4352947CC /* LibSignalClient.release.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_PREFIX_HEADER = "Target Support Files/LibSignalClient/LibSignalClient-prefix.pch";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Target Support Files/LibSignalClient/LibSignalClient-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MODULEMAP_FILE = "Target Support Files/LibSignalClient/LibSignalClient.modulemap";
+				PRODUCT_MODULE_NAME = LibSignalClient;
+				PRODUCT_NAME = LibSignalClient;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ";
+				SWIFT_INSTALL_OBJC_HEADER = YES;
+				SWIFT_VERSION = 5;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		138179E0616A4D9BBFB11569506DA1E1 /* Build configuration list for PBXNativeTarget "Pods-Beacon" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				47B84CF88E7E30F0C0CB530B3FEEB0D7 /* Debug */,
+				F1152FB0712B54D9CA0959B92AB83E64 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3C581964E4A9CD42B417F1C5C6AD7684 /* Build configuration list for PBXNativeTarget "Pods-Beacon-BeaconUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8112F85E0A83FF5EB6DFCC1C5D4E5215 /* Debug */,
+				98278F50790863FE21F77C365F917A72 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4821239608C13582E20E6DA73FD5F1F9 /* Build configuration list for PBXProject "Pods" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6A5C026ED62BBFE3380CD257EEFAEB20 /* Debug */,
+				E873CA97BD124B21839AF13C9BE1CD18 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C5A200B75F30802080E435043FE2FEBE /* Build configuration list for PBXNativeTarget "LibSignalClient" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E09AB4BB4D8FBF1E825BB61A3D320C1D /* Debug */,
+				FDC43C7ED72026F6CC3C5F75B92DFAFC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F654BD3060B53B3FF7BCE8E22EA64B5F /* Build configuration list for PBXNativeTarget "Pods-BeaconTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE6D86FD939C6F1275DC59B188CE7D24 /* Debug */,
+				8932D42FF95F2E44156246E8701D0124 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+}
