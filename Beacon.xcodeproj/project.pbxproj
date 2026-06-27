@@ -8,6 +8,30 @@
 
 /* Begin PBXBuildFile section */
 		3BCC97A51FE2DB8813B40849 /* Pods_BeaconTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4709345FFA32D3E197EED0BB /* Pods_BeaconTests.framework */; };
+		7CE0C8602FEF225000151314 /* Geist-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7CE0C85F2FEF225000151314 /* Geist-Regular.ttf */; };
+		7CE0C8622FEF226600151314 /* Geist-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7CE0C8612FEF226600151314 /* Geist-Medium.ttf */; };
+		7CE0C8642FEF227500151314 /* Geist-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7CE0C8632FEF227500151314 /* Geist-SemiBold.ttf */; };
+		7CE0C8662FEF227E00151314 /* Geist-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7CE0C8652FEF227E00151314 /* Geist-Bold.ttf */; };
+		7CE0C8682FEF22C200151314 /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7CE0C8672FEF22C200151314 /* GeistMono-Regular.ttf */; };
+		7CE0C86A2FEF22CC00151314 /* GeistMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7CE0C8692FEF22CC00151314 /* GeistMono-Medium.ttf */; };
+		7CE0C86C2FEF22DB00151314 /* GeistMono-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7CE0C86B2FEF22DB00151314 /* GeistMono-SemiBold.ttf */; };
+		7CE0C86E2FEF231200151314 /* OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7CE0C86D2FEF231200151314 /* OFL.txt */; };
+		7CE0C8752FEF2C3400151314 /* SignalBars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8742FEF2BD100151314 /* SignalBars.swift */; };
+		7CE0C8762FEF2C3B00151314 /* Colors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8732FEF29CB00151314 /* Colors.swift */; };
+		7CE0C8772FEF2C4100151314 /* Typography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8722FEF29B600151314 /* Typography.swift */; };
+		7CE0C8792FEF2CD300151314 /* PresenceChain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8782FEF2CCF00151314 /* PresenceChain.swift */; };
+		7CE0C87B2FEF2E4700151314 /* DeliveryReceipt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C87A2FEF2E4100151314 /* DeliveryReceipt.swift */; };
+		7CE0C87D2FEF33B500151314 /* LiveTransit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C87C2FEF33AF00151314 /* LiveTransit.swift */; };
+		7CE0C87F2FEF3A2200151314 /* DeliveryChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C87E2FEF3A1D00151314 /* DeliveryChip.swift */; };
+		7CE0C8812FEF3B2400151314 /* MessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8802FEF3B2000151314 /* MessageRow.swift */; };
+		7CE0C8852FEF45FF00151314 /* ChatRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8842FEF45FC00151314 /* ChatRow.swift */; };
+		7CE0C8872FEF462A00151314 /* ChatsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8862FEF461800151314 /* ChatsListView.swift */; };
+		7CE0C8892FEF4B0500151314 /* PeerSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */; };
+		7CE0C8902FEF580800151314 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88F2FEF51AA00151314 /* ConversationView.swift */; };
+		7CE0C8912FEF581000151314 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */; };
+		7CE0C8922FEF581800151314 /*  NearbyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88D2FEF4D9900151314 /*  NearbyView.swift */; };
+		7CE0C8932FEF581F00151314 /* NearbyRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88C2FEF4D5D00151314 /* NearbyRow.swift */; };
+		7CE0C8942FEF582600151314 /* RadarHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88B2FEF4D4300151314 /* RadarHero.swift */; };
 		F2E8EC044F1CFA3555C9E47A /* Pods_Beacon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03E293A426253218704E16E0 /* Pods_Beacon.framework */; };
 /* End PBXBuildFile section */
 
@@ -29,6 +53,30 @@
 		7C3B094C2FED902E00AE9EC1 /* Beacon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Beacon.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C3B09592FED902F00AE9EC1 /* BeaconTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeaconTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CE0C84E2FEF147C00151314 /* BeaconUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeaconUITests.swift; sourceTree = "<group>"; };
+		7CE0C85F2FEF225000151314 /* Geist-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Regular.ttf"; sourceTree = "<group>"; };
+		7CE0C8612FEF226600151314 /* Geist-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Medium.ttf"; sourceTree = "<group>"; };
+		7CE0C8632FEF227500151314 /* Geist-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-SemiBold.ttf"; sourceTree = "<group>"; };
+		7CE0C8652FEF227E00151314 /* Geist-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Bold.ttf"; sourceTree = "<group>"; };
+		7CE0C8672FEF22C200151314 /* GeistMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMono-Regular.ttf"; sourceTree = "<group>"; };
+		7CE0C8692FEF22CC00151314 /* GeistMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMono-Medium.ttf"; sourceTree = "<group>"; };
+		7CE0C86B2FEF22DB00151314 /* GeistMono-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMono-SemiBold.ttf"; sourceTree = "<group>"; };
+		7CE0C86D2FEF231200151314 /* OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = OFL.txt; sourceTree = "<group>"; };
+		7CE0C8722FEF29B600151314 /* Typography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Typography.swift; sourceTree = "<group>"; };
+		7CE0C8732FEF29CB00151314 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
+		7CE0C8742FEF2BD100151314 /* SignalBars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalBars.swift; sourceTree = "<group>"; };
+		7CE0C8782FEF2CCF00151314 /* PresenceChain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresenceChain.swift; sourceTree = "<group>"; };
+		7CE0C87A2FEF2E4100151314 /* DeliveryReceipt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryReceipt.swift; sourceTree = "<group>"; };
+		7CE0C87C2FEF33AF00151314 /* LiveTransit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveTransit.swift; sourceTree = "<group>"; };
+		7CE0C87E2FEF3A1D00151314 /* DeliveryChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryChip.swift; sourceTree = "<group>"; };
+		7CE0C8802FEF3B2000151314 /* MessageRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageRow.swift; sourceTree = "<group>"; };
+		7CE0C8842FEF45FC00151314 /* ChatRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRow.swift; sourceTree = "<group>"; };
+		7CE0C8862FEF461800151314 /* ChatsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatsListView.swift; sourceTree = "<group>"; };
+		7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerSettingsView.swift; sourceTree = "<group>"; };
+		7CE0C88B2FEF4D4300151314 /* RadarHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarHero.swift; sourceTree = "<group>"; };
+		7CE0C88C2FEF4D5D00151314 /* NearbyRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyRow.swift; sourceTree = "<group>"; };
+		7CE0C88D2FEF4D9900151314 /*  NearbyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = " NearbyView.swift"; sourceTree = "<group>"; };
+		7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		7CE0C88F2FEF51AA00151314 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		A5D673E5F52E3362AFBF48A7 /* Pods_Beacon_BeaconUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Beacon_BeaconUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF1C6948FC13CBE1E3740EF6 /* Pods-Beacon-BeaconUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Beacon-BeaconUITests.release.xcconfig"; path = "Target Support Files/Pods-Beacon-BeaconUITests/Pods-Beacon-BeaconUITests.release.xcconfig"; sourceTree = "<group>"; };
 		CFE64BBEC99E3E08C9A3F604 /* Pods-BeaconTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BeaconTests.release.xcconfig"; path = "Target Support Files/Pods-BeaconTests/Pods-BeaconTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -36,9 +84,22 @@
 		EEFD64EE2595633D665FEB53 /* Pods-Beacon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Beacon.debug.xcconfig"; path = "Target Support Files/Pods-Beacon/Pods-Beacon.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7CE0C8702FEF23FC00151314 /* Exceptions for "Beacon" folder in "Beacon" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7C3B094B2FED902E00AE9EC1 /* Beacon */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7C3B094E2FED902E00AE9EC1 /* Beacon */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7CE0C8702FEF23FC00151314 /* Exceptions for "Beacon" folder in "Beacon" target */,
+			);
 			path = Beacon;
 			sourceTree = "<group>";
 		};
@@ -117,6 +178,9 @@
 		7C3B09432FED902E00AE9EC1 = {
 			isa = PBXGroup;
 			children = (
+				7CE0C88A2FEF4D2900151314 /* Screens */,
+				7CE0C8712FEF287A00151314 /* DesignSystem */,
+				7CE0C85E2FEF209B00151314 /* Resource_Fonts */,
 				7C3B09852FEDA0B400AE9EC1 /* Security */,
 				7C3B09772FED920D00AE9EC1 /* Core */,
 				7C3B094E2FED902E00AE9EC1 /* Beacon */,
@@ -164,6 +228,51 @@
 				7CE0C84E2FEF147C00151314 /* BeaconUITests.swift */,
 			);
 			path = BeaconUITests;
+			sourceTree = "<group>";
+		};
+		7CE0C85E2FEF209B00151314 /* Resource_Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				7CE0C85F2FEF225000151314 /* Geist-Regular.ttf */,
+				7CE0C8612FEF226600151314 /* Geist-Medium.ttf */,
+				7CE0C8632FEF227500151314 /* Geist-SemiBold.ttf */,
+				7CE0C8652FEF227E00151314 /* Geist-Bold.ttf */,
+				7CE0C8672FEF22C200151314 /* GeistMono-Regular.ttf */,
+				7CE0C8692FEF22CC00151314 /* GeistMono-Medium.ttf */,
+				7CE0C86B2FEF22DB00151314 /* GeistMono-SemiBold.ttf */,
+				7CE0C86D2FEF231200151314 /* OFL.txt */,
+			);
+			path = Resource_Fonts;
+			sourceTree = "<group>";
+		};
+		7CE0C8712FEF287A00151314 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */,
+				7CE0C8862FEF461800151314 /* ChatsListView.swift */,
+				7CE0C8842FEF45FC00151314 /* ChatRow.swift */,
+				7CE0C8802FEF3B2000151314 /* MessageRow.swift */,
+				7CE0C87E2FEF3A1D00151314 /* DeliveryChip.swift */,
+				7CE0C87C2FEF33AF00151314 /* LiveTransit.swift */,
+				7CE0C87A2FEF2E4100151314 /* DeliveryReceipt.swift */,
+				7CE0C8782FEF2CCF00151314 /* PresenceChain.swift */,
+				7CE0C8742FEF2BD100151314 /* SignalBars.swift */,
+				7CE0C8732FEF29CB00151314 /* Colors.swift */,
+				7CE0C8722FEF29B600151314 /* Typography.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		7CE0C88A2FEF4D2900151314 /* Screens */ = {
+			isa = PBXGroup;
+			children = (
+				7CE0C88F2FEF51AA00151314 /* ConversationView.swift */,
+				7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */,
+				7CE0C88D2FEF4D9900151314 /*  NearbyView.swift */,
+				7CE0C88C2FEF4D5D00151314 /* NearbyRow.swift */,
+				7CE0C88B2FEF4D4300151314 /* RadarHero.swift */,
+			);
+			path = Screens;
 			sourceTree = "<group>";
 		};
 		EBAB9AD97DBC1036318C06E5 /* Pods */ = {
@@ -277,6 +386,14 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7CE0C86A2FEF22CC00151314 /* GeistMono-Medium.ttf in Resources */,
+				7CE0C8622FEF226600151314 /* Geist-Medium.ttf in Resources */,
+				7CE0C8602FEF225000151314 /* Geist-Regular.ttf in Resources */,
+				7CE0C86E2FEF231200151314 /* OFL.txt in Resources */,
+				7CE0C86C2FEF22DB00151314 /* GeistMono-SemiBold.ttf in Resources */,
+				7CE0C8642FEF227500151314 /* Geist-SemiBold.ttf in Resources */,
+				7CE0C8662FEF227E00151314 /* Geist-Bold.ttf in Resources */,
+				7CE0C8682FEF22C200151314 /* GeistMono-Regular.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -362,6 +479,22 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				7CE0C8912FEF581000151314 /* OnboardingView.swift in Sources */,
+				7CE0C8792FEF2CD300151314 /* PresenceChain.swift in Sources */,
+				7CE0C8942FEF582600151314 /* RadarHero.swift in Sources */,
+				7CE0C8752FEF2C3400151314 /* SignalBars.swift in Sources */,
+				7CE0C87F2FEF3A2200151314 /* DeliveryChip.swift in Sources */,
+				7CE0C8892FEF4B0500151314 /* PeerSettingsView.swift in Sources */,
+				7CE0C8762FEF2C3B00151314 /* Colors.swift in Sources */,
+				7CE0C8902FEF580800151314 /* ConversationView.swift in Sources */,
+				7CE0C8932FEF581F00151314 /* NearbyRow.swift in Sources */,
+				7CE0C87D2FEF33B500151314 /* LiveTransit.swift in Sources */,
+				7CE0C87B2FEF2E4700151314 /* DeliveryReceipt.swift in Sources */,
+				7CE0C8812FEF3B2400151314 /* MessageRow.swift in Sources */,
+				7CE0C8872FEF462A00151314 /* ChatsListView.swift in Sources */,
+				7CE0C8922FEF581800151314 /*  NearbyView.swift in Sources */,
+				7CE0C8772FEF2C4100151314 /* Typography.swift in Sources */,
+				7CE0C8852FEF45FF00151314 /* ChatRow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -520,6 +653,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Beacon/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -559,6 +693,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Beacon/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
