@@ -31,6 +31,12 @@ struct ContentView: View {
 
     @State private var phase: Phase = .launching
 
+    /// PHASE A spike: the single long-lived BLE transport. Started at launch;
+    /// inbound envelopes are logged to the console until Phase B routes them
+    /// into the real conversation transcript. Holding it in @State on the root
+    /// view gives it one instance for the whole app lifetime.
+    @State private var transport = BLEMeshTransport()
+
     var body: some View {
         Group {
             switch phase {
@@ -49,6 +55,21 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .task {
+            // PHASE A: bring the radio up and watch the Xcode console. Two
+            // phones should log discover → connect → LINK READY. Inbound bytes
+            // arrive in Stage 2; for now we just print what shows up. This
+            // print is spike instrumentation — Phase B replaces it with real
+            // routing into the conversation transcript.
+            do {
+                try await transport.start()
+            } catch {
+                print("BLE start failed: \(error)")
+            }
+            for await envelope in transport.incoming {
+                print("📨 inbound envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count)")
+            }
+        }
     }
 
     private var launchScreen: some View {
