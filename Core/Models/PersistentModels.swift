@@ -108,6 +108,14 @@ public final class Conversation {
     /// Drives chats-list ordering.
     public var lastActivity: Date
 
+    /// Per-conversation read-receipt opt-in. OFF by default (the Private
+    /// posture). When on, opening an inbound message emits a small encrypted
+    /// ack over the radio — another envelope, another ratchet step, a presence
+    /// cost — which is exactly why it's off until the user chooses otherwise.
+    /// The PeerSettings toggle binds to this; the send path consults it before
+    /// emitting an ack.
+    public var readReceiptsEnabled: Bool
+
     /// The other party for a DIRECT conversation; nil for the mesh room.
     public var peer: Peer?
 
@@ -118,12 +126,14 @@ public final class Conversation {
                 peer: Peer? = nil,
                 title: String? = nil,
                 lastActivity: Date = .now,
+                readReceiptsEnabled: Bool = false,
                 id: UUID = UUID()) {
         self.id = id
         self.kindRaw = kind.rawValue
         self.peer = peer
         self.title = title
         self.lastActivity = lastActivity
+        self.readReceiptsEnabled = readReceiptsEnabled
         self.messages = []
     }
 
@@ -151,6 +161,12 @@ public final class Message {
     /// Sent by us (true) vs. received (false).
     public var isOutbound: Bool
 
+    /// Whether an INBOUND message has been seen by the user. Outbound messages
+    /// leave this false (it's meaningless for them). The chats-list unread dot
+    /// lights when a conversation holds any inbound message with `isRead`
+    /// false; opening the conversation clears them.
+    public var isRead: Bool
+
     public var timestamp: Date
 
     /// The wire `MessageID` (16 bytes) this message was sent under, so router
@@ -168,12 +184,14 @@ public final class Message {
     public init(content: String,
                 isOutbound: Bool,
                 deliveryState: MessageDeliveryState = .sent,
+                isRead: Bool = false,
                 wireID: MessageID? = nil,
                 timestamp: Date = .now,
                 id: UUID = UUID()) {
         self.id = id
         self.content = content
         self.isOutbound = isOutbound
+        self.isRead = isRead
         self.timestamp = timestamp
         self.wireIDData = wireID.map { Data($0.bytes) }
         // Initialize the decomposed fields, then route through the bridge.

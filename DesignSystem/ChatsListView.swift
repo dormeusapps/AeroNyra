@@ -71,7 +71,7 @@ struct ChatsListView: View {
                         ChatRow(
                             conversation: conv,
                             presence: .outOfRange,
-                            hasUnread: false
+                            hasUnread: hasUnread(conv)
                         )
                     }
                     .buttonStyle(.plain)
@@ -84,6 +84,13 @@ struct ChatsListView: View {
                 }
             }
         }
+    }
+
+    /// A conversation is "unread" when it holds any INBOUND message the
+    /// user hasn't opened yet. Outbound messages never count. Presence
+    /// stays stubbed at `.outOfRange` until the BLE layer drives it.
+    private func hasUnread(_ conversation: Conversation) -> Bool {
+        conversation.messages.contains { !$0.isOutbound && !$0.isRead }
     }
 
     // MARK: - Empty state

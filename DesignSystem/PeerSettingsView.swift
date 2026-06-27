@@ -24,18 +24,14 @@ import SwiftData
 
 struct PeerSettingsView: View {
 
-    let conversation: Conversation
+    /// Bindable so the read-receipts toggle writes straight through to the
+    /// persisted `readReceiptsEnabled` field; SwiftData autosaves the change.
+    @Bindable var conversation: Conversation
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var petnameDraft: String = ""
-
-    /// Per-conversation toggle. Backed only by @State for now; once
-    /// Conversation gains a `readReceiptsEnabled` field in
-    /// PersistentModels, this becomes a Bindable and persists across
-    /// launches.
-    @State private var readReceiptsEnabled: Bool = false
 
     @FocusState private var petnameFocused: Bool
 
@@ -198,7 +194,7 @@ struct PeerSettingsView: View {
                     .font(Typography.messageBody)
                     .foregroundStyle(Color.textPrimary)
                 Spacer()
-                Toggle("", isOn: $readReceiptsEnabled)
+                Toggle("", isOn: $conversation.readReceiptsEnabled)
                     .tint(Color.brand)
                     .labelsHidden()
             }
@@ -244,8 +240,8 @@ struct PeerSettingsView: View {
 
     private func loadFromConversation() {
         petnameDraft = conversation.peer?.displayName ?? ""
-        // readReceiptsEnabled loads from conversation once that field
-        // exists in PersistentModels; nothing to load right now.
+        // Read-receipts state needs no loading — the toggle binds directly
+        // to the persisted `conversation.readReceiptsEnabled`.
     }
 
     /// Apply the petname draft to the underlying Peer. SwiftData's
