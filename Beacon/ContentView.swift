@@ -17,14 +17,15 @@
 //  Enclave) the wrapper resolves to nil and the blob lives under
 //  Keychain Data Protection only — which is fine for development.
 //
-//  The BLE transport is started here at launch and lives for the whole
-//  app lifetime. Its live reachability feeds a MeshPresence, injected
-//  into the environment so the Nearby screen can show real radar/presence.
-//
-//  The secure-session store (libsignal) is also built here, from the SAME
-//  loaded identity, so there is ONE identity end to end (no separate test
-//  identity for the session layer). This is the seam the first-contact
-//  handshake and the send path build on.
+//  Wiring owned here:
+//   • BLE transport — started at launch, lives the whole app lifetime.
+//   • MeshPresence  — fed from the transport's reachability, read by Nearby.
+//   • SignalSessionStore — built from the SAME loaded identity (one identity
+//     end to end).
+//   • FirstContactCoordinator — marries transport + store for carrier-neutral
+//     first contact. This view is the SOLE consumer of the transport's three
+//     AsyncStreams (each delivers an event once) and fans them out to presence
+//     and the coordinator.
 //
 
 import SwiftUI
@@ -47,9 +48,11 @@ struct ContentView: View {
     @State private var presence = MeshPresence()
 
     /// The single secure-session store, built from the real loaded identity
-    /// once we reach .ready. nil until then. Owns prekeys, sessions, and the
-    /// libsignal engine behind the SecureSessionStore boundary.
+    /// once we reach .ready. nil until then.
     @State private var sessionStore: SignalSessionStore?
+
+    /// Drives carrier-neutral first contact (bundle exchange + establishment).
+    @State private var coordinator: FirstContactCoordinator?
 
     var body: some View {
         Group {
@@ -71,9 +74,9 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .environment(presence)
         .task {
-            // Bring the radio up, then keep MeshPresence in sync with the live
-            // set of linked peers. This .task is main-actor isolated (Views
-            // are @MainActor), so touching `presence` here is safe.
+            // Start the radio, then keep presence in sync AND feed the
+            // coordinator newly-reachable links. Main-actor isolated, so
+            // touching `presence` here is safe; coordinator calls hop to it.
             do {
                 try await transport.start()
             } catch {
@@ -81,13 +84,19 @@ struct ContentView: View {
             }
             for await ids in transport.reachabilityUpdates {
                 presence.reachableIDs = ids
+                await coordinator?.onReachable(ids)
             }
         }
         .task {
-            // Inbound diagnostics until the send path routes envelopes into the
-            // real transcript. Harmless logging — not a temporary trigger.
+            // Inbound sealed envelopes → first-contact / open.
             for await envelope in transport.incoming {
-                print("inbound envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count)")
+                await coordinator?.onEnvelope(envelope)
+            }
+        }
+        .task {
+            // Inbound prekey bundles → first contact.
+            for await item in transport.bundles {
+                await coordinator?.onBundle(link: item.link, data: item.data)
             }
         }
     }
@@ -99,8 +108,8 @@ struct ContentView: View {
     // MARK: - Bootstrap
 
     /// Try to load an existing identity. If found, build the persistent
-    /// ModelContainer + secure-session store and enter .ready. If not, route
-    /// to Onboarding.
+    /// ModelContainer + secure-session store + coordinator and enter .ready.
+    /// If not, route to Onboarding.
     private func bootstrap() {
         let wrapper = try? SecureEnclaveWrapper(service: enclaveService)
         let store = IdentityStore(
@@ -112,7 +121,7 @@ struct ContentView: View {
         do {
             let identity = try store.load()
             let container = try makeModelContainer()
-            makeSessionStore(identity: identity)
+            makeSessionStack(identity: identity)
             phase = .ready(identity, container, store)
         } catch IdentityError.notFound {
             phase = .onboarding(store)
@@ -125,13 +134,13 @@ struct ContentView: View {
     }
 
     /// Called once OnboardingView has handed us a fresh IdentityKeypair.
-    /// Persist it, build the container + secure-session store, enter .ready.
+    /// Persist it, build the container + session stack, enter .ready.
     private func completeOnboarding(identity: IdentityKeypair,
                                     store: IdentityStore) {
         do {
             try store.save(identity, overwrite: true)
             let container = try makeModelContainer()
-            makeSessionStore(identity: identity)
+            makeSessionStack(identity: identity)
             phase = .ready(identity, container, store)
         } catch {
             // Stay in onboarding so the user can tap again. A real UX
@@ -142,13 +151,19 @@ struct ContentView: View {
 
     // MARK: - Construction
 
-    /// Build the secure-session store from the loaded identity, so the session
-    /// layer uses the SAME (Enclave-bound) identity as the rest of the app —
-    /// one identity end to end. Held for the app's lifetime.
-    private func makeSessionStore(identity: IdentityKeypair) {
+    /// Build the secure-session store (from the loaded identity, so the session
+    /// layer uses the SAME Enclave-bound identity as the rest of the app) and
+    /// the first-contact coordinator that drives bundle exchange + establishment.
+    private func makeSessionStack(identity: IdentityKeypair) {
         let secure = SignalSessionStore(appIdentity: identity)
+        let coord = FirstContactCoordinator(store: secure, transport: transport)
         sessionStore = secure
+        coordinator = coord
         print("session store ready · identity \(secure.localIdentity.userIDHex.prefix(16))…")
+        // Catch up on any links that already formed before the coordinator
+        // existed (e.g. a peer already in range at launch).
+        let ids = presence.reachableIDs
+        Task { await coord.onReachable(ids) }
     }
 
     /// Stable bundle-scoped identifier for the Keychain item holding the

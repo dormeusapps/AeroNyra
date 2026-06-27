@@ -166,6 +166,52 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
         // PASS 2: clear the persistent store. In-memory state is dropped with
         // the store instance.
     }
+
+    // MARK: Inbound attribution (completes the boundary's receive side)
+
+    /// Read the peer's public identity from a received bundle WITHOUT
+    /// establishing a session. Used to attribute a link and to pick a
+    /// deterministic first-contact initiator (so both sides don't initiate at
+    /// once). Could be promoted to the SecureSessionStore protocol if a second
+    /// engine ever appears; kept concrete for now.
+    public func peerIdentity(from bundle: PrekeyBundle) throws -> PublicIdentity {
+        let decoded = try BundleWire.decode(bundle.data)
+        let keyData = decoded.identityKey.serialize()
+        return PublicIdentity(agreementKey: keyData, signingKey: keyData)
+    }
+
+    /// Open an inbound opaque payload whose sender is not yet attributed.
+    ///
+    /// A first-contact (prekey) message self-identifies its sender, so we read
+    /// the identity straight from the message and establish/advance that
+    /// session. A normal (whisper) message carries no sender identity, so we try
+    /// it against each established session — correct for any number of peers,
+    /// and the honest interim until sealed sender lands (open ledger). Returns
+    /// the recovered peer and plaintext.
+    public func openInbound(_ payload: Data) throws -> (peer: PublicIdentity, plaintext: Data) {
+        guard let typeByte = payload.first else {
+            throw SignalAdapterError.unexpectedMessageType
+        }
+        switch CiphertextMessage.MessageType(rawValue: typeByte) {
+        case .preKey:
+            let message = try PreKeySignalMessage(bytes: payload.dropFirst())
+            let keyData = message.identityKey.serialize()
+            let peer = PublicIdentity(agreementKey: keyData, signingKey: keyData)
+            let plaintext = try session(with: peer).open(payload)
+            return (peer, plaintext)
+
+        case .whisper:
+            for (_, session) in sessions {
+                if let plaintext = try? session.open(payload) {
+                    return (session.peer, plaintext)
+                }
+            }
+            throw SecureSessionError.openFailed
+
+        default:
+            throw SignalAdapterError.unexpectedMessageType
+        }
+    }
 }
 
 // MARK: - Helpers
