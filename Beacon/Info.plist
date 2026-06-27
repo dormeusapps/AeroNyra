@@ -12,5 +12,12 @@
 		<string>GeistMono-Medium.ttf</string>
 		<string>GeistMono-SemiBold.ttf</string>
 	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>AeroNyra uses Bluetooth to discover nearby devices and relay your messages directly between phones. No servers, no internet.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
+	</array>
 </dict>
 </plist>
