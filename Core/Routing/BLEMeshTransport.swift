@@ -9,35 +9,38 @@ import os
 
 /// Concrete BLE mesh transport conforming to `MeshTransport`.
 ///
-/// STAGE 2 + SYMMETRIC PRESENCE: real transmit + reassembly, plus a
-/// `reachabilityUpdates` stream that publishes the set of currently-linked
-/// peers so the UI can show live radar/presence — from BOTH roles:
+/// BIDIRECTIONAL + FRAME-TAGGED. Each device runs BOTH roles — peripheral
+/// (advertises a service + exposes one write/notify characteristic) AND central
+/// (scans, connects, writes + subscribes for notify). Data now flows BOTH ways
+/// over a single link:
 ///
-///   • CENTRAL side: a peripheral we connected to and found the mailbox on.
-///   • PERIPHERAL side: a central that subscribed to our notify characteristic.
+///   • central → peripheral : GATT write   (writeValue, with response)
+///   • peripheral → central : GATT notify   (updateValue to subscribers)
 ///
-/// Tracking both is what makes presence symmetric: the phone that DIALED OUT and
-/// the phone that was DIALED INTO both register the link off the single
-/// connection that forms, instead of depending on both phones independently
-/// connecting outward (which is flaky on iOS).
+/// So whichever role a phone holds on a given link, it can both send and receive
+/// over it — the prerequisite for replies and multi-peer chat.
 ///
-/// NOTE: these are EPHEMERAL CoreBluetooth ids, NOT cryptographic identities,
-/// and a phone has a different id in each role. So if BOTH phones' centrals
-/// fully connect, one physical peer can momentarily count twice. The binary
-/// "someone is here" is always correct; exact de-duplication arrives with the
-/// identity exchange (above this layer).
+/// FRAME TAG: every reassembled frame starts with one type byte:
+///   • 0x01 ENVELOPE — a sealed mesh payload. Relayable. Yielded to `incoming`.
+///   • 0x02 BUNDLE   — a carrier-neutral PrekeyBundle (public key material) for
+///                     first contact. LINK-LOCAL — never relayed. Yielded to
+///                     `bundles` with the source link id.
+/// The transport stays dumb about CONTENTS; it only multiplexes two frame
+/// kinds (like an Ethertype) and routes each. It never inspects ciphertext.
 ///
-/// The notify characteristic added here also opens the PERIPHERAL → CENTRAL
-/// data direction (via `updateValue`), which the real bidirectional send path
-/// will need. Not wired for data yet — only subscription presence.
+/// WIRE LAYOUT per frame:  [1-byte type][4-byte big-endian length][payload]
+/// Fragmentation/reassembly across MTU is below the frame layer.
 ///
-/// `send(_:)` frames an envelope as [4-byte big-endian total length][wireData]
-/// and writes it to every connected peer in MTU-sized chunks. The peripheral
-/// side accumulates chunks per peer, and once the declared length has arrived,
-/// reassembles, parses `Envelope(wire:)`, and yields it into `incoming`.
+/// PRESENCE: `reachabilityUpdates` emits the union of (peripherals we connected
+/// to) + (centrals subscribed to us) so presence is symmetric. These are
+/// EPHEMERAL CoreBluetooth ids, NOT cryptographic identities; identity arrives
+/// via the first-contact coordinator above this layer. NO peer-count cap — the
+/// transport links and tracks as many peers as the radio allows.
 ///
-/// WRITE MODE: write-WITH-response (built-in flow control; nothing silently
-/// dropped). Revisit only if throughput matters.
+/// WRITE/NOTIFY MODE: writes use with-response (flow-controlled). Notifies use
+/// `updateValue`, which can return false when the TX queue is full; we queue
+/// and drain on `peripheralManagerIsReady(toUpdateSubscribers:)` so nothing is
+/// silently dropped.
 ///
 /// CONCURRENCY: not an actor. ALL mutable state is confined to `cbQueue`;
 /// nothing touches it off that queue, which is what makes `@unchecked Sendable`
@@ -47,51 +50,70 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     // MARK: - Protocol: identity
     public let kind: TransportKind = .ble
 
-    // MARK: - Protocol: inbound stream
+    // MARK: - Protocol: inbound envelope stream (relayable payloads)
     public let incoming: AsyncStream<Envelope>
     private let inbound: AsyncStream<Envelope>.Continuation
+
+    // MARK: - First-contact: inbound bundle stream (link-local key material)
+    public let bundles: AsyncStream<(link: UUID, data: Data)>
+    private let bundlesCont: AsyncStream<(link: UUID, data: Data)>.Continuation
 
     // MARK: - Presence: linked peers (ephemeral BLE ids, NOT crypto identities)
     public let reachabilityUpdates: AsyncStream<[UUID]>
     private let reachabilityCont: AsyncStream<[UUID]>.Continuation
 
+    // MARK: - Frame tags
+    private enum FrameType: UInt8 {
+        case envelope = 0x01   // relayable sealed payload
+        case bundle   = 0x02   // link-local prekey bundle (first contact)
+    }
+
     // MARK: - Protocol constants (permanent, like a port number — NOT placeholder)
-    /// The AeroNyra mesh GATT service every peer advertises and scans for.
     static let serviceUUID = CBUUID(string: "5218EF92-305F-41B0-B29E-D0215FF59B8D")
-    /// The single writable + notifiable characteristic that carries envelope chunks.
     static let characteristicUUID = CBUUID(string: "2496E79A-7D3F-4AB1-B6AE-DE940F1597D1")
 
-    /// Bytes of length-prefix framing prepended to each envelope on the wire.
-    private static let lengthPrefixBytes = 4   // UInt32 big-endian total length
+    /// Bytes of length-prefix framing after the 1-byte type tag.
+    private static let lengthPrefixBytes = 4   // UInt32 big-endian payload length
 
     // MARK: - Queue confinement
-    /// Every line of CoreBluetooth state below lives ONLY on this serial queue.
     private let cbQueue = DispatchQueue(label: "com.aeronyra.ble.transport")
 
     // MARK: - Central (scanner) side
     private var central: CBCentralManager?
-    /// Discovered peers must be retained by us — CoreBluetooth does not.
     private var peers: [UUID: CBPeripheral] = [:]
-    /// Remote mailboxes we can write to once discovered. Keyed by peripheral id.
     private var writeTargets: [UUID: CBCharacteristic] = [:]
+    /// Reassembly buffers for inbound notifications (peripheral → us), keyed by
+    /// the remote peripheral's id.
+    private var notifyReassembly: [UUID: ReassemblyState] = [:]
 
     // MARK: - Peripheral (advertiser) side
     private var peripheral: CBPeripheralManager?
     private var mailbox: CBMutableCharacteristic?
-    /// Centrals currently subscribed to our notify characteristic. Keyed by
-    /// central id. This is the peripheral-side half of presence.
     private var subscribedCentrals: Set<UUID> = []
-    /// Per-sender reassembly buffers, keyed by the writing central's id.
-    private var reassembly: [UUID: (total: Int, buffer: Data)] = [:]
+    /// Reassembly buffers for inbound writes (central → us), keyed by central id.
+    private var writeReassembly: [UUID: ReassemblyState] = [:]
+    /// Notifications waiting because `updateValue` returned false (TX queue full).
+    private var pendingNotifications: [Data] = []
 
     private var started = false
     private let log = Logger(subsystem: "com.aeronyra.app", category: "BLE")
+
+    /// Per-source reassembly: we collect bytes until we have [type][len][payload].
+    private struct ReassemblyState {
+        var buffer = Data()
+        var type: FrameType?
+        var declaredLength: Int = -1
+    }
 
     // MARK: - Init
     public override init() {
         var inb: AsyncStream<Envelope>.Continuation!
         self.incoming = AsyncStream<Envelope> { inb = $0 }
         self.inbound = inb
+
+        var bnd: AsyncStream<(link: UUID, data: Data)>.Continuation!
+        self.bundles = AsyncStream<(link: UUID, data: Data)> { bnd = $0 }
+        self.bundlesCont = bnd
 
         var rch: AsyncStream<[UUID]>.Continuation!
         self.reachabilityUpdates = AsyncStream<[UUID]> { rch = $0 }
@@ -120,64 +142,173 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             self.peers.removeAll()
             self.writeTargets.removeAll()
             self.subscribedCentrals.removeAll()
-            self.reassembly.removeAll()
+            self.notifyReassembly.removeAll()
+            self.writeReassembly.removeAll()
+            self.pendingNotifications.removeAll()
             self.started = false
             self.emitReachable()
             self.log.info("stop(): radios torn down")
         }
     }
 
-    /// Publish the current linked-peer set to the UI. Union of both roles:
-    /// peripherals we connected to + centrals subscribed to us. Always called
-    /// on cbQueue.
     private func emitReachable() {
         let ids = Set(writeTargets.keys).union(subscribedCentrals)
         reachabilityCont.yield(Array(ids))
     }
 
-    // MARK: - Transmit
+    // MARK: - Framing
+
+    /// Build a wire frame: [type][4-byte big-endian length][payload].
+    private static func frame(_ type: FrameType, _ payload: Data) -> Data {
+        var d = Data()
+        d.append(type.rawValue)
+        var len = UInt32(payload.count).bigEndian
+        withUnsafeBytes(of: &len) { d.append(contentsOf: $0) }
+        d.append(payload)
+        return d
+    }
+
+    /// Feed bytes into a reassembly state; return any completed (type, payload).
+    /// Handles the 1-byte type + 4-byte length header, then the payload.
+    private func ingest(_ chunk: Data, into state: inout ReassemblyState) -> (FrameType, Data)? {
+        state.buffer.append(chunk)
+
+        // 1) type byte
+        if state.type == nil {
+            guard let first = state.buffer.first else { return nil }
+            guard let t = FrameType(rawValue: first) else {
+                // Unknown frame type — drop the whole buffer to resync.
+                log.error("unknown frame type \(first) — dropping buffer")
+                state = ReassemblyState()
+                return nil
+            }
+            state.type = t
+            state.buffer.removeFirst(1)
+        }
+
+        // 2) length prefix
+        if state.declaredLength < 0 {
+            guard state.buffer.count >= Self.lengthPrefixBytes else { return nil }
+            let prefix = state.buffer.prefix(Self.lengthPrefixBytes)
+            state.declaredLength = prefix.reduce(0) { ($0 << 8) | Int($1) }
+            state.buffer.removeFirst(Self.lengthPrefixBytes)
+        }
+
+        // 3) payload
+        guard state.buffer.count >= state.declaredLength else { return nil }
+        let payload = Data(state.buffer.prefix(state.declaredLength))
+        let type = state.type!
+        state = ReassemblyState()   // reset for the next frame from this source
+        return (type, payload)
+    }
+
+    // MARK: - Transmit: Envelope (relayable) — broadcast to all links
     public func send(_ envelope: Envelope) async throws {
-        // Snapshot what we need off the cbQueue, then perform the writes there.
+        let frame = Self.frame(.envelope, envelope.wireData())
+        try await broadcast(frame, label: "envelope id=\(envelope.id)")
+    }
+
+    // MARK: - Transmit: Bundle (first contact) — to ONE specific link
+    /// Send a carrier-neutral prekey bundle to a single linked peer. First
+    /// contact is point-to-point, not a broadcast.
+    public func sendBundle(_ data: Data, toLink id: UUID) async throws {
+        let frame = Self.frame(.bundle, data)
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             cbQueue.async { [weak self] in
                 guard let self else { cont.resume(); return }
-                guard self.started else {
-                    cont.resume(throwing: TransportError.notStarted); return
+                guard self.started else { cont.resume(throwing: TransportError.notStarted); return }
+                if self.sendFrameToLink(frame, id: id) {
+                    self.log.info("TX bundle \(data.count) bytes → link \(id)")
+                    cont.resume()
+                } else {
+                    cont.resume(throwing: TransportError.noReachablePeers)
                 }
-                let targets = self.writeTargets.compactMap { (id, ch) -> (CBPeripheral, CBCharacteristic)? in
-                    guard let p = self.peers[id] else { return nil }
-                    return (p, ch)
-                }
-                guard !targets.isEmpty else {
+            }
+        }
+    }
+
+    /// Broadcast a frame to every linked peer, using whichever direction that
+    /// link supports (write if we're its central; notify if it's our subscriber).
+    private func broadcast(_ frame: Data, label: String) async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            cbQueue.async { [weak self] in
+                guard let self else { cont.resume(); return }
+                guard self.started else { cont.resume(throwing: TransportError.notStarted); return }
+
+                let haveWriteTargets = !self.writeTargets.isEmpty
+                let haveSubscribers = !self.subscribedCentrals.isEmpty
+                guard haveWriteTargets || haveSubscribers else {
                     cont.resume(throwing: TransportError.noReachablePeers); return
                 }
 
-                // Frame: [UInt32 big-endian total length][wireData].
-                let wire = envelope.wireData()
-                var framed = Data()
-                var len = UInt32(wire.count).bigEndian
-                withUnsafeBytes(of: &len) { framed.append(contentsOf: $0) }
-                framed.append(wire)
-
-                // Write to every connected peer, chunked to that peer's MTU.
-                for (peer, ch) in targets {
-                    let maxChunk = max(20, peer.maximumWriteValueLength(for: .withResponse))
-                    var offset = 0
-                    while offset < framed.count {
-                        let end = min(offset + maxChunk, framed.count)
-                        let slice = framed.subdata(in: offset..<end)
-                        peer.writeValue(slice, for: ch, type: .withResponse)
-                        offset = end
-                    }
-                    self.log.info("TX \(framed.count) bytes in chunks of \(maxChunk) → \(peer.identifier)")
+                // central → peripheral writes
+                for (id, _) in self.writeTargets {
+                    _ = self.writeFrameToPeer(frame, id: id)
                 }
+                // peripheral → central notifications
+                if haveSubscribers {
+                    self.notifySubscribers(frame)
+                }
+                self.log.info("TX \(label) (\(frame.count) bytes) to \(self.writeTargets.count) write + \(self.subscribedCentrals.count) notify")
                 cont.resume()
             }
         }
     }
+
+    /// Send a frame to one link by whichever direction is available. cbQueue.
+    private func sendFrameToLink(_ frame: Data, id: UUID) -> Bool {
+        if writeTargets[id] != nil {
+            return writeFrameToPeer(frame, id: id)
+        }
+        if subscribedCentrals.contains(id) {
+            notifySubscribers(frame)   // notify is broadcast to subscribers
+            return true
+        }
+        return false
+    }
+
+    /// central → peripheral: chunked GATT write-with-response. cbQueue.
+    @discardableResult
+    private func writeFrameToPeer(_ frame: Data, id: UUID) -> Bool {
+        guard let peer = peers[id], let ch = writeTargets[id] else { return false }
+        let maxChunk = max(20, peer.maximumWriteValueLength(for: .withResponse))
+        var offset = 0
+        while offset < frame.count {
+            let end = min(offset + maxChunk, frame.count)
+            peer.writeValue(frame.subdata(in: offset..<end), for: ch, type: .withResponse)
+            offset = end
+        }
+        return true
+    }
+
+    /// peripheral → central: chunked notify with backpressure. cbQueue.
+    private func notifySubscribers(_ frame: Data) {
+        guard let peripheral, let mailbox else { return }
+        // Conservative chunk for notify; updateValue caps near the ATT MTU.
+        let maxChunk = 180
+        var offset = 0
+        while offset < frame.count {
+            let end = min(offset + maxChunk, frame.count)
+            let slice = frame.subdata(in: offset..<end)
+            let ok = peripheral.updateValue(slice, for: mailbox, onSubscribedCentrals: nil)
+            if !ok {
+                // TX queue full — stash the rest and resume in the ready callback.
+                pendingNotifications.append(slice)
+                offset = end
+                while offset < frame.count {
+                    let e2 = min(offset + maxChunk, frame.count)
+                    pendingNotifications.append(frame.subdata(in: offset..<e2))
+                    offset = e2
+                }
+                log.info("notify queue full — \(self.pendingNotifications.count) chunks pending")
+                return
+            }
+            offset = end
+        }
+    }
 }
 
-// MARK: - Central role: scan, connect, discover the remote mailbox
+// MARK: - Central role: scan, connect, discover, subscribe
 extension BLEMeshTransport: CBCentralManagerDelegate {
 
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {
@@ -198,7 +329,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
                                rssi RSSI: NSNumber) {
         guard peers[peripheral.identifier] == nil else { return }
         log.info("discovered peer \(peripheral.identifier) rssi \(RSSI) → connecting")
-        peers[peripheral.identifier] = peripheral   // retain before connect
+        peers[peripheral.identifier] = peripheral
         central.connect(peripheral, options: nil)
     }
 
@@ -221,12 +352,13 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
         log.info("disconnected \(peripheral.identifier) → rescanning")
         peers[peripheral.identifier] = nil
         writeTargets[peripheral.identifier] = nil
+        notifyReassembly[peripheral.identifier] = nil
         emitReachable()
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
     }
 }
 
-// MARK: - Central role: walk the connected peer's GATT, subscribe for notify
+// MARK: - Central role: GATT discovery, subscribe, receive notifications
 extension BLEMeshTransport: CBPeripheralDelegate {
 
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
@@ -243,10 +375,8 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         for ch in chars where ch.uuid == Self.characteristicUUID {
             writeTargets[peripheral.identifier] = ch
             emitReachable()
-            // Subscribe so the OTHER phone's peripheral learns we're here
-            // (fires its didSubscribeTo) and so it can push to us later.
             peripheral.setNotifyValue(true, for: ch)
-            log.info("LINK READY → mailbox found on \(peripheral.identifier). Ready to send + subscribing.")
+            log.info("LINK READY → mailbox on \(peripheral.identifier). Ready + subscribing.")
         }
     }
 
@@ -260,6 +390,23 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         }
     }
 
+    /// Inbound NOTIFICATION (peripheral → us). Reassemble + demux by frame type.
+    public func peripheral(_ peripheral: CBPeripheral,
+                           didUpdateValueFor characteristic: CBCharacteristic,
+                           error: Error?) {
+        if let error {
+            log.error("notify value error on \(peripheral.identifier): \(error.localizedDescription)")
+            return
+        }
+        guard let value = characteristic.value else { return }
+        var state = notifyReassembly[peripheral.identifier] ?? ReassemblyState()
+        let completed = ingest(value, into: &state)
+        notifyReassembly[peripheral.identifier] = state
+        if let (type, payload) = completed {
+            dispatchFrame(type, payload, from: peripheral.identifier)
+        }
+    }
+
     public func peripheral(_ peripheral: CBPeripheral,
                            didWriteValueFor characteristic: CBCharacteristic,
                            error: Error?) {
@@ -269,7 +416,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
     }
 }
 
-// MARK: - Peripheral role: advertise, track subscribers, receive/reassemble
+// MARK: - Peripheral role: advertise, subscribers, receive writes, drain notify
 extension BLEMeshTransport: CBPeripheralManagerDelegate {
 
     public func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
@@ -280,7 +427,7 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
         let mailbox = CBMutableCharacteristic(
             type: Self.characteristicUUID,
             properties: [.write, .writeWithoutResponse, .notify],
-            value: nil,                       // must be nil for a dynamic (writable/notify) value
+            value: nil,
             permissions: [.writeable]
         )
         let service = CBMutableService(type: Self.serviceUUID, primary: true)
@@ -306,60 +453,60 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
                                   central: CBCentral,
                                   didUnsubscribeFrom characteristic: CBCharacteristic) {
         subscribedCentrals.remove(central.identifier)
+        writeReassembly[central.identifier] = nil
         emitReachable()
         log.info("central \(central.identifier) unsubscribed → presence removed")
     }
 
+    /// Inbound WRITE (central → us). Reassemble + demux by frame type.
     public func peripheralManager(_ peripheral: CBPeripheralManager,
                                   didReceiveWrite requests: [CBATTRequest]) {
         for r in requests {
             guard let value = r.value else { continue }
-            ingest(value, from: r.central.identifier)
+            var state = writeReassembly[r.central.identifier] ?? ReassemblyState()
+            let completed = ingest(value, into: &state)
+            writeReassembly[r.central.identifier] = state
+            if let (type, payload) = completed {
+                dispatchFrame(type, payload, from: r.central.identifier)
+            }
         }
-        // Respond once to the first request; that acknowledges the whole batch.
-        // Required for write-with-response — without it the central stalls.
         if let first = requests.first {
             peripheral.respond(to: first, withResult: .success)
         }
     }
 
-    /// Accumulate chunks from a single sender until the declared total arrives,
-    /// then reassemble → parse → yield. The 4-byte big-endian length prefix is
-    /// stripped from the front of the first chunk.
-    ///
-    /// SPIKE SCOPE: assumes one envelope in flight per sender at a time.
-    /// Stage-3 framing (per-message ids in the chunk header) lifts that.
-    private func ingest(_ chunk: Data, from sender: UUID) {
-        var entry = reassembly[sender] ?? (total: -1, buffer: Data())
-        entry.buffer.append(chunk)
+    /// TX queue drained — flush any notifications we stashed under backpressure.
+    public func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+        guard let mailbox else { return }
+        while !pendingNotifications.isEmpty {
+            let slice = pendingNotifications[0]
+            let ok = peripheral.updateValue(slice, for: mailbox, onSubscribedCentrals: nil)
+            if ok {
+                pendingNotifications.removeFirst()
+            } else {
+                return   // still full; wait for the next ready callback
+            }
+        }
+    }
+}
 
-        // Need the 4-byte length prefix before we know how much to expect.
-        if entry.total < 0 {
-            guard entry.buffer.count >= Self.lengthPrefixBytes else {
-                reassembly[sender] = entry
+// MARK: - Frame dispatch (shared by both inbound directions)
+extension BLEMeshTransport {
+
+    /// Route a completed frame by type. Envelopes → router; bundles → first
+    /// contact. cbQueue.
+    private func dispatchFrame(_ type: FrameType, _ payload: Data, from link: UUID) {
+        switch type {
+        case .envelope:
+            guard let envelope = Envelope(wire: payload) else {
+                log.error("RX envelope frame (\(payload.count) bytes) failed to parse")
                 return
             }
-            let prefix = entry.buffer.prefix(Self.lengthPrefixBytes)
-            let total = prefix.reduce(0) { ($0 << 8) | Int($1) }   // big-endian
-            entry.total = total
-            entry.buffer.removeFirst(Self.lengthPrefixBytes)
+            log.info("RX envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count) → yielding")
+            inbound.yield(envelope)
+        case .bundle:
+            log.info("RX bundle \(payload.count) bytes from link \(link) → yielding")
+            bundlesCont.yield((link: link, data: payload))
         }
-
-        // Not all bytes yet — keep waiting.
-        guard entry.buffer.count >= entry.total else {
-            reassembly[sender] = entry
-            return
-        }
-
-        // Exactly (or over) the declared length: take the envelope's bytes.
-        let wire = entry.buffer.prefix(entry.total)
-        reassembly[sender] = nil   // reset for the next message from this sender
-
-        guard let envelope = Envelope(wire: Data(wire)) else {
-            log.error("RX reassembled \(entry.total) bytes but Envelope(wire:) failed to parse")
-            return
-        }
-        log.info("RX complete → envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count) → yielding")
-        inbound.yield(envelope)
     }
 }
