@@ -19,9 +19,9 @@
 //      send button materializes only when there is text. Earns its
 //      visibility.
 //
-//  This view receives a Conversation and renders it. Real send wiring
-//  (security → router → transport) attaches at `sendDraft()` once the
-//  BLE transport lands.
+//  This view receives a Conversation and renders it. The composer's send is
+//  wired through `MessageInbox` (read from the environment): the draft is
+//  persisted optimistically, then sealed and handed to the BLE transport.
 //
 
 import SwiftUI
@@ -31,6 +31,9 @@ struct ConversationView: View {
     let conversation: Conversation
 
     @Environment(\.dismiss) private var dismiss
+
+    /// The main-actor persistence/send bridge, injected by ReadyView.
+    @Environment(MessageInbox.self) private var inbox
 
     @State private var draft: String = ""
 
@@ -194,7 +197,9 @@ struct ConversationView: View {
     }
 
     private var sendButton: some View {
-        Button(action: sendDraft) {
+        Button {
+            sendDraft()
+        } label: {
             Circle()
                 .fill(Color.brand)
                 .frame(width: 38, height: 38)
@@ -209,18 +214,17 @@ struct ConversationView: View {
 
     // MARK: - Actions
 
-    /// Stub send path. The real implementation runs the draft through
-    /// the security/session layer (libsignal seal) → MessageRouter → BLE
-    /// transport. None of that exists yet from the UI's perspective;
-    /// this stub clears the field so the composer behavior can be felt
-    /// without claiming a message was sent.
+    /// Hand the draft to the MessageInbox: it persists an outbound Message
+    /// immediately (optimistic — the row appears at once and is never lost),
+    /// then seals it and hands the Envelope to the BLE transport. We clear the
+    /// field right away so the composer feels instant; the inbox owns the rest.
+    @MainActor
     private func sendDraft() {
         let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        // TODO: hand `trimmed` to the security layer, persist as an
-        // outbound Message bound to `conversation`, and pass the sealed
-        // Envelope to MessageRouter.send. For now the composer just
-        // clears, so we can feel the interaction.
         draft = ""
+        // `Task` inherits the main actor here, so passing `conversation`
+        // (a non-Sendable @Model) to the @MainActor inbox stays on-actor.
+        Task { await inbox.send(trimmed, in: conversation) }
     }
 }

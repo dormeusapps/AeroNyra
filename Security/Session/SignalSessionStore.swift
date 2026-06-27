@@ -212,6 +212,40 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
             throw SignalAdapterError.unexpectedMessageType
         }
     }
+
+    // MARK: Raw-key bridging  (Peer.publicKeyData  ↔  session identity)
+    //
+    // The SwiftData layer keys a Peer by its RAW 32-byte X25519 public key
+    // (Peer.publicKeyData). The session layer keys everything by libsignal's
+    // SERIALIZED identity key — 33 bytes = one 0x05 type byte || the 32 raw
+    // bytes (confirmed against the installed PublicKey API: serialize() == 33,
+    // keyBytes == raw 32, see SESSION_HANDOFF §6). These two helpers are the
+    // ONLY place that mapping happens, so the 33-byte serialized rep never
+    // leaks out of this adapter into the persistence layer and back — the two
+    // representations stay isolated, and Peer.publicKeyData always matches the
+    // same raw-32 form our own identity uses.
+
+    /// Raw 32-byte X25519 public key for a peer, suitable for
+    /// `Peer.publicKeyData`. Strips libsignal's leading type byte.
+    public func rawPublicKey(of peer: PublicIdentity) -> Data {
+        let serialized = peer.agreementKey
+        precondition(serialized.count == 33,
+                     "expected 33-byte serialized identity key, got \(serialized.count)")
+        return Data(serialized.dropFirst())
+    }
+
+    /// Inverse of `rawPublicKey(of:)`: reconstruct the `PublicIdentity` (the
+    /// 33-byte serialized rep that keys sessions) from the raw 32-byte key
+    /// stored as `Peer.publicKeyData`. Prepends libsignal's Curve25519 type
+    /// byte so the result hex-matches the identity produced at establishment —
+    /// which is what `session(with:)` looks up by.
+    public func peerIdentity(fromRawKey raw: Data) -> PublicIdentity {
+        precondition(raw.count == 32,
+                     "expected 32-byte raw X25519 key, got \(raw.count)")
+        var serialized = Data([0x05])
+        serialized.append(raw)
+        return PublicIdentity(agreementKey: serialized, signingKey: serialized)
+    }
 }
 
 // MARK: - Helpers

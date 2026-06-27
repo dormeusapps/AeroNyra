@@ -26,6 +26,8 @@
 //     first contact. This view is the SOLE consumer of the transport's three
 //     AsyncStreams (each delivers an event once) and fans them out to presence
 //     and the coordinator.
+//   • MessageInbox — owned by ReadyView (below), on the main actor, so the
+//     coordinator's SessionEvents become SwiftData Peer/Conversation/Message.
 //
 
 import SwiftUI
@@ -67,8 +69,12 @@ struct ContentView: View {
                 }
 
             case .ready(_, let container, _):
-                MainTabView()
-                    .modelContainer(container)
+                // ReadyView owns the main-actor MessageInbox for this phase.
+                if let coordinator {
+                    ReadyView(container: container, coordinator: coordinator)
+                } else {
+                    launchScreen   // unreachable: coordinator is set before .ready
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -186,6 +192,41 @@ struct ContentView: View {
             cloudKitDatabase: .none
         )
         return try ModelContainer(for: schema, configurations: config)
+    }
+}
+
+// MARK: - ReadyView
+
+/// Owns the main-actor `MessageInbox` for the lifetime of the .ready phase.
+///
+/// The inbox is built inside a `.task` (guaranteed main actor in SwiftUI) so
+/// that accessing `container.mainContext` and constructing the `@MainActor`
+/// `MessageInbox` are both isolation-correct under Swift 6 — no main-actor work
+/// happens in `bootstrap()`. Once built, the inbox is injected into the
+/// environment (for the composer in ConversationView) and its event loop runs.
+private struct ReadyView: View {
+    let container: ModelContainer
+    let coordinator: FirstContactCoordinator
+
+    @State private var inbox: MessageInbox?
+
+    var body: some View {
+        Group {
+            if let inbox {
+                MainTabView()
+                    .environment(inbox)
+                    .task { await inbox.run() }
+            } else {
+                Color.bgApp.ignoresSafeArea()
+            }
+        }
+        .modelContainer(container)
+        .task {
+            if inbox == nil {
+                inbox = MessageInbox(modelContext: container.mainContext,
+                                     coordinator: coordinator)
+            }
+        }
     }
 }
 
