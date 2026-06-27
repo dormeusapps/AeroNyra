@@ -21,6 +21,11 @@
 //  app lifetime. Its live reachability feeds a MeshPresence, injected
 //  into the environment so the Nearby screen can show real radar/presence.
 //
+//  The secure-session store (libsignal) is also built here, from the SAME
+//  loaded identity, so there is ONE identity end to end (no separate test
+//  identity for the session layer). This is the seam the first-contact
+//  handshake and the send path build on.
+//
 
 import SwiftUI
 import SwiftData
@@ -40,6 +45,11 @@ struct ContentView: View {
 
     /// Live radio presence, fed from the transport and read by NearbyView.
     @State private var presence = MeshPresence()
+
+    /// The single secure-session store, built from the real loaded identity
+    /// once we reach .ready. nil until then. Owns prekeys, sessions, and the
+    /// libsignal engine behind the SecureSessionStore boundary.
+    @State private var sessionStore: SignalSessionStore?
 
     var body: some View {
         Group {
@@ -74,8 +84,8 @@ struct ContentView: View {
             }
         }
         .task {
-            // Inbound diagnostics until Phase B routes envelopes into the real
-            // transcript. Harmless logging — not a temporary trigger.
+            // Inbound diagnostics until the send path routes envelopes into the
+            // real transcript. Harmless logging — not a temporary trigger.
             for await envelope in transport.incoming {
                 print("inbound envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count)")
             }
@@ -89,7 +99,8 @@ struct ContentView: View {
     // MARK: - Bootstrap
 
     /// Try to load an existing identity. If found, build the persistent
-    /// ModelContainer and enter .ready. If not, route to Onboarding.
+    /// ModelContainer + secure-session store and enter .ready. If not, route
+    /// to Onboarding.
     private func bootstrap() {
         let wrapper = try? SecureEnclaveWrapper(service: enclaveService)
         let store = IdentityStore(
@@ -101,6 +112,7 @@ struct ContentView: View {
         do {
             let identity = try store.load()
             let container = try makeModelContainer()
+            makeSessionStore(identity: identity)
             phase = .ready(identity, container, store)
         } catch IdentityError.notFound {
             phase = .onboarding(store)
@@ -113,12 +125,13 @@ struct ContentView: View {
     }
 
     /// Called once OnboardingView has handed us a fresh IdentityKeypair.
-    /// Persist it, build the container, enter .ready.
+    /// Persist it, build the container + secure-session store, enter .ready.
     private func completeOnboarding(identity: IdentityKeypair,
                                     store: IdentityStore) {
         do {
             try store.save(identity, overwrite: true)
             let container = try makeModelContainer()
+            makeSessionStore(identity: identity)
             phase = .ready(identity, container, store)
         } catch {
             // Stay in onboarding so the user can tap again. A real UX
@@ -128,6 +141,15 @@ struct ContentView: View {
     }
 
     // MARK: - Construction
+
+    /// Build the secure-session store from the loaded identity, so the session
+    /// layer uses the SAME (Enclave-bound) identity as the rest of the app —
+    /// one identity end to end. Held for the app's lifetime.
+    private func makeSessionStore(identity: IdentityKeypair) {
+        let secure = SignalSessionStore(appIdentity: identity)
+        sessionStore = secure
+        print("session store ready · identity \(secure.localIdentity.userIDHex.prefix(16))…")
+    }
 
     /// Stable bundle-scoped identifier for the Keychain item holding the
     /// long-term identity. Must not change across launches.
