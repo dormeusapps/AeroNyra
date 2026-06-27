@@ -100,11 +100,11 @@ struct ContentView: View {
 
     /// Stable bundle-scoped identifier for the Keychain item holding the
     /// long-term identity. Must not change across launches.
-    private var identityService: String { "com.beacon.identity.v1" }
+    private var identityService: String { "com.aeronyra.identity.v1" }
 
     /// Stable bundle-scoped identifier for the Secure Enclave key
     /// reference. Must not change across launches.
-    private var enclaveService: String { "com.beacon.enclave.v1" }
+    private var enclaveService: String { "com.aeronyra.enclave.v1" }
 
     private func makeModelContainer() throws -> ModelContainer {
         let schema = Schema([

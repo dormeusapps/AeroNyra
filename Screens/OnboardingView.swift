@@ -55,7 +55,7 @@ struct OnboardingView: View {
 
     private var appNameBlock: some View {
         VStack(spacing: 14) {
-            Text("Beacon")
+            Text("AeroNyra")
                 .font(.custom("Geist-Bold", size: 44))
                 .foregroundStyle(Color.textPrimary)
             Text("encrypted · no account · no servers")
