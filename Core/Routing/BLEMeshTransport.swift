@@ -9,37 +9,39 @@ import os
 
 /// Concrete BLE mesh transport conforming to `MeshTransport`.
 ///
-/// STAGE 2 + PRESENCE: real transmit + reassembly, plus a `reachabilityUpdates`
-/// stream that publishes the set of currently-linked peers (by CoreBluetooth
-/// id) so the UI can show live radar/presence. Each device runs BOTH roles —
-/// peripheral (advertises a service + exposes one writable characteristic) AND
-/// central (scans, connects, writes).
+/// STAGE 2 + SYMMETRIC PRESENCE: real transmit + reassembly, plus a
+/// `reachabilityUpdates` stream that publishes the set of currently-linked
+/// peers so the UI can show live radar/presence — from BOTH roles:
+///
+///   • CENTRAL side: a peripheral we connected to and found the mailbox on.
+///   • PERIPHERAL side: a central that subscribed to our notify characteristic.
+///
+/// Tracking both is what makes presence symmetric: the phone that DIALED OUT and
+/// the phone that was DIALED INTO both register the link off the single
+/// connection that forms, instead of depending on both phones independently
+/// connecting outward (which is flaky on iOS).
+///
+/// NOTE: these are EPHEMERAL CoreBluetooth ids, NOT cryptographic identities,
+/// and a phone has a different id in each role. So if BOTH phones' centrals
+/// fully connect, one physical peer can momentarily count twice. The binary
+/// "someone is here" is always correct; exact de-duplication arrives with the
+/// identity exchange (above this layer).
+///
+/// The notify characteristic added here also opens the PERIPHERAL → CENTRAL
+/// data direction (via `updateValue`), which the real bidirectional send path
+/// will need. Not wired for data yet — only subscription presence.
 ///
 /// `send(_:)` frames an envelope as [4-byte big-endian total length][wireData]
 /// and writes it to every connected peer in MTU-sized chunks. The peripheral
 /// side accumulates chunks per peer, and once the declared length has arrived,
 /// reassembles, parses `Envelope(wire:)`, and yields it into `incoming`.
 ///
-/// REACHABILITY: `reachabilityUpdates` emits the current `[UUID]` of peers we
-/// have a usable link to (connected AND mailbox discovered) whenever that set
-/// changes. These are EPHEMERAL CoreBluetooth ids, NOT cryptographic identities
-/// — the transport never learns a peer's real identity (that arrives later via
-/// the PrekeyBundle handshake, above this layer). So this stream powers "a
-/// device is here," not "who it is."
+/// WRITE MODE: write-WITH-response (built-in flow control; nothing silently
+/// dropped). Revisit only if throughput matters.
 ///
-/// This length-prefixed framing is the first honest form of the fragmentation
-/// seam (HANDOFF §7.2 step 2). It carries ONE logical envelope per send.
-///
-/// WRITE MODE: we use write-WITH-response. Slower than without-response but with
-/// built-in flow control — each chunk is acknowledged, so nothing is silently
-/// dropped. Revisit only if throughput ever matters (then gate on
-/// `canSendWriteWithoutResponse`).
-///
-/// CONCURRENCY: not an actor. CoreBluetooth delegates are NSObject callbacks
-/// delivered on a queue we choose, so we confine ALL mutable state to `cbQueue`
-/// and nothing touches it off that queue. That confinement is what makes
-/// `@unchecked Sendable` honest (the protocol allows "actor OR otherwise
-/// internally synchronized").
+/// CONCURRENCY: not an actor. ALL mutable state is confined to `cbQueue`;
+/// nothing touches it off that queue, which is what makes `@unchecked Sendable`
+/// honest (the protocol allows "actor OR otherwise internally synchronized").
 public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendable {
 
     // MARK: - Protocol: identity
@@ -56,7 +58,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     // MARK: - Protocol constants (permanent, like a port number — NOT placeholder)
     /// The AeroNyra mesh GATT service every peer advertises and scans for.
     static let serviceUUID = CBUUID(string: "5218EF92-305F-41B0-B29E-D0215FF59B8D")
-    /// The single writable characteristic that carries envelope chunks.
+    /// The single writable + notifiable characteristic that carries envelope chunks.
     static let characteristicUUID = CBUUID(string: "2496E79A-7D3F-4AB1-B6AE-DE940F1597D1")
 
     /// Bytes of length-prefix framing prepended to each envelope on the wire.
@@ -70,14 +72,16 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     private var central: CBCentralManager?
     /// Discovered peers must be retained by us — CoreBluetooth does not.
     private var peers: [UUID: CBPeripheral] = [:]
-    /// Remote mailboxes we can write to once discovered.
+    /// Remote mailboxes we can write to once discovered. Keyed by peripheral id.
     private var writeTargets: [UUID: CBCharacteristic] = [:]
 
     // MARK: - Peripheral (advertiser) side
     private var peripheral: CBPeripheralManager?
     private var mailbox: CBMutableCharacteristic?
+    /// Centrals currently subscribed to our notify characteristic. Keyed by
+    /// central id. This is the peripheral-side half of presence.
+    private var subscribedCentrals: Set<UUID> = []
     /// Per-sender reassembly buffers, keyed by the writing central's id.
-    /// Each entry holds the declared total length and the bytes gathered so far.
     private var reassembly: [UUID: (total: Int, buffer: Data)] = [:]
 
     private var started = false
@@ -115,6 +119,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             for p in self.peers.values { self.central?.cancelPeripheralConnection(p) }
             self.peers.removeAll()
             self.writeTargets.removeAll()
+            self.subscribedCentrals.removeAll()
             self.reassembly.removeAll()
             self.started = false
             self.emitReachable()
@@ -122,9 +127,12 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
         }
     }
 
-    /// Publish the current linked-peer set to the UI. Always called on cbQueue.
+    /// Publish the current linked-peer set to the UI. Union of both roles:
+    /// peripherals we connected to + centrals subscribed to us. Always called
+    /// on cbQueue.
     private func emitReachable() {
-        reachabilityCont.yield(Array(writeTargets.keys))
+        let ids = Set(writeTargets.keys).union(subscribedCentrals)
+        reachabilityCont.yield(Array(ids))
     }
 
     // MARK: - Transmit
@@ -218,7 +226,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
     }
 }
 
-// MARK: - Central role: walk the connected peer's GATT to find the mailbox
+// MARK: - Central role: walk the connected peer's GATT, subscribe for notify
 extension BLEMeshTransport: CBPeripheralDelegate {
 
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
@@ -235,7 +243,20 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         for ch in chars where ch.uuid == Self.characteristicUUID {
             writeTargets[peripheral.identifier] = ch
             emitReachable()
-            log.info("LINK READY → mailbox found on \(peripheral.identifier). Ready to send.")
+            // Subscribe so the OTHER phone's peripheral learns we're here
+            // (fires its didSubscribeTo) and so it can push to us later.
+            peripheral.setNotifyValue(true, for: ch)
+            log.info("LINK READY → mailbox found on \(peripheral.identifier). Ready to send + subscribing.")
+        }
+    }
+
+    public func peripheral(_ peripheral: CBPeripheral,
+                           didUpdateNotificationStateFor characteristic: CBCharacteristic,
+                           error: Error?) {
+        if let error {
+            log.error("notify-state error on \(peripheral.identifier): \(error.localizedDescription)")
+        } else {
+            log.info("subscribed for notify on \(peripheral.identifier)")
         }
     }
 
@@ -248,7 +269,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
     }
 }
 
-// MARK: - Peripheral role: advertise the service + receive/reassemble writes
+// MARK: - Peripheral role: advertise, track subscribers, receive/reassemble
 extension BLEMeshTransport: CBPeripheralManagerDelegate {
 
     public func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
@@ -258,8 +279,8 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
         }
         let mailbox = CBMutableCharacteristic(
             type: Self.characteristicUUID,
-            properties: [.write, .writeWithoutResponse],
-            value: nil,                       // must be nil for a writable (dynamic) value
+            properties: [.write, .writeWithoutResponse, .notify],
+            value: nil,                       // must be nil for a dynamic (writable/notify) value
             permissions: [.writeable]
         )
         let service = CBMutableService(type: Self.serviceUUID, primary: true)
@@ -271,6 +292,22 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
             CBAdvertisementDataLocalNameKey: "AeroNyra"
         ])
         log.info("peripheral poweredOn → service added, advertising")
+    }
+
+    public func peripheralManager(_ peripheral: CBPeripheralManager,
+                                  central: CBCentral,
+                                  didSubscribeTo characteristic: CBCharacteristic) {
+        subscribedCentrals.insert(central.identifier)
+        emitReachable()
+        log.info("central \(central.identifier) subscribed → peripheral-side presence")
+    }
+
+    public func peripheralManager(_ peripheral: CBPeripheralManager,
+                                  central: CBCentral,
+                                  didUnsubscribeFrom characteristic: CBCharacteristic) {
+        subscribedCentrals.remove(central.identifier)
+        emitReachable()
+        log.info("central \(central.identifier) unsubscribed → presence removed")
     }
 
     public func peripheralManager(_ peripheral: CBPeripheralManager,
@@ -290,10 +327,8 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
     /// then reassemble → parse → yield. The 4-byte big-endian length prefix is
     /// stripped from the front of the first chunk.
     ///
-    /// SPIKE SCOPE: assumes one envelope in flight per sender at a time. If a
-    /// sender pipelines a second envelope before the first completes, the
-    /// buffers would run together — Stage-3 framing (per-message IDs in the
-    /// chunk header) fixes that. Fine for the connectivity spike.
+    /// SPIKE SCOPE: assumes one envelope in flight per sender at a time.
+    /// Stage-3 framing (per-message ids in the chunk header) lifts that.
     private func ingest(_ chunk: Data, from sender: UUID) {
         var entry = reassembly[sender] ?? (total: -1, buffer: Data())
         entry.buffer.append(chunk)
