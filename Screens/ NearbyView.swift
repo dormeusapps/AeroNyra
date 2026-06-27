@@ -11,6 +11,13 @@
 //  dot is the always-present ALIVE element from the design posture —
 //  the radio breathing in the corner.
 //
+//  PRESENCE: the radar blips and the "N reachable" count are driven by
+//  MeshPresence, which reflects the BLE transport's live linked-peer set.
+//  These are unidentified devices (we sense them but don't yet know who
+//  they are), so they render as radar blips and a count — NOT named rows.
+//  The peer-row sections below stay empty until identity exchange exists;
+//  fabricating a Peer from a BLE id would be inventing identity.
+//
 
 import SwiftUI
 import SwiftData
@@ -21,6 +28,9 @@ struct NearbyView: View {
     @Query(sort: \Peer.lastSeen, order: .reverse)
     private var allPeers: [Peer]
 
+    /// Live radio presence (linked device ids + scan state) from the transport.
+    @Environment(MeshPresence.self) private var presence
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -29,7 +39,7 @@ struct NearbyView: View {
                 VStack(spacing: 0) {
                     radarBlock
                     sections
-                    if allPeers.isEmpty {
+                    if allPeers.isEmpty && presence.reachableIDs.isEmpty {
                         emptyState
                     }
                 }
@@ -65,11 +75,10 @@ struct NearbyView: View {
         }
     }
 
-    /// Honest status: until BLE wires real reachability, this just says
-    /// the radio is scanning. Becomes more specific the moment we have
-    /// a real reachability monitor.
+    /// Honest status driven by the live linked-device count. These are
+    /// reachable RADIOS, not yet identified peers.
     private var statusText: String {
-        let reachable = reachablePeers.count
+        let reachable = presence.reachableCount
         if reachable == 0 {
             return "Mesh active · scanning…"
         }
@@ -86,10 +95,23 @@ struct NearbyView: View {
 
     private var radarBlock: some View {
         VStack {
-            RadarHero(blips: [], isScanning: true)
+            RadarHero(blips: blips, isScanning: presence.isScanning)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
+    }
+
+    /// One blip per currently-linked device, placed on the innermost (direct)
+    /// ring. Angle and hue are DECORATIVE (DESIGN_TOKENS §12) but derived
+    /// deterministically from the device's real BLE id, so a given device sits
+    /// in a stable spot rather than jumping around frame to frame.
+    private var blips: [RadarHero.Blip] {
+        presence.reachableIDs.map { id in
+            let bytes = withUnsafeBytes(of: id.uuid) { Array($0) }
+            let angle = Double(Int(bytes[0]) << 8 | Int(bytes[1])) / 65535.0 * 2 * .pi
+            let hue = Double(bytes[2]) / 255.0 * 360
+            return RadarHero.Blip(id: id, ring: .direct, angle: angle, hueDegrees: hue)
+        }
     }
 
     // MARK: - Sections
@@ -104,11 +126,12 @@ struct NearbyView: View {
                 isRecent: true)
     }
 
-    /// Currently reachable peers. Empty until BLE drives it.
+    /// Currently reachable, IDENTIFIED peers. Empty until identity exchange
+    /// over BLE exists — radio reachability alone doesn't give us a Peer.
     private var reachablePeers: [Peer] { [] }
 
     /// Peers we know about but aren't currently in range. Until BLE wires
-    /// real-time reachability, every known peer falls in this bucket.
+    /// real-time reachability to identity, every known peer falls here.
     private var recentPeers: [Peer] { allPeers }
 
     @ViewBuilder

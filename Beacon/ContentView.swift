@@ -17,6 +17,10 @@
 //  Enclave) the wrapper resolves to nil and the blob lives under
 //  Keychain Data Protection only — which is fine for development.
 //
+//  The BLE transport is started here at launch and lives for the whole
+//  app lifetime. Its live reachability feeds a MeshPresence, injected
+//  into the environment so the Nearby screen can show real radar/presence.
+//
 
 import SwiftUI
 import SwiftData
@@ -31,11 +35,11 @@ struct ContentView: View {
 
     @State private var phase: Phase = .launching
 
-    /// PHASE A spike: the single long-lived BLE transport. Started at launch;
-    /// inbound envelopes are logged to the console until Phase B routes them
-    /// into the real conversation transcript. Holding it in @State on the root
-    /// view gives it one instance for the whole app lifetime.
+    /// The single long-lived BLE transport, started at launch.
     @State private var transport = BLEMeshTransport()
+
+    /// Live radio presence, fed from the transport and read by NearbyView.
+    @State private var presence = MeshPresence()
 
     var body: some View {
         Group {
@@ -55,41 +59,25 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .environment(presence)
         .task {
-            // PHASE A: bring the radio up and watch the Xcode console. Two
-            // phones should log discover → connect → LINK READY. Inbound bytes
-            // print below; Phase B replaces that print with real routing into
-            // the conversation transcript.
+            // Bring the radio up, then keep MeshPresence in sync with the live
+            // set of linked peers. This .task is main-actor isolated (Views
+            // are @MainActor), so touching `presence` here is safe.
             do {
                 try await transport.start()
             } catch {
                 print("BLE start failed: \(error)")
             }
-
-            // ⚠️ TEMP STAGE-2 SPIKE TRIGGER — REMOVE IN PHASE B. ⚠️
-            // Retries every 2s until a peer link exists, then sends ONE
-            // envelope whose ciphertext is 256 random bytes (the shape of a
-            // real sealed payload — 256 is the smallest PayloadBucket, so this
-            // exercises multi-chunk framing). Purely to prove bytes cross and
-            // reassemble. Phase B deletes this and drives send() from the real
-            // ConversationView composer instead.
-            Task {
-                var sent = false
-                while !sent {
-                    try? await Task.sleep(for: .seconds(2))
-                    let payload = Data((0..<256).map { _ in UInt8.random(in: 0...255) })
-                    do {
-                        try await transport.send(Envelope(ciphertext: payload))
-                        print("✅ TEMP spike: sent one 256-byte test envelope")
-                        sent = true
-                    } catch {
-                        // No peer in range yet — keep retrying.
-                    }
-                }
+            for await ids in transport.reachabilityUpdates {
+                presence.reachableIDs = ids
             }
-
+        }
+        .task {
+            // Inbound diagnostics until Phase B routes envelopes into the real
+            // transcript. Harmless logging — not a temporary trigger.
             for await envelope in transport.incoming {
-                print("📨 inbound envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count)")
+                print("inbound envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count)")
             }
         }
     }

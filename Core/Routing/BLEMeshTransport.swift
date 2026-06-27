@@ -9,25 +9,31 @@ import os
 
 /// Concrete BLE mesh transport conforming to `MeshTransport`.
 ///
-/// STAGE 2 (this file): real transmit + reassembly. Each device runs BOTH
-/// roles — peripheral (advertises a service + exposes one writable
-/// characteristic) AND central (scans, connects, writes). `send(_:)` frames an
-/// envelope as [4-byte big-endian total length][wireData] and writes it to
-/// every connected peer in MTU-sized chunks. The peripheral side accumulates
-/// chunks per peer, and once the declared length has arrived, reassembles,
-/// parses `Envelope(wire:)`, and yields it into `incoming`.
+/// STAGE 2 + PRESENCE: real transmit + reassembly, plus a `reachabilityUpdates`
+/// stream that publishes the set of currently-linked peers (by CoreBluetooth
+/// id) so the UI can show live radar/presence. Each device runs BOTH roles —
+/// peripheral (advertises a service + exposes one writable characteristic) AND
+/// central (scans, connects, writes).
+///
+/// `send(_:)` frames an envelope as [4-byte big-endian total length][wireData]
+/// and writes it to every connected peer in MTU-sized chunks. The peripheral
+/// side accumulates chunks per peer, and once the declared length has arrived,
+/// reassembles, parses `Envelope(wire:)`, and yields it into `incoming`.
+///
+/// REACHABILITY: `reachabilityUpdates` emits the current `[UUID]` of peers we
+/// have a usable link to (connected AND mailbox discovered) whenever that set
+/// changes. These are EPHEMERAL CoreBluetooth ids, NOT cryptographic identities
+/// — the transport never learns a peer's real identity (that arrives later via
+/// the PrekeyBundle handshake, above this layer). So this stream powers "a
+/// device is here," not "who it is."
 ///
 /// This length-prefixed framing is the first honest form of the fragmentation
-/// seam (HANDOFF §7.2 step 2). It carries ONE logical envelope per send; it
-/// does NOT yet interleave multiple concurrent envelopes from the same peer
-/// (one in flight at a time per peer is fine for the spike — see reassembly
-/// note below).
+/// seam (HANDOFF §7.2 step 2). It carries ONE logical envelope per send.
 ///
-/// WRITE MODE: we use write-WITH-response. It is slower than without-response
-/// but has built-in flow control — each chunk is acknowledged, so nothing is
-/// silently dropped. Without-response can overflow CoreBluetooth's TX queue and
-/// drop chunks invisibly, which would stall reassembly forever. Revisit only if
-/// throughput ever matters (then gate on `canSendWriteWithoutResponse`).
+/// WRITE MODE: we use write-WITH-response. Slower than without-response but with
+/// built-in flow control — each chunk is acknowledged, so nothing is silently
+/// dropped. Revisit only if throughput ever matters (then gate on
+/// `canSendWriteWithoutResponse`).
 ///
 /// CONCURRENCY: not an actor. CoreBluetooth delegates are NSObject callbacks
 /// delivered on a queue we choose, so we confine ALL mutable state to `cbQueue`
@@ -42,6 +48,10 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     // MARK: - Protocol: inbound stream
     public let incoming: AsyncStream<Envelope>
     private let inbound: AsyncStream<Envelope>.Continuation
+
+    // MARK: - Presence: linked peers (ephemeral BLE ids, NOT crypto identities)
+    public let reachabilityUpdates: AsyncStream<[UUID]>
+    private let reachabilityCont: AsyncStream<[UUID]>.Continuation
 
     // MARK: - Protocol constants (permanent, like a port number — NOT placeholder)
     /// The AeroNyra mesh GATT service every peer advertises and scans for.
@@ -75,9 +85,14 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
 
     // MARK: - Init
     public override init() {
-        var c: AsyncStream<Envelope>.Continuation!
-        self.incoming = AsyncStream<Envelope> { c = $0 }
-        self.inbound = c
+        var inb: AsyncStream<Envelope>.Continuation!
+        self.incoming = AsyncStream<Envelope> { inb = $0 }
+        self.inbound = inb
+
+        var rch: AsyncStream<[UUID]>.Continuation!
+        self.reachabilityUpdates = AsyncStream<[UUID]> { rch = $0 }
+        self.reachabilityCont = rch
+
         super.init()
     }
 
@@ -102,8 +117,14 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             self.writeTargets.removeAll()
             self.reassembly.removeAll()
             self.started = false
+            self.emitReachable()
             self.log.info("stop(): radios torn down")
         }
+    }
+
+    /// Publish the current linked-peer set to the UI. Always called on cbQueue.
+    private func emitReachable() {
+        reachabilityCont.yield(Array(writeTargets.keys))
     }
 
     // MARK: - Transmit
@@ -192,6 +213,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
         log.info("disconnected \(peripheral.identifier) → rescanning")
         peers[peripheral.identifier] = nil
         writeTargets[peripheral.identifier] = nil
+        emitReachable()
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
     }
 }
@@ -212,6 +234,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         guard let chars = service.characteristics else { return }
         for ch in chars where ch.uuid == Self.characteristicUUID {
             writeTargets[peripheral.identifier] = ch
+            emitReachable()
             log.info("LINK READY → mailbox found on \(peripheral.identifier). Ready to send.")
         }
     }

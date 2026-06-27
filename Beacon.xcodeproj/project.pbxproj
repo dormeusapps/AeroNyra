@@ -32,6 +32,7 @@
 		7CE0C8922FEF581800151314 /*  NearbyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88D2FEF4D9900151314 /*  NearbyView.swift */; };
 		7CE0C8932FEF581F00151314 /* NearbyRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88C2FEF4D5D00151314 /* NearbyRow.swift */; };
 		7CE0C8942FEF582600151314 /* RadarHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88B2FEF4D4300151314 /* RadarHero.swift */; };
+		7CEC9F8E2FF0379000AA3D10 /* MeshPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEC9F8D2FF0379000AA3D10 /* MeshPresence.swift */; };
 		F2E8EC044F1CFA3555C9E47A /* Pods_Beacon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03E293A426253218704E16E0 /* Pods_Beacon.framework */; };
 /* End PBXBuildFile section */
 
@@ -77,6 +78,7 @@
 		7CE0C88D2FEF4D9900151314 /*  NearbyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = " NearbyView.swift"; sourceTree = "<group>"; };
 		7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		7CE0C88F2FEF51AA00151314 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+		7CEC9F8D2FF0379000AA3D10 /* MeshPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshPresence.swift; sourceTree = "<group>"; };
 		A5D673E5F52E3362AFBF48A7 /* Pods_Beacon_BeaconUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Beacon_BeaconUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF1C6948FC13CBE1E3740EF6 /* Pods-Beacon-BeaconUITests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Beacon-BeaconUITests.release.xcconfig"; path = "Target Support Files/Pods-Beacon-BeaconUITests/Pods-Beacon-BeaconUITests.release.xcconfig"; sourceTree = "<group>"; };
 		CFE64BBEC99E3E08C9A3F604 /* Pods-BeaconTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-BeaconTests.release.xcconfig"; path = "Target Support Files/Pods-BeaconTests/Pods-BeaconTests.release.xcconfig"; sourceTree = "<group>"; };
@@ -266,6 +268,7 @@
 		7CE0C88A2FEF4D2900151314 /* Screens */ = {
 			isa = PBXGroup;
 			children = (
+				7CEC9F8D2FF0379000AA3D10 /* MeshPresence.swift */,
 				7CE0C88F2FEF51AA00151314 /* ConversationView.swift */,
 				7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */,
 				7CE0C88D2FEF4D9900151314 /*  NearbyView.swift */,
@@ -492,6 +495,7 @@
 				7CE0C87B2FEF2E4700151314 /* DeliveryReceipt.swift in Sources */,
 				7CE0C8812FEF3B2400151314 /* MessageRow.swift in Sources */,
 				7CE0C8872FEF462A00151314 /* ChatsListView.swift in Sources */,
+				7CEC9F8E2FF0379000AA3D10 /* MeshPresence.swift in Sources */,
 				7CE0C8922FEF581800151314 /*  NearbyView.swift in Sources */,
 				7CE0C8772FEF2C4100151314 /* Typography.swift in Sources */,
 				7CE0C8852FEF45FF00151314 /* ChatRow.swift in Sources */,
