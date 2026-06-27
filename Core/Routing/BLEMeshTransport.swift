@@ -9,17 +9,31 @@ import os
 
 /// Concrete BLE mesh transport conforming to `MeshTransport`.
 ///
-/// STAGE 1 (this file): lifecycle + connection only. Each device runs BOTH
+/// STAGE 2 (this file): real transmit + reassembly. Each device runs BOTH
 /// roles — peripheral (advertises a service + exposes one writable
-/// characteristic) AND central (scans for that service, connects, will write).
-/// Two phones thus form a peer link. Actual byte transmit + reassembly land in
-/// Stage 2; `send(_:)` is a deliberate stub until then.
+/// characteristic) AND central (scans, connects, writes). `send(_:)` frames an
+/// envelope as [4-byte big-endian total length][wireData] and writes it to
+/// every connected peer in MTU-sized chunks. The peripheral side accumulates
+/// chunks per peer, and once the declared length has arrived, reassembles,
+/// parses `Envelope(wire:)`, and yields it into `incoming`.
 ///
-/// CONCURRENCY: this is not an actor. CoreBluetooth delegates are NSObject
-/// callbacks delivered on a queue we choose, so we confine ALL mutable state to
-/// `cbQueue` and nothing touches it off that queue. That confinement is what
-/// makes `@unchecked Sendable` honest here (the protocol explicitly allows
-/// "actor OR otherwise internally synchronized").
+/// This length-prefixed framing is the first honest form of the fragmentation
+/// seam (HANDOFF §7.2 step 2). It carries ONE logical envelope per send; it
+/// does NOT yet interleave multiple concurrent envelopes from the same peer
+/// (one in flight at a time per peer is fine for the spike — see reassembly
+/// note below).
+///
+/// WRITE MODE: we use write-WITH-response. It is slower than without-response
+/// but has built-in flow control — each chunk is acknowledged, so nothing is
+/// silently dropped. Without-response can overflow CoreBluetooth's TX queue and
+/// drop chunks invisibly, which would stall reassembly forever. Revisit only if
+/// throughput ever matters (then gate on `canSendWriteWithoutResponse`).
+///
+/// CONCURRENCY: not an actor. CoreBluetooth delegates are NSObject callbacks
+/// delivered on a queue we choose, so we confine ALL mutable state to `cbQueue`
+/// and nothing touches it off that queue. That confinement is what makes
+/// `@unchecked Sendable` honest (the protocol allows "actor OR otherwise
+/// internally synchronized").
 public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendable {
 
     // MARK: - Protocol: identity
@@ -35,6 +49,9 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     /// The single writable characteristic that carries envelope chunks.
     static let characteristicUUID = CBUUID(string: "2496E79A-7D3F-4AB1-B6AE-DE940F1597D1")
 
+    /// Bytes of length-prefix framing prepended to each envelope on the wire.
+    private static let lengthPrefixBytes = 4   // UInt32 big-endian total length
+
     // MARK: - Queue confinement
     /// Every line of CoreBluetooth state below lives ONLY on this serial queue.
     private let cbQueue = DispatchQueue(label: "com.aeronyra.ble.transport")
@@ -43,12 +60,15 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     private var central: CBCentralManager?
     /// Discovered peers must be retained by us — CoreBluetooth does not.
     private var peers: [UUID: CBPeripheral] = [:]
-    /// Remote mailboxes we can write to once discovered (Stage 2 uses these).
+    /// Remote mailboxes we can write to once discovered.
     private var writeTargets: [UUID: CBCharacteristic] = [:]
 
     // MARK: - Peripheral (advertiser) side
     private var peripheral: CBPeripheralManager?
     private var mailbox: CBMutableCharacteristic?
+    /// Per-sender reassembly buffers, keyed by the writing central's id.
+    /// Each entry holds the declared total length and the bytes gathered so far.
+    private var reassembly: [UUID: (total: Int, buffer: Data)] = [:]
 
     private var started = false
     private let log = Logger(subsystem: "com.aeronyra.app", category: "BLE")
@@ -66,8 +86,6 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
         cbQueue.async { [weak self] in
             guard let self, !self.started else { return }
             self.started = true
-            // Creating the managers triggers the powerOn callbacks below, where
-            // advertising and scanning actually begin.
             self.central = CBCentralManager(delegate: self, queue: self.cbQueue)
             self.peripheral = CBPeripheralManager(delegate: self, queue: self.cbQueue)
             self.log.info("start(): managers created, awaiting powerOn")
@@ -82,6 +100,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             for p in self.peers.values { self.central?.cancelPeripheralConnection(p) }
             self.peers.removeAll()
             self.writeTargets.removeAll()
+            self.reassembly.removeAll()
             self.started = false
             self.log.info("stop(): radios torn down")
         }
@@ -89,14 +108,43 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
 
     // MARK: - Transmit
     public func send(_ envelope: Envelope) async throws {
-        // ───────────────────────────────────────────────────────────────────
-        // STAGE 2 IMPLEMENTS THIS. The transmit path is: envelope.wireData()
-        // → length-prefixed chunking across the negotiated MTU → write each
-        // chunk to every writeTargets characteristic. Not wired in Stage 1, so
-        // we honestly report "no transmit path yet" via .noReachablePeers
-        // (maps to UI .waitingForRange — harmless, not a hard failure).
-        // ───────────────────────────────────────────────────────────────────
-        throw TransportError.noReachablePeers
+        // Snapshot what we need off the cbQueue, then perform the writes there.
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            cbQueue.async { [weak self] in
+                guard let self else { cont.resume(); return }
+                guard self.started else {
+                    cont.resume(throwing: TransportError.notStarted); return
+                }
+                let targets = self.writeTargets.compactMap { (id, ch) -> (CBPeripheral, CBCharacteristic)? in
+                    guard let p = self.peers[id] else { return nil }
+                    return (p, ch)
+                }
+                guard !targets.isEmpty else {
+                    cont.resume(throwing: TransportError.noReachablePeers); return
+                }
+
+                // Frame: [UInt32 big-endian total length][wireData].
+                let wire = envelope.wireData()
+                var framed = Data()
+                var len = UInt32(wire.count).bigEndian
+                withUnsafeBytes(of: &len) { framed.append(contentsOf: $0) }
+                framed.append(wire)
+
+                // Write to every connected peer, chunked to that peer's MTU.
+                for (peer, ch) in targets {
+                    let maxChunk = max(20, peer.maximumWriteValueLength(for: .withResponse))
+                    var offset = 0
+                    while offset < framed.count {
+                        let end = min(offset + maxChunk, framed.count)
+                        let slice = framed.subdata(in: offset..<end)
+                        peer.writeValue(slice, for: ch, type: .withResponse)
+                        offset = end
+                    }
+                    self.log.info("TX \(framed.count) bytes in chunks of \(maxChunk) → \(peer.identifier)")
+                }
+                cont.resume()
+            }
+        }
     }
 }
 
@@ -164,12 +212,20 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         guard let chars = service.characteristics else { return }
         for ch in chars where ch.uuid == Self.characteristicUUID {
             writeTargets[peripheral.identifier] = ch
-            log.info("LINK READY → mailbox found on \(peripheral.identifier). Stage 2 can write.")
+            log.info("LINK READY → mailbox found on \(peripheral.identifier). Ready to send.")
+        }
+    }
+
+    public func peripheral(_ peripheral: CBPeripheral,
+                           didWriteValueFor characteristic: CBCharacteristic,
+                           error: Error?) {
+        if let error {
+            log.error("write failed to \(peripheral.identifier): \(error.localizedDescription)")
         }
     }
 }
 
-// MARK: - Peripheral role: advertise the service + expose the mailbox
+// MARK: - Peripheral role: advertise the service + receive/reassemble writes
 extension BLEMeshTransport: CBPeripheralManagerDelegate {
 
     public func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
@@ -196,12 +252,56 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
 
     public func peripheralManager(_ peripheral: CBPeripheralManager,
                                   didReceiveWrite requests: [CBATTRequest]) {
-        // STAGE 2: accumulate length-prefixed chunks here, reassemble, then
-        //   Envelope(wire:) and inbound.yield(envelope). Stage 1 just confirms
-        //   the mailbox receives bytes at all.
         for r in requests {
-            log.info("RX \(r.value?.count ?? 0) bytes on mailbox (Stage 2 reassembles)")
-            peripheral.respond(to: r, withResult: .success)
+            guard let value = r.value else { continue }
+            ingest(value, from: r.central.identifier)
         }
+        // Respond once to the first request; that acknowledges the whole batch.
+        // Required for write-with-response — without it the central stalls.
+        if let first = requests.first {
+            peripheral.respond(to: first, withResult: .success)
+        }
+    }
+
+    /// Accumulate chunks from a single sender until the declared total arrives,
+    /// then reassemble → parse → yield. The 4-byte big-endian length prefix is
+    /// stripped from the front of the first chunk.
+    ///
+    /// SPIKE SCOPE: assumes one envelope in flight per sender at a time. If a
+    /// sender pipelines a second envelope before the first completes, the
+    /// buffers would run together — Stage-3 framing (per-message IDs in the
+    /// chunk header) fixes that. Fine for the connectivity spike.
+    private func ingest(_ chunk: Data, from sender: UUID) {
+        var entry = reassembly[sender] ?? (total: -1, buffer: Data())
+        entry.buffer.append(chunk)
+
+        // Need the 4-byte length prefix before we know how much to expect.
+        if entry.total < 0 {
+            guard entry.buffer.count >= Self.lengthPrefixBytes else {
+                reassembly[sender] = entry
+                return
+            }
+            let prefix = entry.buffer.prefix(Self.lengthPrefixBytes)
+            let total = prefix.reduce(0) { ($0 << 8) | Int($1) }   // big-endian
+            entry.total = total
+            entry.buffer.removeFirst(Self.lengthPrefixBytes)
+        }
+
+        // Not all bytes yet — keep waiting.
+        guard entry.buffer.count >= entry.total else {
+            reassembly[sender] = entry
+            return
+        }
+
+        // Exactly (or over) the declared length: take the envelope's bytes.
+        let wire = entry.buffer.prefix(entry.total)
+        reassembly[sender] = nil   // reset for the next message from this sender
+
+        guard let envelope = Envelope(wire: Data(wire)) else {
+            log.error("RX reassembled \(entry.total) bytes but Envelope(wire:) failed to parse")
+            return
+        }
+        log.info("RX complete → envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count) → yielding")
+        inbound.yield(envelope)
     }
 }

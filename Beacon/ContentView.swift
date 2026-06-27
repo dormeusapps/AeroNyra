@@ -58,14 +58,36 @@ struct ContentView: View {
         .task {
             // PHASE A: bring the radio up and watch the Xcode console. Two
             // phones should log discover → connect → LINK READY. Inbound bytes
-            // arrive in Stage 2; for now we just print what shows up. This
-            // print is spike instrumentation — Phase B replaces it with real
-            // routing into the conversation transcript.
+            // print below; Phase B replaces that print with real routing into
+            // the conversation transcript.
             do {
                 try await transport.start()
             } catch {
                 print("BLE start failed: \(error)")
             }
+
+            // ⚠️ TEMP STAGE-2 SPIKE TRIGGER — REMOVE IN PHASE B. ⚠️
+            // Retries every 2s until a peer link exists, then sends ONE
+            // envelope whose ciphertext is 256 random bytes (the shape of a
+            // real sealed payload — 256 is the smallest PayloadBucket, so this
+            // exercises multi-chunk framing). Purely to prove bytes cross and
+            // reassemble. Phase B deletes this and drives send() from the real
+            // ConversationView composer instead.
+            Task {
+                var sent = false
+                while !sent {
+                    try? await Task.sleep(for: .seconds(2))
+                    let payload = Data((0..<256).map { _ in UInt8.random(in: 0...255) })
+                    do {
+                        try await transport.send(Envelope(ciphertext: payload))
+                        print("✅ TEMP spike: sent one 256-byte test envelope")
+                        sent = true
+                    } catch {
+                        // No peer in range yet — keep retrying.
+                    }
+                }
+            }
+
             for await envelope in transport.incoming {
                 print("📨 inbound envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count)")
             }
