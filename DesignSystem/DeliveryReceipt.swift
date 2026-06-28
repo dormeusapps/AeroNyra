@@ -178,6 +178,10 @@ struct DeliveryReceipt: View {
         Text(text)
             .font(Typography.receiptStatus)
             .foregroundStyle(Color.textSecondary)
+            // Keep each token whole: never break a word across lines. The
+            // flexible Spacer in the status line absorbs the slack instead.
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     private var separator: some View {
