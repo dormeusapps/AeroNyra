@@ -15,16 +15,22 @@
 //   2. TRANSCRIPT — messages flow up from the bottom; newest at the
 //      bottom. Each row composes MessageRow.
 //
-//   3. COMPOSER — quiet by default: a placeholder, no shouting. The
-//      send button materializes only when there is text. Earns its
-//      visibility.
+//   3. COMPOSER — quiet by default: a placeholder, no shouting. A muted
+//      photo affordance lives on the left (always present, earns no color
+//      until tapped). The send button materializes only when there is
+//      text. Both earn their visibility.
 //
-//  This view receives a Conversation and renders it. The composer's send is
-//  wired through `MessageInbox` (read from the environment): the draft is
-//  persisted optimistically, then sealed and handed to the BLE transport.
+//  This view receives a Conversation and renders it. The composer's text
+//  send is wired through `MessageInbox` (read from the environment): the
+//  draft is persisted optimistically, then sealed and handed to the BLE
+//  transport. The photo affordance picks an image, normalizes it to a
+//  mesh-sized JPEG, and hands it to `inbox.sendMedia` — same optimistic
+//  path, but the payload is chunked + sealed per-chunk by the coordinator.
 //
 
 import SwiftUI
+import PhotosUI
+import UIKit
 
 struct ConversationView: View {
 
@@ -36,6 +42,10 @@ struct ConversationView: View {
     @Environment(MessageInbox.self) private var inbox
 
     @State private var draft: String = ""
+
+    /// The photo currently chosen in the system picker. Cleared back to nil
+    /// after each send so the same image can be picked again immediately.
+    @State private var pickedItem: PhotosPickerItem?
 
     /// Presence with the peer. Stubbed to .outOfRange until the BLE
     /// transport exists and a real ReachabilityMonitor drives it.
@@ -173,6 +183,8 @@ struct ConversationView: View {
         VStack(spacing: 0) {
             hairline
             HStack(alignment: .bottom, spacing: 10) {
+                photoButton
+
                 TextField(text: $draft, axis: .vertical) {
                     Text("message…")
                         .foregroundStyle(Color.composerPlaceholder)
@@ -194,6 +206,28 @@ struct ConversationView: View {
             .animation(.easeOut(duration: 0.18), value: draft.isEmpty)
         }
         .background(Color.bgApp)
+    }
+
+    /// The photo affordance — always present, leading the composer. Muted
+    /// per the Calm posture (no brand color; it doesn't shout). Opens the
+    /// system photo picker; selection is handled in `onChange`.
+    private var photoButton: some View {
+        PhotosPicker(selection: $pickedItem,
+                     matching: .images,
+                     photoLibrary: .shared()) {
+            Image(systemName: "photo")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(Color.textSecondary)
+                .frame(width: 38, height: 38)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Attach photo")
+        .onChange(of: pickedItem) { _, newItem in
+            guard let newItem else { return }
+            // Inherits the main actor; loads + normalizes off the actor in
+            // the async helper, then hands the JPEG to the inbox.
+            Task { await sendPickedPhoto(newItem) }
+        }
     }
 
     private var sendButton: some View {
@@ -226,5 +260,44 @@ struct ConversationView: View {
         // `Task` inherits the main actor here, so passing `conversation`
         // (a non-Sendable @Model) to the @MainActor inbox stays on-actor.
         Task { await inbox.send(trimmed, in: conversation) }
+    }
+
+    /// Load the picked image, normalize it to a mesh-sized JPEG, and hand it
+    /// to the inbox's optimistic media path. The blob is deliberately small:
+    /// a full-resolution photo would chunk into thousands of sealed envelopes
+    /// and never finish over BLE. 1280px long-edge @ 0.7 quality lands around
+    /// the "~40-chunk photo" the size model already assumes.
+    @MainActor
+    private func sendPickedPhoto(_ item: PhotosPickerItem) async {
+        // Always release the selection so the same image can be re-picked.
+        defer { pickedItem = nil }
+
+        guard let raw = try? await item.loadTransferable(type: Data.self),
+              let jpeg = Self.meshSizedJPEG(from: raw)
+        else { return }
+
+        await inbox.sendMedia(jpeg, mime: .jpeg, in: conversation)
+    }
+
+    /// Decode arbitrary picked image data (HEIC/PNG/JPEG/…), correct for
+    /// orientation, downscale the long edge to `maxDimension`, and re-encode
+    /// as JPEG. Returns nil if the data isn't a decodable image.
+    private static func meshSizedJPEG(from data: Data,
+                                      maxDimension: CGFloat = 1280,
+                                      quality: CGFloat = 0.7) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+
+        let longEdge = max(image.size.width, image.size.height)
+        let scale = longEdge > maxDimension ? maxDimension / longEdge : 1
+        let target = CGSize(width: image.size.width * scale,
+                            height: image.size.height * scale)
+
+        // UIGraphicsImageRenderer.draw bakes in the orientation, so the
+        // re-encoded JPEG is upright with no EXIF orientation dependency.
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let normalized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+        return normalized.jpegData(compressionQuality: quality)
     }
 }
