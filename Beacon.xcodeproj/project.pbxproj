@@ -147,6 +147,11 @@
 			path = Wipe;
 			sourceTree = "<group>";
 		};
+		7CAEDF7D2FF158A60084A5C4 /* Media */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Media;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -208,6 +213,7 @@
 		7C3B09772FED920D00AE9EC1 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				7CAEDF7D2FF158A60084A5C4 /* Media */,
 				7C3B09822FED9AC700AE9EC1 /* Protocol_Seam */,
 				7C3B097E2FED965B00AE9EC1 /* Routing */,
 				7C3B09762FED916500AE9EC1 /* Models */,
@@ -320,6 +326,7 @@
 				7C3B098D2FEDAC3600AE9EC1 /* Session */,
 				7C3B09912FEDADAD00AE9EC1 /* AtRest */,
 				7C3B09982FEDF37A00AE9EC1 /* Wipe */,
+				7CAEDF7D2FF158A60084A5C4 /* Media */,
 			);
 			name = Beacon;
 			productName = Beacon;
