@@ -47,12 +47,29 @@ enum SessionEvent: Sendable {
     /// create-or-fetch the Peer + Conversation and persist an inbound Message.
     /// `wireID` is the envelope id, for dedup against relayed duplicates.
     case received(peerKey: Data, plaintext: Data, wireID: MessageID)
+
+    /// A complete media transfer (photo / voice note) was reassembled and
+    /// integrity-verified from this peer. `data` is the whole blob; `wireID` is
+    /// derived from the 16-byte mediaID (stable across the transfer) so dedup
+    /// works the same as for text. Partial transfers never surface here.
+    case receivedMedia(peerKey: Data, data: Data, mime: MediaMimeType, wireID: MessageID)
 }
 
 actor FirstContactCoordinator {
 
     private let store: SignalSessionStore
     private let transport: BLEMeshTransport
+
+    /// Media chunking config. A chunk fills `mediaBucket` exactly once its
+    /// 1-byte payload tag (`mediaReserved`) is accounted for — no wasted
+    /// padding tier (see MediaChunker / MessagePayload).
+    private static let mediaBucket = 4096
+    private static let mediaReserved = 1
+
+    /// Collects inbound media chunks until a transfer is whole + verified.
+    /// Actor-isolated, so its buffers are race-free. Initialized in `init`
+    /// (4096/1 are known-valid, so the chunker can't fail — validated constant).
+    private var reassembler: MediaReassembler
 
     /// Links we've already greeted with our bundle (don't re-send each tick).
     private var greetedLinks: Set<UUID> = []
@@ -70,6 +87,9 @@ actor FirstContactCoordinator {
     init(store: SignalSessionStore, transport: BLEMeshTransport) {
         self.store = store
         self.transport = transport
+        self.reassembler = MediaReassembler(
+            chunker: try! MediaChunker(targetBucket: Self.mediaBucket,
+                                       reservedBytes: Self.mediaReserved))
         let (stream, continuation) = AsyncStream<SessionEvent>.makeStream()
         self.events = stream
         self.eventsContinuation = continuation
@@ -150,10 +170,50 @@ actor FirstContactCoordinator {
     func send(_ text: String, toRawKey rawKey: Data) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
-        let sealed = try session.seal(Data(text.utf8))
+        // Tag the plaintext as text so the receiver can tell it apart from a
+        // media manifest/chunk (which now share this same sealed path).
+        let sealed = try session.seal(MessagePayload.text(Data(text.utf8)).encoded())
         let envelope = Envelope(ciphertext: sealed)
         try await transport.send(envelope)
         return envelope.id
+    }
+
+    /// Seal + send a media blob as a manifest followed by N chunks, each its own
+    /// framed, sealed Envelope. Returns a `MessageID` derived from the 16-byte
+    /// mediaID, stable for the whole transfer (the caller persists it for dedup
+    /// + delivery matching).
+    ///
+    /// The manifest is sent first so the receiver knows the size/count before
+    /// chunks pile up; the reassembler tolerates any order regardless. Chunks go
+    /// out sequentially — the transport's notify path is now strict-FIFO
+    /// (Phase 6b.2a), so this ordered burst reassembles cleanly on the peer.
+    ///
+    /// Throws if no session exists, sealing fails, or a send fails. The caller
+    /// (MessageInbox) has optimistically persisted the row, so on a throw it
+    /// marks that message `.notDelivered` — nothing the user picked is lost.
+    func sendMedia(_ blob: Data, mime: MediaMimeType, toRawKey rawKey: Data) async throws -> MessageID {
+        let peer = store.peerIdentity(fromRawKey: rawKey)
+        let session = try store.session(with: peer)
+
+        let chunker = try MediaChunker(targetBucket: Self.mediaBucket,
+                                       reservedBytes: Self.mediaReserved)
+        // Use a CSPRNG 16-byte id (a MessageID's bytes) as the mediaID, so the
+        // same value is both the transfer key and the dedup MessageID.
+        let idBytes = MessageID.random().bytes
+        let (manifest, chunks) = try chunker.split(blob, mime: mime, mediaID: idBytes)
+
+        func emit(_ payload: MessagePayload) async throws {
+            let sealed = try session.seal(payload.encoded())
+            try await transport.send(Envelope(ciphertext: sealed))
+        }
+
+        let manifestJSON = try JSONEncoder().encode(manifest)
+        try await emit(.mediaManifest(manifestJSON))
+        for chunk in chunks {
+            try await emit(.mediaChunk(chunk))
+        }
+        print("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks → \(peer.userIDHex.prefix(16))…")
+        return MessageID(bytes: idBytes)!
     }
 
     // MARK: Inbound envelope → open + emit
@@ -162,12 +222,61 @@ actor FirstContactCoordinator {
         do {
             let (peer, plaintext) = try store.openInbound(envelope.ciphertext)
             let rawKey = store.rawPublicKey(of: peer)
-            eventsContinuation.yield(
-                .received(peerKey: rawKey, plaintext: plaintext, wireID: envelope.id)
-            )
-            print("first-contact: OPENED from \(peer.userIDHex.prefix(16))…")
+
+            guard let payload = MessagePayload.decode(plaintext) else {
+                print("first-contact: opened but undecodable payload from \(peer.userIDHex.prefix(16))…")
+                return
+            }
+
+            switch payload {
+            case .text(let body):
+                eventsContinuation.yield(
+                    .received(peerKey: rawKey, plaintext: body, wireID: envelope.id)
+                )
+                print("first-contact: OPENED text from \(peer.userIDHex.prefix(16))…")
+
+            case .mediaManifest(let json):
+                guard let manifest = try? JSONDecoder().decode(MediaManifest.self, from: json) else {
+                    print("first-contact: bad media manifest from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                if let done = reassembler.ingest(manifest: manifest) {
+                    emitMedia(done, rawKey: rawKey)
+                }
+
+            case .mediaChunk(let chunk):
+                if let done = reassembler.ingest(chunk: chunk) {
+                    emitMedia(done, rawKey: rawKey)
+                }
+            }
         } catch {
             print("first-contact: open failed: \(error)")
         }
+    }
+
+    /// Emit a completed media transfer to the persistence layer. The mediaID hex
+    /// (16 bytes) becomes the dedup `MessageID`.
+    private func emitMedia(_ done: MediaReassembler.Completed, rawKey: Data) {
+        guard let idBytes = Self.hexToBytes(done.mediaID),
+              let wireID = MessageID(bytes: idBytes) else { return }
+        eventsContinuation.yield(
+            .receivedMedia(peerKey: rawKey, data: done.data, mime: done.mime, wireID: wireID)
+        )
+        print("first-contact: MEDIA complete \(done.data.count)B (\(done.mime.rawValue))")
+    }
+
+    /// Decode a lowercase-hex string to bytes. nil on odd length or non-hex.
+    private static func hexToBytes(_ hex: String) -> [UInt8]? {
+        guard hex.count % 2 == 0 else { return nil }
+        var out: [UInt8] = []
+        out.reserveCapacity(hex.count / 2)
+        var idx = hex.startIndex
+        while idx < hex.endIndex {
+            let next = hex.index(idx, offsetBy: 2)
+            guard let b = UInt8(hex[idx..<next], radix: 16) else { return nil }
+            out.append(b)
+            idx = next
+        }
+        return out
     }
 }

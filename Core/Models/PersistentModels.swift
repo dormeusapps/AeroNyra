@@ -179,6 +179,15 @@ public final class Message {
     public var deliveryStateRaw: String
     public var relayHops: Int
 
+    /// Media payload, if this message is a photo or voice note rather than text.
+    /// Nil for text messages. The blob is the reassembled, integrity-verified
+    /// bytes (Phase 6b). At-rest protection is the store's Data Protection
+    /// (Phase 5b), same as `content` — not per-row encryption.
+    public var mediaData: Data?
+
+    /// Raw `MediaMimeType` ("jpeg"/"m4a") when `mediaData` is set; nil for text.
+    public var mediaMimeRaw: String?
+
     public var conversation: Conversation?
 
     public init(content: String,
@@ -186,6 +195,8 @@ public final class Message {
                 deliveryState: MessageDeliveryState = .sent,
                 isRead: Bool = false,
                 wireID: MessageID? = nil,
+                mediaData: Data? = nil,
+                mediaMimeRaw: String? = nil,
                 timestamp: Date = .now,
                 id: UUID = UUID()) {
         self.id = id
@@ -194,10 +205,21 @@ public final class Message {
         self.isRead = isRead
         self.timestamp = timestamp
         self.wireIDData = wireID.map { Data($0.bytes) }
+        self.mediaData = mediaData
+        self.mediaMimeRaw = mediaMimeRaw
         // Initialize the decomposed fields, then route through the bridge.
         self.deliveryStateRaw = "sent"
         self.relayHops = 0
         self.deliveryState = deliveryState
+    }
+
+    /// True when this message carries media (photo / voice note) rather than text.
+    public var isMedia: Bool { mediaData != nil }
+
+    /// The media kind, bridged from `mediaMimeRaw`.
+    public var mediaMime: MediaMimeType? {
+        get { mediaMimeRaw.flatMap(MediaMimeType.init(rawValue:)) }
+        set { mediaMimeRaw = newValue?.rawValue }
     }
 
     /// The wire id as a `MessageID`, if this message has been sent.

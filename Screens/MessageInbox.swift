@@ -50,6 +50,8 @@ final class MessageInbox {
                 handleEstablished(peerKey: key)
             case .received(let key, let plaintext, let wireID):
                 handleReceived(peerKey: key, plaintext: plaintext, wireID: wireID)
+            case .receivedMedia(let key, let data, let mime, let wireID):
+                handleReceivedMedia(peerKey: key, data: data, mime: mime, wireID: wireID)
             }
         }
     }
@@ -86,6 +88,30 @@ final class MessageInbox {
         save()
     }
 
+    /// A complete media transfer was reassembled + verified: persist it as an
+    /// inbound media Message (blob in the row, protected at rest by Phase 5b).
+    /// Deduped on the mediaID-derived wireID, so a re-sent transfer is ignored.
+    private func handleReceivedMedia(peerKey: Data, data: Data,
+                                     mime: MediaMimeType, wireID: MessageID) {
+        guard !alreadyStored(wireID) else { return }
+
+        let peer = peer(forRawKey: peerKey)
+        peer.lastSeen = .now
+        let conversation = conversation(for: peer)
+
+        let message = Message(content: "",
+                              isOutbound: false,
+                              deliveryState: .delivered,
+                              isRead: false,
+                              wireID: wireID,
+                              mediaData: data,
+                              mediaMimeRaw: mime.rawValue)
+        modelContext.insert(message)
+        message.conversation = conversation
+        conversation.lastActivity = .now
+        save()
+    }
+
     // MARK: - Outbound (composer-driven, optimistic)
 
     /// Persist `text` as an outbound Message IMMEDIATELY (so it is never lost),
@@ -115,6 +141,38 @@ final class MessageInbox {
             message.deliveryState = .notDelivered
             save()
             print("inbox: send failed, kept as .notDelivered: \(error)")
+        }
+    }
+
+    /// Persist `data` as an outbound media Message IMMEDIATELY (optimistic, like
+    /// text), then chunk + seal + send. On any failure the row is kept and
+    /// marked `.notDelivered`; the transcript shows the media the instant this
+    /// is called, not after the radio finishes the burst.
+    func sendMedia(_ data: Data, mime: MediaMimeType, in conversation: Conversation) async {
+        guard let peer = conversation.peer else {
+            print("inbox: cannot send media — conversation has no peer")
+            return
+        }
+        let rawKey = peer.publicKeyData
+
+        let message = Message(content: "",
+                              isOutbound: true,
+                              deliveryState: .sent,
+                              mediaData: data,
+                              mediaMimeRaw: mime.rawValue)
+        modelContext.insert(message)
+        message.conversation = conversation
+        conversation.lastActivity = .now
+        save()
+
+        do {
+            let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey)
+            message.wireIDData = Data(wireID.bytes)
+            save()
+        } catch {
+            message.deliveryState = .notDelivered
+            save()
+            print("inbox: media send failed, kept as .notDelivered: \(error)")
         }
     }
 
