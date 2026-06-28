@@ -3,23 +3,26 @@
 //  Security/Session
 //
 //  The `SecureSessionStore` conformance: owns the local libsignal identity and
-//  the in-memory protocol store, mints prekey bundles, and runs establishment.
+//  the protocol store, mints prekey bundles, and runs establishment.
 //
-//  PASS 1 of 2 — in-memory. See SignalSession.swift header.
+//  Phase 5a.3 — the store backend is now `any BeaconProtocolStore`, so this
+//  class drives EITHER InMemoryBeaconStore (ephemeral; the convenience inits,
+//  used by tests) OR PersistentBeaconStore (vault-backed; production). The
+//  persistent path lets the store OWN its registrationId — the in-memory path's
+//  `UInt32.random(...)` per construction is fine only because that store is
+//  thrown away, but it must NOT be used for a persistent store (a fresh id each
+//  launch silently breaks every existing session).
 //
-//  IDENTITY BRIDGING NOTE (important, will be revisited in PASS 2):
-//  libsignal uses its OWN `IdentityKeyPair` (an Ed25519-ish Curve25519 key it
-//  manages natively). Beacon's `PublicIdentity` (IdentityKeypair.swift) is a
-//  CryptoKit Curve25519 identity. These are NOT the same object. For the
-//  in-memory pass this store generates a libsignal identity and exposes its
-//  PUBLIC half as a `PublicIdentity`, so the boundary type is satisfied. Wiring
-//  the app's existing Secure-Enclave-bound identity INTO libsignal (so there is
-//  one identity, not two) is a deliberate PASS 2 task — it needs the identity
-//  private key in a form libsignal accepts, which touches the Enclave story.
-//  Flagged here so it is not forgotten.
+//  IDENTITY BRIDGING NOTE:
+//  The libsignal session identity is DERIVED from the app's Enclave-bound
+//  Curve25519 identity (SignalIdentityBridge.swift), so there is one identity,
+//  not two. The representation exposed is unchanged — libsignal's serialized
+//  identity key — so addresses, peer identity, and safety numbers are
+//  unaffected; only the key's ORIGIN is the app key rather than a fresh random.
 //
 
 import Foundation
+import CryptoKit
 import LibSignalClient
 
 public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
@@ -27,7 +30,7 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
     /// Fixed device id for v1 (single device per identity). Signal allows 1–127.
     private static let deviceId: UInt32 = 1
 
-    private let store: InMemoryBeaconStore
+    private let store: any BeaconProtocolStore
     private let context: StoreContext
     private let localAddress: ProtocolAddress
     public let localIdentity: PublicIdentity
@@ -35,42 +38,60 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
     /// Cache of live per-peer sessions, keyed by the peer's user id (hex).
     private var sessions: [String: SignalSession] = [:]
 
-    /// Convenience: stand up a store with a fresh app identity. Used by tests
-    /// and any standalone path that doesn't (yet) have the Enclave-bound
-    /// identity to hand in. Routes through the same bridge as production, so it
-    /// exercises the real identity path rather than a throwaway one.
+    /// Convenience: stand up an EPHEMERAL (in-memory) store with a fresh app
+    /// identity. Used by tests and any standalone path that doesn't have the
+    /// Enclave-bound identity to hand in. Routes through the same bridge as
+    /// production, so it exercises the real identity path.
     public convenience init() {
-        // A generated app identity has the same shape as the real one; the only
-        // difference in production is that the real one is Enclave-bound.
         self.init(appIdentity: IdentityKeypair.generate())
     }
 
-    /// Designated init (PASS 2, Option A): the libsignal session identity is
-    /// DERIVED from the app's Enclave-bound Curve25519 identity, so there is one
-    /// identity, not two (see SignalIdentityBridge.swift). The representation the
-    /// store exposes is unchanged — still libsignal's serialized identity key —
-    /// so addresses, peer identity, and safety numbers are unaffected; only the
-    /// key's ORIGIN changed (app key vs. a fresh random one).
+    /// EPHEMERAL designated init (in-memory backend). registrationId is random
+    /// because the store is discarded on relaunch; never use this for traffic
+    /// that must survive a restart — use `init(appIdentity:directory:dek:)`.
     public init(appIdentity: IdentityKeypair) {
-        // Bridge the app identity into libsignal. For a CryptoKit-generated key
-        // this cannot fail; trap loudly if it ever does, matching the file's
-        // existing "validated input, fail fast" stance (failableAddress below).
-        let identity: IdentityKeyPair
-        do {
-            identity = try appIdentity.libsignalIdentityKeyPair()
-        } catch {
-            fatalError("Bridging app identity into libsignal failed for a validated key: \(error)")
-        }
+        let identity = Self.bridge(appIdentity)
         let registrationId = UInt32.random(in: 1...0x3FFF)
         self.store = InMemoryBeaconStore(identity: identity, registrationId: registrationId)
         self.context = NullContext()
-        self.localIdentity = PublicIdentity(
-            agreementKey: identity.publicKey.serialize(),
-            signingKey: identity.publicKey.serialize()   // single libsignal identity key
-        )
-        // Address name = our identity public key hex (stable, unique, no server).
-        let name = identity.publicKey.serialize().map { String(format: "%02x", $0) }.joined()
-        self.localAddress = failableAddress(name: name, deviceId: Self.deviceId)
+        (self.localIdentity, self.localAddress) = Self.localBindings(for: identity)
+    }
+
+    /// PERSISTENT designated init (vault-backed backend). The store OWNS its
+    /// registrationId (generated once, reused), so sessions survive relaunch.
+    /// - Parameters:
+    ///   - appIdentity: the Enclave-bound app identity (bridged into libsignal).
+    ///   - directory: where the encrypted session file lives.
+    ///   - dek: the Data Encryption Key sealing that file (from SessionStoreKey).
+    public init(appIdentity: IdentityKeypair, directory: URL, dek: SymmetricKey) throws {
+        let identity = Self.bridge(appIdentity)
+        self.store = try PersistentBeaconStore(identity: identity, directory: directory, key: dek)
+        self.context = NullContext()
+        (self.localIdentity, self.localAddress) = Self.localBindings(for: identity)
+    }
+
+    // MARK: Construction helpers
+
+    /// Bridge the app identity into libsignal. For a CryptoKit-generated key this
+    /// cannot fail; trap loudly if it ever does, matching this file's existing
+    /// "validated input, fail fast" stance.
+    private static func bridge(_ appIdentity: IdentityKeypair) -> IdentityKeyPair {
+        do {
+            return try appIdentity.libsignalIdentityKeyPair()
+        } catch {
+            fatalError("Bridging app identity into libsignal failed for a validated key: \(error)")
+        }
+    }
+
+    /// Derive the public boundary identity + our local address from the bridged
+    /// libsignal identity. Address name = our identity public key hex (stable,
+    /// unique, no server).
+    private static func localBindings(for identity: IdentityKeyPair)
+        -> (PublicIdentity, ProtocolAddress) {
+        let pub = identity.publicKey.serialize()
+        let local = PublicIdentity(agreementKey: pub, signingKey: pub)
+        let name = pub.map { String(format: "%02x", $0) }.joined()
+        return (local, failableAddress(name: name, deviceId: deviceId))
     }
 
     // MARK: Bundle production
@@ -156,15 +177,20 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
 
     public func deleteSession(with peer: PublicIdentity) throws {
         sessions[peer.userIDHex] = nil
-        // In-memory store has no per-address delete in the public API; PASS 2's
-        // persistent store will implement real deletion. For the in-memory pass,
-        // dropping our cache reference is sufficient for tests.
+        // Persistent backend supports real per-address deletion; the in-memory
+        // backend has no public delete, so dropping the cache reference is all
+        // it can do (and all it needs — that store is ephemeral anyway).
+        if let persistent = store as? PersistentBeaconStore {
+            try persistent.removeSession(
+                for: failableAddress(name: peer.userIDHex, deviceId: Self.deviceId))
+        }
     }
 
     public func deleteAllSessions() throws {
         sessions.removeAll()
-        // PASS 2: clear the persistent store. In-memory state is dropped with
-        // the store instance.
+        if let persistent = store as? PersistentBeaconStore {
+            try persistent.wipe()
+        }
     }
 
     // MARK: Inbound attribution (completes the boundary's receive side)
@@ -172,8 +198,7 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
     /// Read the peer's public identity from a received bundle WITHOUT
     /// establishing a session. Used to attribute a link and to pick a
     /// deterministic first-contact initiator (so both sides don't initiate at
-    /// once). Could be promoted to the SecureSessionStore protocol if a second
-    /// engine ever appears; kept concrete for now.
+    /// once).
     public func peerIdentity(from bundle: PrekeyBundle) throws -> PublicIdentity {
         let decoded = try BundleWire.decode(bundle.data)
         let keyData = decoded.identityKey.serialize()
@@ -218,12 +243,9 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
     // The SwiftData layer keys a Peer by its RAW 32-byte X25519 public key
     // (Peer.publicKeyData). The session layer keys everything by libsignal's
     // SERIALIZED identity key — 33 bytes = one 0x05 type byte || the 32 raw
-    // bytes (confirmed against the installed PublicKey API: serialize() == 33,
-    // keyBytes == raw 32, see SESSION_HANDOFF §6). These two helpers are the
-    // ONLY place that mapping happens, so the 33-byte serialized rep never
-    // leaks out of this adapter into the persistence layer and back — the two
-    // representations stay isolated, and Peer.publicKeyData always matches the
-    // same raw-32 form our own identity uses.
+    // bytes. These two helpers are the ONLY place that mapping happens, so the
+    // 33-byte serialized rep never leaks out of this adapter into the
+    // persistence layer and back.
 
     /// Raw 32-byte X25519 public key for a peer, suitable for
     /// `Peer.publicKeyData`. Strips libsignal's leading type byte.
@@ -236,9 +258,7 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
 
     /// Inverse of `rawPublicKey(of:)`: reconstruct the `PublicIdentity` (the
     /// 33-byte serialized rep that keys sessions) from the raw 32-byte key
-    /// stored as `Peer.publicKeyData`. Prepends libsignal's Curve25519 type
-    /// byte so the result hex-matches the identity produced at establishment —
-    /// which is what `session(with:)` looks up by.
+    /// stored as `Peer.publicKeyData`.
     public func peerIdentity(fromRawKey raw: Data) -> PublicIdentity {
         precondition(raw.count == 32,
                      "expected 32-byte raw X25519 key, got \(raw.count)")

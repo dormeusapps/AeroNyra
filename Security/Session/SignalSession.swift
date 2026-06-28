@@ -2,18 +2,19 @@
 //  SignalSession.swift
 //  Security/Session
 //
-//  THE libsignal ADAPTER (in-memory first pass).
+//  THE libsignal ADAPTER.
 //
 //  Conforms the `SecureSession` / `SecureSessionStore` boundary to libsignal's
 //  Triple Ratchet (Double Ratchet + post-quantum Kyber prekeys, via PQXDH).
 //  The rest of the app talks only to the boundary; this file is the single
 //  place libsignal's API is touched.
 //
-//  PASS 1 of 2 — storage is IN-MEMORY (subclassing `InMemorySignalProtocolStore`).
-//  This proves the libsignal integration end-to-end before persistence is added.
-//  Sessions do NOT survive an app restart yet. PASS 2 swaps the store backend
-//  for vault-backed persistence (MessageVault) without touching the adapter
-//  logic, the boundary, or any caller.
+//  STORAGE BACKENDS (Phase 5a.3): the per-peer `SignalSession` and the store
+//  hold their libsignal store as `any BeaconProtocolStore` — satisfied by both
+//  `InMemoryBeaconStore` (ephemeral, kept for tests) and `PersistentBeaconStore`
+//  (vault-backed, survives relaunch). Bundle production now lives once in the
+//  `BeaconProtocolStore` extension (see BeaconProtocolStore.swift), so swapping
+//  the backend touches neither this adapter's logic nor any caller.
 //
 //  Bundle format note: libsignal's `PreKeyBundle` is a native object, but the
 //  boundary's `PrekeyBundle` is opaque `Data` (carrier-neutral — BLE/QR/etc.).
@@ -38,16 +39,16 @@ public enum SignalAdapterError: Error {
 // MARK: - In-memory store
 
 /// libsignal store backed by memory. Subclassing `InMemorySignalProtocolStore`
-/// gives us conformance to all six store protocols for free; we only add the
-/// prekey bookkeeping the adapter needs on top.
+/// gives us conformance to all six store protocols for free; we add only the
+/// one-time-prekey id bookkeeping the bundle producer needs on top, plus the
+/// `localIdentity` handle.
 ///
-/// PASS 2 will replace this with a vault-backed store. Nothing above it changes.
+/// Kept as the EPHEMERAL backend (tests, the convenience `SignalSessionStore()`
+/// init). Production uses PersistentBeaconStore. Both satisfy BeaconProtocolStore.
 final class InMemoryBeaconStore: InMemorySignalProtocolStore, @unchecked Sendable {
 
-    /// The id space for our single signed prekey + kyber prekey. One-time
-    /// prekeys get rotating ids. Kept tiny for the in-memory pass.
-    private(set) var signedPreKeyId: UInt32 = 1
-    private(set) var kyberPreKeyId: UInt32 = 1
+    /// Rotating id space for one-time prekeys. (Signed + Kyber prekeys use the
+    /// fixed id 1, applied in the shared `freshBundleMaterial`.)
     private var nextOneTimePreKeyId: UInt32 = 1
 
     /// Our own identity, kept for synchronous, throw-free access. NOTE: do NOT
@@ -63,70 +64,12 @@ final class InMemoryBeaconStore: InMemorySignalProtocolStore, @unchecked Sendabl
         super.init(identity: identity, registrationId: registrationId)
     }
 
-    /// Generate, store, and return the material for a fresh prekey bundle:
-    /// a one-time prekey, the signed prekey, and the Kyber (post-quantum) prekey.
-    /// The PRIVATE halves are stored here so this device can later decrypt a
-    /// first message that uses them; the PUBLIC halves go into the bundle.
-    func freshBundleMaterial(deviceId: UInt32) throws -> BundleMaterial {
-        let ctx = NullContext()
-
-        // One-time prekey (EC).
-        let preKeyId = nextOneTimePreKeyId
+    /// Ephemeral one-time prekey id allocation (BeaconProtocolStore requirement).
+    /// No persistence needed — this store is thrown away on relaunch.
+    func allocateOneTimePreKeyId() throws -> UInt32 {
+        let id = nextOneTimePreKeyId
         nextOneTimePreKeyId &+= 1
-        let preKeyPriv = PrivateKey.generate()
-        let preKeyRecord = try PreKeyRecord(id: preKeyId, privateKey: preKeyPriv)
-        try storePreKey(preKeyRecord, id: preKeyId, context: ctx)
-
-        // Signed prekey (EC), signed by the identity key.
-        let signedPriv = PrivateKey.generate()
-        let signedPub = signedPriv.publicKey
-        let signedSig = localIdentity.privateKey.generateSignature(message: signedPub.serialize())
-        let signedRecord = try SignedPreKeyRecord(
-            id: signedPreKeyId,
-            timestamp: UInt64(Date().timeIntervalSince1970 * 1000),
-            privateKey: signedPriv,
-            signature: signedSig
-        )
-        try storeSignedPreKey(signedRecord, id: signedPreKeyId, context: ctx)
-
-        // Kyber prekey (post-quantum), signed by the identity key.
-        let kyberPair = KEMKeyPair.generate()
-        let kyberSig = localIdentity.privateKey.generateSignature(message: kyberPair.publicKey.serialize())
-        let kyberRecord = try KyberPreKeyRecord(
-            id: kyberPreKeyId,
-            timestamp: UInt64(Date().timeIntervalSince1970 * 1000),
-            keyPair: kyberPair,
-            signature: kyberSig
-        )
-        try storeKyberPreKey(kyberRecord, id: kyberPreKeyId, context: ctx)
-
-        return BundleMaterial(
-            registrationId: try localRegistrationId(context: ctx),
-            deviceId: deviceId,
-            preKeyId: preKeyId,
-            preKeyPublic: preKeyPriv.publicKey,
-            signedPreKeyId: signedPreKeyId,
-            signedPreKeyPublic: signedPub,
-            signedPreKeySignature: signedSig,
-            identityKey: localIdentity.identityKey,
-            kyberPreKeyId: kyberPreKeyId,
-            kyberPreKeyPublic: kyberPair.publicKey,
-            kyberPreKeySignature: kyberSig
-        )
-    }
-
-    struct BundleMaterial {
-        let registrationId: UInt32
-        let deviceId: UInt32
-        let preKeyId: UInt32
-        let preKeyPublic: PublicKey
-        let signedPreKeyId: UInt32
-        let signedPreKeyPublic: PublicKey
-        let signedPreKeySignature: Data
-        let identityKey: IdentityKey
-        let kyberPreKeyId: UInt32
-        let kyberPreKeyPublic: KEMPublicKey
-        let kyberPreKeySignature: Data
+        return id
     }
 }
 
@@ -137,7 +80,7 @@ final class InMemoryBeaconStore: InMemorySignalProtocolStore, @unchecked Sendabl
 /// exact format is private to this adapter.
 enum BundleWire {
 
-    static func encode(_ m: InMemoryBeaconStore.BundleMaterial) -> Data {
+    static func encode(_ m: BundleMaterial) -> Data {
         var d = Data()
         func putU32(_ v: UInt32) { var be = v.bigEndian; withUnsafeBytes(of: &be) { d.append(contentsOf: $0) } }
         func putBlob(_ b: Data) { putU32(UInt32(b.count)); d.append(b) }
@@ -225,7 +168,7 @@ final class SignalSession: SecureSession, @unchecked Sendable {
     let peer: PublicIdentity
     private let peerAddress: ProtocolAddress
     private let localAddress: ProtocolAddress
-    private let store: InMemoryBeaconStore
+    private let store: any BeaconProtocolStore
     private let context: StoreContext
 
     private(set) var state: SecureSessionState
@@ -233,7 +176,7 @@ final class SignalSession: SecureSession, @unchecked Sendable {
     init(peer: PublicIdentity,
          peerAddress: ProtocolAddress,
          localAddress: ProtocolAddress,
-         store: InMemoryBeaconStore,
+         store: any BeaconProtocolStore,
          context: StoreContext,
          established: Bool) {
         self.peer = peer

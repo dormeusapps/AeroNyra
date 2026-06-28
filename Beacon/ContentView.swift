@@ -127,7 +127,7 @@ struct ContentView: View {
         do {
             let identity = try store.load()
             let container = try makeModelContainer()
-            makeSessionStack(identity: identity)
+            try makeSessionStack(identity: identity)
             phase = .ready(identity, container, store)
         } catch IdentityError.notFound {
             phase = .onboarding(store)
@@ -146,7 +146,7 @@ struct ContentView: View {
         do {
             try store.save(identity, overwrite: true)
             let container = try makeModelContainer()
-            makeSessionStack(identity: identity)
+            try makeSessionStack(identity: identity)
             phase = .ready(identity, container, store)
         } catch {
             // Stay in onboarding so the user can tap again. A real UX
@@ -160,12 +160,20 @@ struct ContentView: View {
     /// Build the secure-session store (from the loaded identity, so the session
     /// layer uses the SAME Enclave-bound identity as the rest of the app) and
     /// the first-contact coordinator that drives bundle exchange + establishment.
-    private func makeSessionStack(identity: IdentityKeypair) {
-        let secure = SignalSessionStore(appIdentity: identity)
+    ///
+    /// PASS 2 (Phase 5a.3): the store is now PERSISTENT — its libsignal session
+    /// state is vault-encrypted to disk under a Keychain-held DEK and survives a
+    /// relaunch, so an old peer's traffic decrypts after a restart with no fresh
+    /// first-contact. The DEK + store directory are stable across launches.
+    private func makeSessionStack(identity: IdentityKeypair) throws {
+        let dek = try SessionStoreKey.loadOrCreate(service: sessionKeyService)
+        let directory = try PersistentBeaconStore.defaultDirectory()
+        let secure = try SignalSessionStore(appIdentity: identity,
+                                            directory: directory, dek: dek)
         let coord = FirstContactCoordinator(store: secure, transport: transport)
         sessionStore = secure
         coordinator = coord
-        print("session store ready · identity \(secure.localIdentity.userIDHex.prefix(16))…")
+        print("session store ready (persistent) · identity \(secure.localIdentity.userIDHex.prefix(16))…")
         // Catch up on any links that already formed before the coordinator
         // existed (e.g. a peer already in range at launch).
         let ids = presence.reachableIDs
@@ -179,6 +187,10 @@ struct ContentView: View {
     /// Stable bundle-scoped identifier for the Secure Enclave key
     /// reference. Must not change across launches.
     private var enclaveService: String { "com.aeronyra.enclave.v1" }
+
+    /// Stable bundle-scoped identifier for the persistent session store's DEK.
+    /// Must not change across launches, or the session store reads as wiped.
+    private var sessionKeyService: String { "com.aeronyra.sessionkey.v1" }
 
     private func makeModelContainer() throws -> ModelContainer {
         let schema = Schema([
