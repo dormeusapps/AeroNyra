@@ -282,28 +282,48 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     }
 
     /// peripheral → central: chunked notify with backpressure. cbQueue.
+    ///
+    /// STRICT FIFO under backpressure: notify slices for a given link must reach
+    /// the peer in the exact order produced, because the peer reassembles each
+    /// frame sequentially ([type][len][payload]). A single sealed message is one
+    /// frame, but a media transfer is hundreds of frames sent back-to-back —
+    /// enough to keep the TX queue full. If a later frame were allowed to call
+    /// `updateValue` while an earlier frame's tail still sat in
+    /// `pendingNotifications`, the two would interleave on the wire and corrupt
+    /// the peer's reassembly. So: once ANY backlog exists, every new slice goes
+    /// behind it, and `peripheralManagerIsReady` drains strictly from the front.
     private func notifySubscribers(_ frame: Data) {
         guard let peripheral, let mailbox else { return }
         // Conservative chunk for notify; updateValue caps near the ATT MTU.
         let maxChunk = 180
+
+        // Slice the whole frame up front, in order.
+        var slices: [Data] = []
         var offset = 0
         while offset < frame.count {
             let end = min(offset + maxChunk, frame.count)
-            let slice = frame.subdata(in: offset..<end)
+            slices.append(frame.subdata(in: offset..<end))
+            offset = end
+        }
+
+        // If a backlog already exists, this frame MUST queue behind it — never
+        // send ahead of pending bytes, or the peer's sequential reassembly
+        // corrupts. The ready-callback drains the queue in order.
+        if !pendingNotifications.isEmpty {
+            pendingNotifications.append(contentsOf: slices)
+            log.info("notify queued behind backlog — \(self.pendingNotifications.count) chunks pending")
+            return
+        }
+
+        // No backlog: send directly. On the first refusal, stash this slice and
+        // every slice after it (still in order) for the drain.
+        for (i, slice) in slices.enumerated() {
             let ok = peripheral.updateValue(slice, for: mailbox, onSubscribedCentrals: nil)
             if !ok {
-                // TX queue full — stash the rest and resume in the ready callback.
-                pendingNotifications.append(slice)
-                offset = end
-                while offset < frame.count {
-                    let e2 = min(offset + maxChunk, frame.count)
-                    pendingNotifications.append(frame.subdata(in: offset..<e2))
-                    offset = e2
-                }
+                pendingNotifications.append(contentsOf: slices[i...])
                 log.info("notify queue full — \(self.pendingNotifications.count) chunks pending")
                 return
             }
-            offset = end
         }
     }
 }
