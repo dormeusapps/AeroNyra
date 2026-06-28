@@ -393,6 +393,13 @@ struct ConversationView: View {
     /// Decode arbitrary picked image data (HEIC/PNG/JPEG/…), correct for
     /// orientation, downscale the long edge to `maxDimension`, and re-encode
     /// as JPEG. Returns nil if the data isn't a decodable image.
+    ///
+    /// CRITICAL: the renderer is pinned to `format.scale = 1`. By default
+    /// UIGraphicsImageRenderer renders at the SCREEN scale (2× on iPad, 3× on a
+    /// Pro iPhone), so a 1280-POINT target would rasterize to 2560–3840 PIXELS
+    /// and the JPEG would balloon ~4–9× — which is exactly what turned one photo
+    /// into 360 BLE chunks and wedged the link. Scale 1 makes points == pixels,
+    /// so a 1280px/0.7 photo lands around the "~40-chunk" size the mesh expects.
     private static func meshSizedJPEG(from data: Data,
                                       maxDimension: CGFloat = 1280,
                                       quality: CGFloat = 0.7) -> Data? {
@@ -403,9 +410,11 @@ struct ConversationView: View {
         let target = CGSize(width: image.size.width * scale,
                             height: image.size.height * scale)
 
-        // UIGraphicsImageRenderer.draw bakes in the orientation, so the
-        // re-encoded JPEG is upright with no EXIF orientation dependency.
-        let renderer = UIGraphicsImageRenderer(size: target)
+        // Pin to 1:1 point→pixel (see note above), and bake in orientation via
+        // draw so the re-encoded JPEG is upright with no EXIF dependency.
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: target, format: format)
         let normalized = renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: target))
         }
