@@ -24,8 +24,20 @@
 //  session store — every key that crosses this boundary is the RAW 32-byte
 //  `Peer.publicKeyData` form (via store.rawPublicKey / store.peerIdentity).
 //
+//  PRESENCE-BY-IDENTITY (Phase 7a). The coordinator is ALSO the only place that
+//  knows which ephemeral BLE link maps to which crypto identity (`linkPeers`,
+//  learned from each peer's bundle). It therefore publishes a second stream —
+//  `reachablePeers` — carrying the set of RAW 32-byte peer keys currently
+//  reachable, computed as (live links ∩ identified links). This collapses the
+//  per-role presence double-count for free: one physical peer linked over BOTH
+//  GATT directions surfaces as two ephemeral ids but ONE identity, hence one
+//  key. A main-actor consumer mirrors this into MeshPresence so per-conversation
+//  reachability ("Direct" vs "Out of range") is finally real. Like `events`, the
+//  stream is `nonisolated` + unbounded-buffered, so emissions made before the
+//  consumer starts are held, not dropped.
+//
 //  An `actor` so its mutable link/peer state is race-free; the composition root
-//  feeds it the transport's streams and consumes `events`.
+//  feeds it the transport's streams and consumes `events` + `reachablePeers`.
 //
 
 import Foundation
@@ -74,7 +86,20 @@ actor FirstContactCoordinator {
     /// Links we've already greeted with our bundle (don't re-send each tick).
     private var greetedLinks: Set<UUID> = []
     /// Peer identity learned per link from their bundle.
+    ///
+    /// STICKY: not pruned in the reachability hot path. Presence is computed by
+    /// intersecting with the LIVE link set (`reachableLinks`), so a link that
+    /// goes away simply stops contributing — no need to forget its identity, and
+    /// keeping it avoids a presence flicker on a transient link blip. Bounded by
+    /// the number of distinct links seen this session; UUIDs are never reused
+    /// for a different peer.
     private var linkPeers: [UUID: PublicIdentity] = [:]
+
+    /// The most recent set of reachable BLE links (ephemeral CoreBluetooth ids)
+    /// from the transport. Remembered between ticks so `onBundle` can recompute
+    /// presence when a link becomes identified, and so `emitReachablePeers`
+    /// always intersects against the current live set.
+    private var reachableLinks: Set<UUID> = []
 
     /// Events for the main-actor persistence layer (MessageInbox). `nonisolated`
     /// so the consumer can `for await` it without hopping into actor isolation;
@@ -83,6 +108,13 @@ actor FirstContactCoordinator {
     /// starts are held, not dropped.
     nonisolated let events: AsyncStream<SessionEvent>
     private let eventsContinuation: AsyncStream<SessionEvent>.Continuation
+
+    /// Presence resolved to identity (Phase 7a): the set of RAW 32-byte peer
+    /// keys currently reachable over BLE. A main-actor consumer mirrors this
+    /// into MeshPresence so per-conversation reachability is real. `nonisolated`
+    /// + unbounded-buffered for the same reasons as `events`.
+    nonisolated let reachablePeers: AsyncStream<Set<Data>>
+    private let reachablePeersContinuation: AsyncStream<Set<Data>>.Continuation
 
     init(store: SignalSessionStore, transport: BLEMeshTransport) {
         self.store = store
@@ -93,17 +125,23 @@ actor FirstContactCoordinator {
         let (stream, continuation) = AsyncStream<SessionEvent>.makeStream()
         self.events = stream
         self.eventsContinuation = continuation
+
+        let (rStream, rContinuation) = AsyncStream<Set<Data>>.makeStream()
+        self.reachablePeers = rStream
+        self.reachablePeersContinuation = rContinuation
     }
 
-    // MARK: Reachability → send our bundle to new links
+    // MARK: Reachability → send our bundle to new links + publish presence
 
     func onReachable(_ ids: [UUID]) async {
         let current = Set(ids)
+        reachableLinks = current
         greetedLinks.formIntersection(current)   // drop links that went away
         for link in current where !greetedLinks.contains(link) {
             greetedLinks.insert(link)
             await sendOurBundle(to: link)
         }
+        emitReachablePeers()
     }
 
     private func sendOurBundle(to link: UUID) async {
@@ -117,6 +155,21 @@ actor FirstContactCoordinator {
         }
     }
 
+    /// Publish the set of RAW 32-byte keys currently reachable: every live link
+    /// that we've resolved to an identity, mapped to its raw key and de-duped by
+    /// the `Set`. The de-dup is what collapses the per-role double-count — both
+    /// GATT directions of one peer map to the same identity, hence one key.
+    private func emitReachablePeers() {
+        var keys = Set<Data>()
+        for link in reachableLinks {
+            if let peer = linkPeers[link] {
+                keys.insert(store.rawPublicKey(of: peer))
+            }
+        }
+        reachablePeersContinuation.yield(keys)
+        print("first-contact: presence → \(keys.count) reachable peer(s)")
+    }
+
     // MARK: Inbound bundle → maybe initiate
 
     func onBundle(link: UUID, data: Data) async {
@@ -126,6 +179,9 @@ actor FirstContactCoordinator {
             return
         }
         linkPeers[link] = peer
+        // A link just became identified — if it's currently reachable, this is
+        // the moment its peer's presence flips on. Recompute + publish.
+        emitReachablePeers()
 
         // Deterministic initiator: the higher identity key initiates. Both
         // sides compute the same comparison, so exactly one initiates.
