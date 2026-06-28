@@ -19,7 +19,9 @@
 //
 //  Wiring owned here:
 //   • BLE transport — started at launch, lives the whole app lifetime.
-//   • MeshPresence  — fed from the transport's reachability, read by Nearby.
+//   • MeshPresence  — fed from the transport's reachability (link ids) AND,
+//     via ReadyView, from the coordinator's identity-resolved presence (peer
+//     keys). Read by Nearby (blips + count) and by per-conversation presence.
 //   • SignalSessionStore — built from the SAME loaded identity (one identity
 //     end to end).
 //   • FirstContactCoordinator — marries transport + store for carrier-neutral
@@ -28,6 +30,9 @@
 //     and the coordinator.
 //   • MessageInbox — owned by ReadyView (below), on the main actor, so the
 //     coordinator's SessionEvents become SwiftData Peer/Conversation/Message.
+//   • Presence-by-identity — ReadyView also consumes the coordinator's
+//     `reachablePeers` stream and mirrors it into MeshPresence, so the BLE link
+//     ↔ crypto-identity resolution surfaces as real per-conversation presence.
 //
 
 import SwiftUI
@@ -248,11 +253,23 @@ struct ContentView: View {
 /// `MessageInbox` are both isolation-correct under Swift 6 — no main-actor work
 /// happens in `bootstrap()`. Once built, the inbox is injected into the
 /// environment (for the composer in ConversationView) and its event loop runs.
+///
+/// PRESENCE-BY-IDENTITY (Phase 7a): ReadyView also consumes the coordinator's
+/// `reachablePeers` stream — the BLE-link ↔ crypto-identity resolution — and
+/// mirrors it into the environment's `MeshPresence`. This is the lifetime- and
+/// isolation-correct home for it: the coordinator is non-optional here, the
+/// `.task` runs on the main actor, and `presence` is the same instance ContentView
+/// injects above the phase switch. (Done alongside, not inside, the inbox loop —
+/// presence flows even before the inbox exists.)
 private struct ReadyView: View {
     let container: ModelContainer
     let coordinator: FirstContactCoordinator
 
     @State private var inbox: MessageInbox?
+
+    /// The shared presence object injected by ContentView. We write its
+    /// identity-resolved set from the coordinator's `reachablePeers` stream.
+    @Environment(MeshPresence.self) private var presence
 
     var body: some View {
         Group {
@@ -269,6 +286,14 @@ private struct ReadyView: View {
             if inbox == nil {
                 inbox = MessageInbox(modelContext: container.mainContext,
                                      coordinator: coordinator)
+            }
+        }
+        .task {
+            // Mirror identity-resolved presence into MeshPresence for the app's
+            // lifetime. Unbounded-buffered upstream, so anything emitted before
+            // this starts (e.g. the launch catch-up onReachable) is delivered.
+            for await keys in coordinator.reachablePeers {
+                presence.reachablePeerKeys = keys
             }
         }
     }
