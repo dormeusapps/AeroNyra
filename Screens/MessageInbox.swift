@@ -176,6 +176,72 @@ final class MessageInbox {
         }
     }
 
+    // MARK: - Resend (manual tap + auto-retry on return-to-range)  Phase 7c
+
+    /// Re-attempt delivery of a single `.notDelivered` outbound message by
+    /// RE-SEALING it from the persisted row (OPEN-4: reuse the row, fresh
+    /// wireID). The row holds the plaintext (`content`) and any media blob
+    /// (`mediaData` + `mediaMime`), so the natural retry is to call the same
+    /// coordinator path again — which advances the ratchet and mints a NEW
+    /// envelope id. This is the only retry that survives a relaunch: the
+    /// router's in-memory outbox is gone after a restart, but the row is not.
+    ///
+    /// Only acts on an outbound row that is currently `.notDelivered`, and flips
+    /// it to `.sent` up front, so a double-tap or an overlapping auto-flush
+    /// can't put the same row in flight twice. On success the row keeps `.sent`
+    /// and stores the fresh wireID; on failure it reverts to `.notDelivered`.
+    func resend(_ message: Message) async {
+        guard message.isOutbound, message.deliveryState == .notDelivered else { return }
+        guard let rawKey = message.conversation?.peer?.publicKeyData else {
+            print("inbox: cannot resend — message has no peer")
+            return
+        }
+
+        // Flip to .sent up front: the chip stops saying "tap to resend" and a
+        // concurrent flush won't re-pick this row (the fetch is .notDelivered
+        // only). Reverts on failure below.
+        message.deliveryState = .sent
+        save()
+
+        do {
+            let wireID: MessageID
+            if message.isMedia, let data = message.mediaData, let mime = message.mediaMime {
+                wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey)
+            } else {
+                wireID = try await coordinator.send(message.content, toRawKey: rawKey)
+            }
+            message.wireIDData = Data(wireID.bytes)
+            message.conversation?.lastActivity = .now
+            save()
+            print("inbox: resend OK → \(wireID)")
+        } catch {
+            message.deliveryState = .notDelivered
+            save()
+            print("inbox: resend failed, kept .notDelivered: \(error)")
+        }
+    }
+
+    /// Auto-retry (Tier 3): flush every `.notDelivered` outbound message whose
+    /// peer is now reachable. Called from the composition root when presence
+    /// gains a peer. Each row re-seals via `resend` (so the same guard +
+    /// fresh-wireID semantics apply). A no-op when no one is reachable.
+    func flushUndelivered(toReachableKeys reachableKeys: Set<Data>) async {
+        guard !reachableKeys.isEmpty else { return }
+
+        // `deliveryStateRaw` is the queryable form of the state enum.
+        let raw = "notDelivered"
+        let descriptor = FetchDescriptor<Message>(
+            predicate: #Predicate { $0.isOutbound && $0.deliveryStateRaw == raw }
+        )
+        guard let stuck = try? modelContext.fetch(descriptor), !stuck.isEmpty else { return }
+
+        for message in stuck {
+            guard let key = message.conversation?.peer?.publicKeyData,
+                  reachableKeys.contains(key) else { continue }
+            await resend(message)
+        }
+    }
+
     // MARK: - Fetch-or-create
 
     private func peer(forRawKey key: Data) -> Peer {

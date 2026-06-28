@@ -31,6 +31,10 @@ struct MessageRow: View {
 
     let message: Message
 
+    /// The send/persist bridge, injected by ReadyView. Used to re-send a
+    /// `.notDelivered` message when its chip is tapped (Phase 7c).
+    @Environment(MessageInbox.self) private var inbox
+
     @State private var receiptExpanded: Bool = false
     @State private var showPhotoViewer: Bool = false
 
@@ -63,6 +67,16 @@ struct MessageRow: View {
                 if message.isOutbound {
                     DeliveryChip(state: message.deliveryState)
                         .padding(.top, 2)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // The chip reads "tap to resend" only in the failed
+                            // state; tapping it re-seals + re-sends the row.
+                            // (Other states ignore the tap — the bubble still
+                            // owns the receipt toggle.)
+                            if message.deliveryState == .notDelivered {
+                                Task { await inbox.resend(message) }
+                            }
+                        }
                 }
                 if receiptExpanded {
                     receipt

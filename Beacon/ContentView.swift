@@ -306,16 +306,33 @@ private struct ReadyView: View {
         .modelContainer(container)
         .task {
             if inbox == nil {
-                inbox = MessageInbox(modelContext: container.mainContext,
-                                     coordinator: coordinator)
+                let built = MessageInbox(modelContext: container.mainContext,
+                                         coordinator: coordinator)
+                inbox = built
+                // Initial auto-retry: any peers already reachable at launch get
+                // their stuck `.notDelivered` messages re-sent now. No-op if the
+                // set is empty (presence not resolved yet — the stream trigger
+                // below catches it once a peer comes up).
+                await built.flushUndelivered(toReachableKeys: presence.reachablePeerKeys)
             }
         }
         .task {
             // Mirror identity-resolved presence into MeshPresence for the app's
             // lifetime. Unbounded-buffered upstream, so anything emitted before
             // this starts (e.g. the launch catch-up onReachable) is delivered.
+            //
+            // AUTO-RETRY (Phase 7c, Tier 3): when the reachable set GAINS a peer
+            // (a transition, not every tick), flush any `.notDelivered` messages
+            // bound for now-reachable peers. We diff against the previous set so
+            // a steady stream of identical presence updates doesn't re-flush.
+            var previous = Set<Data>()
             for await keys in coordinator.reachablePeers {
                 presence.reachablePeerKeys = keys
+                let newlyReachable = keys.subtracting(previous)
+                previous = keys
+                if !newlyReachable.isEmpty {
+                    await inbox?.flushUndelivered(toReachableKeys: keys)
+                }
             }
         }
     }
