@@ -34,6 +34,14 @@
 //  out via `router.send`, so our own ids are marked seen and flooding echoes
 //  don't loop back to us. BUNDLES stay link-local and direct (`sendBundle`).
 //
+//  DELIVERY ACKS (Phase 7b.2b). When we open a TEXT message we seal a tiny
+//  delivery receipt back to the sender — its wire id plus the hop count the
+//  message travelled (maxHops − arrival ttl). The receipt rides the same sealed
+//  Envelope path (untracked: no receipt-of-receipt, no delivery tracking on the
+//  ack itself). On the sending side, opening an `.ack` calls
+//  `router.confirmDelivery`, which turns the sender's chip into Delivered /
+//  Relayed and cancels its stuck-send timeout. Media acks come in 7b.2c.
+//
 //  PRESENCE-BY-IDENTITY (Phase 7a). The coordinator is ALSO the only place that
 //  knows which ephemeral BLE link maps to which crypto identity (`linkPeers`,
 //  learned from each peer's bundle). It therefore publishes a second stream —
@@ -243,13 +251,16 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// throws, so the caller (MessageInbox) keeps its optimistically-persisted
     /// row and marks it `.notDelivered` — exactly as before the router existed.
     ///
-    /// Richer, asynchronous transitions (delivered / relayed / queued, and a
-    /// stuck-send timeout) arrive via the router's `deliveryUpdates` stream and
-    /// are wired into the inbox in Phase 7b.2; until then this preserves the
-    /// pre-router behaviour precisely.
-    private func routeOut(_ envelope: Envelope) async throws {
+    /// `tracked` (default true) is forwarded to the router: a real text message
+    /// is tracked (delivery state + stuck-send timeout), while a media
+    /// manifest/chunk goes untracked (still flooded + seen-marked, but not
+    /// individually delivery-tracked — media gets message-level acks in 7b.2c).
+    /// Richer, asynchronous transitions (delivered / relayed, or a timeout)
+    /// arrive via the router's `deliveryUpdates` stream and are wired into the
+    /// inbox in Phase 7b.2.
+    private func routeOut(_ envelope: Envelope, tracked: Bool = true) async throws {
         guard let router else { throw TransportError.notStarted }
-        let state = await router.send(envelope)
+        let state = await router.send(envelope, tracked: tracked)
         guard state == .sent else { throw TransportError.sendFailed }
     }
 
@@ -269,7 +280,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // media manifest/chunk (which now share this same sealed path).
         let sealed = try session.seal(MessagePayload.text(Data(text.utf8)).encoded())
         let envelope = Envelope(ciphertext: sealed)
-        try await routeOut(envelope)
+        try await routeOut(envelope)   // tracked: a real message earns a receipt
         return envelope.id
     }
 
@@ -297,9 +308,12 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let idBytes = MessageID.random().bytes
         let (manifest, chunks) = try chunker.split(blob, mime: mime, mediaID: idBytes)
 
+        // Manifest + chunks are UNTRACKED control envelopes: flooded + seen-
+        // marked, but not individually delivery-tracked (no per-chunk timeout,
+        // no outbox bloat). Message-level media acks land in 7b.2c.
         func emit(_ payload: MessagePayload) async throws {
             let sealed = try session.seal(payload.encoded())
-            try await routeOut(Envelope(ciphertext: sealed))
+            try await routeOut(Envelope(ciphertext: sealed), tracked: false)
         }
 
         let manifestJSON = try JSONEncoder().encode(manifest)
@@ -309,6 +323,25 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
         print("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks → \(peer.userIDHex.prefix(16))…")
         return MessageID(bytes: idBytes)!
+    }
+
+    /// Seal a delivery receipt back to `peer` for a data envelope we just
+    /// opened, stamped with the hop count it travelled (maxHops − arrival ttl:
+    /// 0 for a direct delivery, ≥1 if relayed). The receipt rides the same
+    /// sealed Envelope path but is sent UNTRACKED — it is itself never acked
+    /// (no receipt loop) and earns no delivery state. Best-effort: a failed ack
+    /// just means the sender keeps showing "Sent" until its timeout, and it
+    /// never blocks or fails inbound handling.
+    private func sendDeliveryAck(for envelope: Envelope, to peer: PublicIdentity) async {
+        let hops = UInt8(max(0, Int(Envelope.maxHops) - Int(envelope.ttl)))
+        do {
+            let session = try store.session(with: peer)
+            let payload = MessagePayload.deliveryAck(wireID: envelope.id, hops: hops)
+            let sealed = try session.seal(payload.encoded())
+            await router?.send(Envelope(ciphertext: sealed), tracked: false)
+        } catch {
+            print("first-contact: delivery-ack seal/send failed: \(error)")
+        }
     }
 
     // MARK: Relay split-horizon + inbound open  (EnvelopeReceiver)
@@ -350,6 +383,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     .received(peerKey: rawKey, plaintext: body, wireID: envelope.id)
                 )
                 print("first-contact: OPENED text from \(peer.userIDHex.prefix(16))…")
+                // Acknowledge: tell the sender we received it, with hop count.
+                await sendDeliveryAck(for: envelope, to: peer)
 
             case .mediaManifest(let json):
                 guard let manifest = try? JSONDecoder().decode(MediaManifest.self, from: json) else {
@@ -364,6 +399,18 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 if let done = reassembler.ingest(chunk: chunk) {
                     emitMedia(done, rawKey: rawKey)
                 }
+
+            case .ack(let body):
+                // A delivery receipt for one of OUR sent messages. Match it to
+                // the router's outbox and advance the sender-side chip to
+                // Delivered / Relayed (and cancel that message's timeout). We
+                // never ack an ack, so this terminates the receipt exchange.
+                guard let (wireID, hops) = MessagePayload.parseDeliveryAck(body) else {
+                    print("first-contact: malformed delivery ack from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                await router?.confirmDelivery(of: wireID, hops: Int(hops))
+                print("first-contact: ACK \(wireID) (\(hops) hop(s)) from \(peer.userIDHex.prefix(16))…")
             }
         } catch {
             print("first-contact: open failed: \(error)")

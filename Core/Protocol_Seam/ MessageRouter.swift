@@ -23,6 +23,16 @@
 //  is marked seen up front and the echoes that flooding produces are recognised
 //  as duplicates rather than re-relayed or handed back to us to "open".
 //
+//  DELIVERY STATE (Phase 7b.2b): a TRACKED send (a real outbound message) arms a
+//  stuck-send timeout — if no confirmation lands within `deliveryTimeout`, the
+//  message is reported `.notDelivered`. A delivery ack decoded by the Security
+//  layer calls `confirmDelivery`, which cancels that timeout and reports
+//  `.delivered` / `.relayed(hops)`. Control envelopes that are not themselves
+//  messages — delivery acks, and the manifest/chunk envelopes of a media
+//  transfer — send UNTRACKED: still flooded and marked seen, but with no outbox
+//  entry, no delivery update, and no timeout. (Media gets its own message-level
+//  tracking + acks in Phase 7b.2c.)
+//
 
 import Foundation
 
@@ -91,13 +101,27 @@ public actor MessageRouter {
     /// Default dedup window. Sized for a busy room; tune against real traffic.
     public static let defaultSeenCapacity = 2048
 
+    /// How long a tracked outbound message may sit on `.sent` (handed to the
+    /// radio, awaiting a delivery ack) before the router gives up and reports it
+    /// `.notDelivered`. A direct hop confirms in well under a second; a multi-hop
+    /// relay path is slower, so this is generous on purpose — too short would
+    /// false-fail a legitimate 7-hop delivery. Tune against real mesh traffic.
+    public static let deliveryTimeout: Duration = .seconds(45)
+
     private let transports: [MeshTransport]
     private var seen: SeenCache
     private weak var receiver: EnvelopeReceiver?
 
     /// Outbound messages awaiting confirmation, keyed by envelope id. Retained
-    /// so we can report state and re-send on a failed delivery.
+    /// so we can report state and re-send on a failed delivery. Only TRACKED
+    /// sends land here; untracked control envelopes (acks, media chunks) do not.
     private var outbox: [MessageID: OutboxEntry] = [:]
+
+    /// Per-message stuck-send timers, keyed by envelope id. Armed when a tracked
+    /// send reaches `.sent`; cancelled the instant a terminal state (delivered /
+    /// relayed / notDelivered) is recorded for that id. A fired timer flips a
+    /// still-unconfirmed message to `.notDelivered`.
+    private var timeouts: [MessageID: Task<Void, Never>] = [:]
 
     private var consumeTasks: [Task<Void, Never>] = []
 
@@ -140,6 +164,8 @@ public actor MessageRouter {
     public func stop() {
         consumeTasks.forEach { $0.cancel() }
         consumeTasks.removeAll()
+        for t in timeouts.values { t.cancel() }
+        timeouts.removeAll()
         transports.forEach { $0.stop() }
     }
 
@@ -151,23 +177,35 @@ public actor MessageRouter {
 
     // MARK: Outbound
 
-    /// Send a sealed envelope and begin tracking its delivery.
+    /// Send a sealed envelope and (when `tracked`) begin tracking its delivery.
     ///
     /// The envelope arrives already sealed from the Security layer; the router
     /// only routes it. Marking our own id as seen up front means the echoes
     /// that flooding produces are recognised as duplicates and neither
-    /// re-relayed nor handed back to us to "open".
+    /// re-relayed nor handed back to us to "open" — so seen-marking happens for
+    /// EVERY send, tracked or not.
+    ///
+    /// `tracked` (default true) distinguishes a real outbound MESSAGE from a
+    /// control envelope:
+    ///   • tracked   — a text/data message. Gets an outbox entry, emits a
+    ///                 `DeliveryUpdate`, and arms the stuck-send timeout.
+    ///   • untracked — a delivery ack, or a media manifest/chunk. Flooded and
+    ///                 seen-marked, but no outbox entry, no update, no timeout.
+    ///                 (These are not individually confirmable messages; media
+    ///                 gets message-level tracking in 7b.2c.)
     ///
     /// Returns the IMMEDIATE routing outcome so a synchronous caller can react:
     ///   • `.sent`            — handed to the radio for broadcast.
     ///   • `.waitingForRange` — no peer reachable; queued in the outbox.
     ///   • `.notDelivered`    — the transport rejected it.
-    /// (Later, asynchronous transitions — `.delivered` / `.relayed` once acks
-    /// land, or a timeout — are reported via `deliveryUpdates`; Phase 7b.2.)
+    /// Asynchronous transitions — `.delivered` / `.relayed` once an ack lands,
+    /// or `.notDelivered` on timeout — are reported via `deliveryUpdates`.
     /// `@discardableResult` so `resend` and any fire-and-forget caller compile.
     @discardableResult
-    public func send(_ envelope: Envelope) async -> MessageDeliveryState {
-        outbox[envelope.id] = OutboxEntry(envelope: envelope, state: .sent)
+    public func send(_ envelope: Envelope, tracked: Bool = true) async -> MessageDeliveryState {
+        if tracked {
+            outbox[envelope.id] = OutboxEntry(envelope: envelope, state: .sent)
+        }
         _ = seen.containsOrInsert(envelope.id)
 
         let resulting: MessageDeliveryState
@@ -180,7 +218,11 @@ public actor MessageRouter {
         } catch {
             resulting = .notDelivered
         }
-        update(envelope.id, resulting)
+
+        if tracked {
+            update(envelope.id, resulting)
+            if resulting == .sent { armTimeout(for: envelope.id) }
+        }
         return resulting
     }
 
@@ -205,7 +247,8 @@ public actor MessageRouter {
     }
 
     /// Confirm a message reached the recipient. `hops == 0` means a direct
-    /// delivery; `hops >= 1` means it was relayed.
+    /// delivery; `hops >= 1` means it was relayed. Cancels the stuck-send
+    /// timeout for this id (via `update`'s terminal handling).
     public func confirmDelivery(of id: MessageID, hops: Int) {
         guard outbox[id] != nil else { return }
         update(id, hops <= 0 ? .delivered : .relayed(hops: hops))
@@ -253,7 +296,33 @@ public actor MessageRouter {
 
     private func update(_ id: MessageID, _ state: MessageDeliveryState) {
         outbox[id]?.state = state
+        if state.isTerminal { cancelTimeout(for: id) }
         updates.yield(DeliveryUpdate(id: id, state: state))
+    }
+
+    /// Arm (or re-arm) the stuck-send timer for a tracked, just-sent message.
+    /// Fires once after `deliveryTimeout`; a terminal state cancels it first.
+    private func armTimeout(for id: MessageID) {
+        cancelTimeout(for: id)
+        timeouts[id] = Task { [weak self] in
+            try? await Task.sleep(for: MessageRouter.deliveryTimeout)
+            guard !Task.isCancelled else { return }
+            await self?.timeoutFired(for: id)
+        }
+    }
+
+    /// The timer elapsed without a confirmation: if the message is still
+    /// non-terminal, surface it as `.notDelivered` so it stops sitting on
+    /// "handed to radio" and offers the user a resend.
+    private func timeoutFired(for id: MessageID) {
+        timeouts[id] = nil
+        guard let entry = outbox[id], !entry.state.isTerminal else { return }
+        update(id, .notDelivered)
+    }
+
+    private func cancelTimeout(for id: MessageID) {
+        timeouts[id]?.cancel()
+        timeouts[id] = nil
     }
 
     /// Resolve a transport by kind. `.internet` has no implementation in v1
