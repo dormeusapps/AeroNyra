@@ -57,14 +57,28 @@ public struct MediaChunker {
     /// sends more/smaller. Must be one of `PayloadBucket.sizes`.
     public let targetBucket: Int
 
-    /// Bytes of actual media carried per chunk.
-    public var payloadPerChunk: Int { targetBucket - Self.headerSize }
+    /// Bytes to leave free at the front of the bucket for an OUTER frame the
+    /// chunker itself doesn't write — specifically the 1-byte payload-kind tag
+    /// (see MessagePayload) that classifies a sealed plaintext as text vs.
+    /// manifest vs. chunk. Reserving it here keeps `[tag ‖ header ‖ payload]`
+    /// inside the SAME bucket, so a framed chunk still pads to `targetBucket`
+    /// exactly rather than spilling into the next tier. Default 0 (unframed).
+    public let reservedBytes: Int
 
-    public init(targetBucket: Int = 4096) throws {
+    /// Bytes of actual media carried per chunk.
+    public var payloadPerChunk: Int { targetBucket - Self.headerSize - reservedBytes }
+
+    public init(targetBucket: Int = 4096, reservedBytes: Int = 0) throws {
         guard PayloadBucket.sizes.contains(targetBucket) else {
             throw MediaChunkerError.invalidBucket(targetBucket)
         }
+        // Leave at least one byte of media per chunk after header + reserve.
+        guard reservedBytes >= 0,
+              targetBucket - Self.headerSize - reservedBytes > 0 else {
+            throw MediaChunkerError.invalidBucket(targetBucket)
+        }
         self.targetBucket = targetBucket
+        self.reservedBytes = reservedBytes
     }
 
     // MARK: - Split
