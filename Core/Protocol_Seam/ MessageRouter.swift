@@ -1,6 +1,6 @@
 //
 //  MessageRouter.swift
-//  Beacon (working title)
+//  Core/Routing
 //
 //  Where the pieces meet.
 //
@@ -15,6 +15,14 @@
 //  observes. Inbound envelopes are handed to an `EnvelopeReceiver` (the
 //  Security layer) which alone can open them.
 //
+//  WIRED (Phase 7b.1): this is now the Envelope I/O layer in BOTH directions.
+//  Inbound — the router consumes each transport's `incoming`, dedups (which also
+//  collapses the notify+write duplicate-envelope quirk), relays within the hop
+//  budget, and hands survivors to the receiver. Outbound — the Security layer
+//  (FirstContactCoordinator) seals an Envelope and calls `send`, so OUR OWN id
+//  is marked seen up front and the echoes that flooding produces are recognised
+//  as duplicates rather than re-relayed or handed back to us to "open".
+//
 
 import Foundation
 
@@ -27,6 +35,14 @@ public protocol EnvelopeReceiver: AnyObject, Sendable {
     /// Attempt to open and process an inbound envelope (data message, ack,
     /// handshake, …). The receiver decides what it is; the router does not.
     func receive(_ envelope: Envelope) async
+
+    /// Which links a relay of an envelope that arrived on `link` must NOT go
+    /// back out (split-horizon, Phase 7b.1a). The receiver alone knows identity,
+    /// so it maps the source link to its peer and returns ALL of that peer's
+    /// links — a peer is reachable over up to two ephemeral ids (peripheral +
+    /// central), and both must be excluded or the message storms back over the
+    /// other GATT role. The router stays crypto-free by asking, not resolving.
+    func relayExclusions(forSourceLink link: UUID) async -> Set<UUID>
 }
 
 // MARK: - Delivery updates
@@ -113,8 +129,8 @@ public actor MessageRouter {
         for t in transports { try await t.start() }
         for t in transports {
             let task = Task { [weak self, t] in
-                for await envelope in t.incoming {
-                    await self?.handleInbound(envelope)
+                for await (link, envelope) in t.incoming {
+                    await self?.handleInbound(link: link, envelope)
                 }
             }
             consumeTasks.append(task)
@@ -141,19 +157,31 @@ public actor MessageRouter {
     /// only routes it. Marking our own id as seen up front means the echoes
     /// that flooding produces are recognised as duplicates and neither
     /// re-relayed nor handed back to us to "open".
-    public func send(_ envelope: Envelope) async {
+    ///
+    /// Returns the IMMEDIATE routing outcome so a synchronous caller can react:
+    ///   • `.sent`            — handed to the radio for broadcast.
+    ///   • `.waitingForRange` — no peer reachable; queued in the outbox.
+    ///   • `.notDelivered`    — the transport rejected it.
+    /// (Later, asynchronous transitions — `.delivered` / `.relayed` once acks
+    /// land, or a timeout — are reported via `deliveryUpdates`; Phase 7b.2.)
+    /// `@discardableResult` so `resend` and any fire-and-forget caller compile.
+    @discardableResult
+    public func send(_ envelope: Envelope) async -> MessageDeliveryState {
         outbox[envelope.id] = OutboxEntry(envelope: envelope, state: .sent)
         _ = seen.containsOrInsert(envelope.id)
 
+        let resulting: MessageDeliveryState
         do {
             let ble = try transport(for: .ble)
             try await ble.send(envelope)
-            update(envelope.id, .sent)              // handed to radio
+            resulting = .sent                 // handed to radio
         } catch TransportError.noReachablePeers {
-            update(envelope.id, .waitingForRange)   // queued until in range
+            resulting = .waitingForRange       // queued until in range
         } catch {
-            update(envelope.id, .notDelivered)
+            resulting = .notDelivered
         }
+        update(envelope.id, resulting)
+        return resulting
     }
 
     /// Re-send a previously failed message.
@@ -196,18 +224,24 @@ public actor MessageRouter {
 
     // MARK: Inbound
 
-    private func handleInbound(_ envelope: Envelope) async {
+    private func handleInbound(link: UUID, _ envelope: Envelope) async {
         // 1. Dedup. A message arriving by two relay paths (different ttl) has
-        //    the same id and collapses to one here; loops break here too.
+        //    the same id and collapses to one here; loops break here too. This
+        //    is also where the transport's notify+write duplicate of a single
+        //    envelope is folded to one.
         if seen.containsOrInsert(envelope.id) { return }
 
-        // 2. Relay. Flooding: rebroadcast onward within the hop budget,
-        //    regardless of whether the message turns out to be for us. We
-        //    cannot know recipiency without the keys, and uniform relay
-        //    behaviour avoids leaking recipiency through whether we forward.
+        // 2. Relay (split-horizon). Flooding: rebroadcast onward within the hop
+        //    budget, regardless of whether the message turns out to be for us —
+        //    uniform relay avoids leaking recipiency through whether we forward.
+        //    But NEVER back to the source peer: ask the receiver (which alone
+        //    knows identity) for every link belonging to that peer and exclude
+        //    them all. In a 2-node mesh that leaves no one to forward to, which
+        //    is exactly what stops the relay storm (Phase 7b.1a).
         if let forwarded = envelope.forwarded() {
+            let exclusions = await receiver?.relayExclusions(forSourceLink: link) ?? [link]
             for t in transports {
-                try? await t.send(forwarded)
+                await t.relay(forwarded, excludingLinks: exclusions)
             }
         }
 

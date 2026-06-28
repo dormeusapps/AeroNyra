@@ -1,6 +1,6 @@
 //
 //  Transport.swift
-//  Beacon (working title)
+//  Core/Routing
 //
 //  THE SEAM (HANDOFF §4).
 //
@@ -59,8 +59,9 @@ public enum TransportError: Error, Equatable {
 /// mutate `ciphertext`, and they apply relay semantics (TTL, dedup) only via
 /// the `Envelope` API — a transport is dumb by design (HANDOFF §3.1).
 ///
-/// Inbound envelopes are delivered through `incoming`. Conformers are
-/// reference-typed and `Sendable` — `MessageRouter` consumes them across
+/// Inbound envelopes are delivered through `incoming`, each tagged with the
+/// SOURCE LINK it arrived on so the router can apply split-horizon. Conformers
+/// are reference-typed and `Sendable` — `MessageRouter` consumes them across
 /// concurrency domains, so a conformer is expected to be an `actor` (or
 /// otherwise internally synchronized) around the radio.
 public protocol MeshTransport: AnyObject, Sendable {
@@ -68,9 +69,11 @@ public protocol MeshTransport: AnyObject, Sendable {
     /// Which transport this is. v1: always `.ble`.
     var kind: TransportKind { get }
 
-    /// A stream of envelopes received from the mesh (direct or relayed).
-    /// The router consumes this; the transport produces it.
-    var incoming: AsyncStream<Envelope> { get }
+    /// A stream of envelopes received from the mesh (direct or relayed), each
+    /// paired with the ephemeral SOURCE LINK id it arrived on. The router
+    /// consumes this; the transport produces it. The link lets the router (via
+    /// the receiver) exclude the source peer when forwarding — Phase 7b.1a.
+    var incoming: AsyncStream<(link: UUID, envelope: Envelope)> { get }
 
     /// Begin scanning/advertising and accepting connections.
     /// Throws if the radio is unavailable or permission is denied.
@@ -79,13 +82,21 @@ public protocol MeshTransport: AnyObject, Sendable {
     /// Stop all radio activity and tear down connections.
     func stop()
 
-    /// Transmit one envelope toward the mesh.
+    /// Transmit one envelope toward the mesh — broadcast to ALL reachable links.
+    /// Used for messages WE originate; delivery is not implied.
     ///
     /// For BLE this means handing the bytes to the radio for broadcast to
-    /// reachable peers; it does not imply delivery. Delivery state is tracked
-    /// above, by MessageRouter, from acknowledgements and relay receipts.
+    /// reachable peers. Delivery state is tracked above, by MessageRouter, from
+    /// acknowledgements and relay receipts.
     ///
     /// - Throws: `TransportError.notStarted`, `.noReachablePeers`,
     ///   `.envelopeTooLarge`, or `.sendFailed`.
     func send(_ envelope: Envelope) async throws
+
+    /// Forward an inbound envelope onward, EXCLUDING the given links — every
+    /// link belonging to the peer the envelope arrived from (split-horizon,
+    /// Phase 7b.1a). Best-effort and non-throwing: if nothing is left to
+    /// forward to, it does nothing. Unlike `send`, "no reachable peers" is not
+    /// an error here — a relay with no onward hop is a normal, silent no-op.
+    func relay(_ envelope: Envelope, excludingLinks: Set<UUID>) async
 }

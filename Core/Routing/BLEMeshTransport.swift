@@ -51,8 +51,11 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     public let kind: TransportKind = .ble
 
     // MARK: - Protocol: inbound envelope stream (relayable payloads)
-    public let incoming: AsyncStream<Envelope>
-    private let inbound: AsyncStream<Envelope>.Continuation
+    // Phase 7b.1a: each inbound envelope is tagged with the SOURCE LINK it
+    // arrived on, so the router can apply split-horizon — never relay a message
+    // back to the peer it came from. Mirrors the `bundles` stream's shape.
+    public let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
+    private let inbound: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
 
     // MARK: - First-contact: inbound bundle stream (link-local key material)
     public let bundles: AsyncStream<(link: UUID, data: Data)>
@@ -107,8 +110,8 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
 
     // MARK: - Init
     public override init() {
-        var inb: AsyncStream<Envelope>.Continuation!
-        self.incoming = AsyncStream<Envelope> { inb = $0 }
+        var inb: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        self.incoming = AsyncStream<(link: UUID, envelope: Envelope)> { inb = $0 }
         self.inbound = inb
 
         var bnd: AsyncStream<(link: UUID, data: Data)>.Continuation!
@@ -206,6 +209,44 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     public func send(_ envelope: Envelope) async throws {
         let frame = Self.frame(.envelope, envelope.wireData())
         try await broadcast(frame, label: "envelope id=\(envelope.id)")
+    }
+
+    // MARK: - Transmit: Envelope RELAY (split-horizon) — Phase 7b.1a
+    /// Forward an inbound envelope onward, EXCLUDING every link that belongs to
+    /// the source peer, so a relay never echoes a message back to where it came
+    /// from. `excluded` is identity-scoped (computed above us, in Security): a
+    /// peer is reachable over up to two ephemeral ids — its peripheral id and
+    /// its central id — and BOTH must be excluded, or the message storms back
+    /// over the other GATT role. Best-effort + non-throwing: if there is no one
+    /// left to forward to (the 2-node case), this does nothing, which is exactly
+    /// right — that is what kills the relay storm.
+    public func relay(_ envelope: Envelope, excludingLinks excluded: Set<UUID>) async {
+        let frame = Self.frame(.envelope, envelope.wireData())
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            cbQueue.async { [weak self] in
+                guard let self, self.started else { cont.resume(); return }
+
+                // central → peripheral writes: forward to every write target
+                // that is NOT one of the source peer's links.
+                var writeCount = 0
+                for (id, _) in self.writeTargets where !excluded.contains(id) {
+                    if self.writeFrameToPeer(frame, id: id) { writeCount += 1 }
+                }
+
+                // peripheral → central notify: a characteristic update is
+                // broadcast-to-all, so we cannot target one subscriber without
+                // per-central queues. If EVERY current subscriber is excluded
+                // (the 2-node case), skip notify entirely — this is what stops
+                // the storm. Otherwise notify all; an excluded subscriber simply
+                // dedups its own echo upstream, which is loop-safe.
+                let remaining = self.subscribedCentrals.subtracting(excluded)
+                let notified = !remaining.isEmpty
+                if notified { self.notifySubscribers(frame) }
+
+                self.log.info("RELAY \(envelope.id) → \(writeCount) write + \(notified ? self.subscribedCentrals.count : 0) notify (excluded \(excluded.count))")
+                cont.resume()
+            }
+        }
     }
 
     // MARK: - Transmit: Bundle (first contact) — to ONE specific link
@@ -522,8 +563,8 @@ extension BLEMeshTransport {
                 log.error("RX envelope frame (\(payload.count) bytes) failed to parse")
                 return
             }
-            log.info("RX envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count) → yielding")
-            inbound.yield(envelope)
+            log.info("RX envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count) from link \(link) → yielding")
+            inbound.yield((link: link, envelope: envelope))
         case .bundle:
             log.info("RX bundle \(payload.count) bytes from link \(link) → yielding")
             bundlesCont.yield((link: link, data: payload))

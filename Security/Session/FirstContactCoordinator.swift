@@ -24,6 +24,16 @@
 //  session store — every key that crosses this boundary is the RAW 32-byte
 //  `Peer.publicKeyData` form (via store.rawPublicKey / store.peerIdentity).
 //
+//  ROUTING (Phase 7b.1 / 7b.1a). The coordinator no longer touches the transport
+//  for ENVELOPES — that path now runs through `MessageRouter`, which dedups +
+//  relays (multi-hop, max 7 hops). This actor is the router's `EnvelopeReceiver`:
+//  inbound survivors arrive at `receive(_:)`, which opens them and emits events;
+//  and `relayExclusions(forSourceLink:)` tells the router which links NOT to
+//  forward back out (split-horizon — never echo a message to the peer it came
+//  from, across EITHER of that peer's two GATT-role link ids). Outbound seals go
+//  out via `router.send`, so our own ids are marked seen and flooding echoes
+//  don't loop back to us. BUNDLES stay link-local and direct (`sendBundle`).
+//
 //  PRESENCE-BY-IDENTITY (Phase 7a). The coordinator is ALSO the only place that
 //  knows which ephemeral BLE link maps to which crypto identity (`linkPeers`,
 //  learned from each peer's bundle). It therefore publishes a second stream —
@@ -67,10 +77,17 @@ enum SessionEvent: Sendable {
     case receivedMedia(peerKey: Data, data: Data, mime: MediaMimeType, wireID: MessageID)
 }
 
-actor FirstContactCoordinator {
+actor FirstContactCoordinator: EnvelopeReceiver {
 
     private let store: SignalSessionStore
     private let transport: BLEMeshTransport
+
+    /// The mesh router (Phase 7b.1): owns Envelope I/O — dedup, relay, and the
+    /// transport-facing send. Injected after construction by the composition
+    /// root (`setRouter`), which also registers this actor as the router's
+    /// `EnvelopeReceiver`. Held strongly; the router holds us weakly, so there
+    /// is no retain cycle. Outbound envelopes go through it; bundles do not.
+    private var router: MessageRouter?
 
     /// Media chunking config. A chunk fills `mediaBucket` exactly once its
     /// 1-byte payload tag (`mediaReserved`) is accounted for — no wasted
@@ -129,6 +146,12 @@ actor FirstContactCoordinator {
         let (rStream, rContinuation) = AsyncStream<Set<Data>>.makeStream()
         self.reachablePeers = rStream
         self.reachablePeersContinuation = rContinuation
+    }
+
+    /// Wire the mesh router in (Phase 7b.1). Called once by the composition root
+    /// right after it registers this actor as the router's `EnvelopeReceiver`.
+    func setRouter(_ router: MessageRouter) {
+        self.router = router
     }
 
     // MARK: Reachability → send our bundle to new links + publish presence
@@ -214,15 +237,31 @@ actor FirstContactCoordinator {
 
     // MARK: Outbound send (composer-driven)
 
+    /// Hand a sealed envelope to the mesh router and translate the immediate
+    /// routing outcome into this layer's throw contract: a clean `.sent`
+    /// succeeds; anything else (no reachable peer, or a transport rejection)
+    /// throws, so the caller (MessageInbox) keeps its optimistically-persisted
+    /// row and marks it `.notDelivered` — exactly as before the router existed.
+    ///
+    /// Richer, asynchronous transitions (delivered / relayed / queued, and a
+    /// stuck-send timeout) arrive via the router's `deliveryUpdates` stream and
+    /// are wired into the inbox in Phase 7b.2; until then this preserves the
+    /// pre-router behaviour precisely.
+    private func routeOut(_ envelope: Envelope) async throws {
+        guard let router else { throw TransportError.notStarted }
+        let state = await router.send(envelope)
+        guard state == .sent else { throw TransportError.sendFailed }
+    }
+
     /// Seal `text` to an already-established peer (looked up by its RAW 32-byte
-    /// key) and hand the resulting Envelope to the transport. Returns the wire
+    /// key) and hand the resulting Envelope to the router. Returns the wire
     /// `MessageID` so the caller can persist it on the outbound Message (for
     /// delivery-receipt matching and dedup).
     ///
-    /// Throws if no session exists yet, sealing fails, or the transport send
-    /// fails. The caller (MessageInbox) has already optimistically persisted
-    /// the row, so on a throw it simply marks that message `.notDelivered` —
-    /// nothing the user typed is ever lost.
+    /// Throws if no session exists yet, sealing fails, or the router could not
+    /// hand the envelope to the radio. The caller (MessageInbox) has already
+    /// optimistically persisted the row, so on a throw it simply marks that
+    /// message `.notDelivered` — nothing the user typed is ever lost.
     func send(_ text: String, toRawKey rawKey: Data) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
@@ -230,7 +269,7 @@ actor FirstContactCoordinator {
         // media manifest/chunk (which now share this same sealed path).
         let sealed = try session.seal(MessagePayload.text(Data(text.utf8)).encoded())
         let envelope = Envelope(ciphertext: sealed)
-        try await transport.send(envelope)
+        try await routeOut(envelope)
         return envelope.id
     }
 
@@ -241,7 +280,7 @@ actor FirstContactCoordinator {
     ///
     /// The manifest is sent first so the receiver knows the size/count before
     /// chunks pile up; the reassembler tolerates any order regardless. Chunks go
-    /// out sequentially — the transport's notify path is now strict-FIFO
+    /// out sequentially — the transport's notify path is strict-FIFO
     /// (Phase 6b.2a), so this ordered burst reassembles cleanly on the peer.
     ///
     /// Throws if no session exists, sealing fails, or a send fails. The caller
@@ -260,7 +299,7 @@ actor FirstContactCoordinator {
 
         func emit(_ payload: MessagePayload) async throws {
             let sealed = try session.seal(payload.encoded())
-            try await transport.send(Envelope(ciphertext: sealed))
+            try await routeOut(Envelope(ciphertext: sealed))
         }
 
         let manifestJSON = try JSONEncoder().encode(manifest)
@@ -272,9 +311,30 @@ actor FirstContactCoordinator {
         return MessageID(bytes: idBytes)!
     }
 
-    // MARK: Inbound envelope → open + emit
+    // MARK: Relay split-horizon + inbound open  (EnvelopeReceiver)
 
-    func onEnvelope(_ envelope: Envelope) async {
+    /// The router asks, for each inbound envelope, which links a relay must NOT
+    /// go back out — so a forwarded message never echoes to the peer it came
+    /// from. We answer with EVERY link currently mapped to the source link's
+    /// peer: a peer is reachable over up to two ephemeral ids (its peripheral id
+    /// and its central id), and both must be excluded or the message storms back
+    /// over the other GATT role. If we can't resolve the source link to a known
+    /// peer yet, we still exclude the source link itself.
+    func relayExclusions(forSourceLink link: UUID) -> Set<UUID> {
+        guard let peer = linkPeers[link] else { return [link] }
+        let peerKey = store.rawPublicKey(of: peer)
+        var exclusions: Set<UUID> = [link]
+        for (otherLink, otherPeer) in linkPeers
+        where store.rawPublicKey(of: otherPeer) == peerKey {
+            exclusions.insert(otherLink)
+        }
+        return exclusions
+    }
+
+    /// The router's `EnvelopeReceiver` entry point: an inbound envelope that
+    /// survived dedup (and was relayed onward if it had hop budget) is handed
+    /// here to be opened. Only this layer holds the keys.
+    func receive(_ envelope: Envelope) async {
         do {
             let (peer, plaintext) = try store.openInbound(envelope.ciphertext)
             let rawKey = store.rawPublicKey(of: peer)
