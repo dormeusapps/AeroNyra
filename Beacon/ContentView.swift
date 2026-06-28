@@ -198,12 +198,44 @@ struct ContentView: View {
             Conversation.self,
             Message.self,
         ])
+
+        // Force-create Application Support. On a fresh install it may not exist
+        // yet and the sandbox blocks creating through a missing parent — the
+        // same condition behind the CoreData "Failed to create file; code = 2"
+        // spew on first launch. Creating it here (and tagging it with Data
+        // Protection) both fixes that and makes the store encrypted at rest.
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true)
+        // completeUntilFirstUserAuthentication — NOT complete — because the
+        // MessageInbox writes to this store when receiving in the background
+        // while the device is locked, which `complete` would forbid. The
+        // directory attribute governs files created afterward (e.g. fresh
+        // -wal/-shm sidecars); the explicit per-file pass below covers a store
+        // that already exists from a prior build. Ledger item 6 (at-rest).
+        applyDataProtection(toPath: appSupport.path)
+
         let config = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
             cloudKitDatabase: .none
         )
-        return try ModelContainer(for: schema, configurations: config)
+        let container = try ModelContainer(for: schema, configurations: config)
+
+        // Tag the actual store files (the default SwiftData store lives at
+        // Application Support/default.store, confirmed by the CoreData logs).
+        for name in ["default.store", "default.store-wal", "default.store-shm"] {
+            applyDataProtection(toPath: appSupport.appendingPathComponent(name).path)
+        }
+        return container
+    }
+
+    /// Best-effort Data Protection tag. `try?` because it's a no-op/unsupported
+    /// on some platforms (e.g. the Mac host) and a sidecar may not exist yet.
+    private func applyDataProtection(toPath path: String) {
+        try? FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: path)
     }
 }
 
