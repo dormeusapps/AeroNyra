@@ -25,14 +25,17 @@
 //   • SignalSessionStore — built from the SAME loaded identity (one identity
 //     end to end).
 //   • FirstContactCoordinator — marries transport + store for carrier-neutral
-//     first contact. This view is the SOLE consumer of the transport's three
-//     AsyncStreams (each delivers an event once) and fans them out to presence
-//     and the coordinator.
+//     first contact. Consumes the transport's BUNDLE + REACHABILITY streams
+//     (first contact + presence); ENVELOPE I/O now runs through MessageRouter.
+//   • MessageRouter (Phase 7b.1) — the Envelope I/O layer: it consumes the
+//     transport's `incoming`, dedups + relays (multi-hop, max 7 hops), and
+//     hands survivors to the coordinator (its `EnvelopeReceiver`). Outbound
+//     seals also go through it. The router is the SOLE consumer of
+//     `transport.incoming` — nothing else may read that stream.
 //   • MessageInbox — owned by ReadyView (below), on the main actor, so the
 //     coordinator's SessionEvents become SwiftData Peer/Conversation/Message.
-//   • Presence-by-identity — ReadyView also consumes the coordinator's
-//     `reachablePeers` stream and mirrors it into MeshPresence, so the BLE link
-//     ↔ crypto-identity resolution surfaces as real per-conversation presence.
+//   • Presence-by-identity — ReadyView consumes the coordinator's
+//     `reachablePeers` stream and mirrors it into MeshPresence.
 //
 
 import SwiftUI
@@ -61,6 +64,10 @@ struct ContentView: View {
     /// Drives carrier-neutral first contact (bundle exchange + establishment).
     @State private var coordinator: FirstContactCoordinator?
 
+    /// The mesh router (Phase 7b.1): dedup + multi-hop relay + Envelope I/O.
+    /// Built alongside the coordinator once we reach .ready; nil until then.
+    @State private var router: MessageRouter?
+
     var body: some View {
         Group {
             switch phase {
@@ -88,6 +95,7 @@ struct ContentView: View {
             // Start the radio, then keep presence in sync AND feed the
             // coordinator newly-reachable links. Main-actor isolated, so
             // touching `presence` here is safe; coordinator calls hop to it.
+            // (transport.start() is idempotent; the router may also start it.)
             do {
                 try await transport.start()
             } catch {
@@ -99,13 +107,8 @@ struct ContentView: View {
             }
         }
         .task {
-            // Inbound sealed envelopes → first-contact / open.
-            for await envelope in transport.incoming {
-                await coordinator?.onEnvelope(envelope)
-            }
-        }
-        .task {
-            // Inbound prekey bundles → first contact.
+            // Inbound prekey bundles → first contact. (Envelopes are NOT read
+            // here any more — the router owns `transport.incoming`.)
             for await item in transport.bundles {
                 await coordinator?.onBundle(link: item.link, data: item.data)
             }
@@ -163,26 +166,45 @@ struct ContentView: View {
     // MARK: - Construction
 
     /// Build the secure-session store (from the loaded identity, so the session
-    /// layer uses the SAME Enclave-bound identity as the rest of the app) and
-    /// the first-contact coordinator that drives bundle exchange + establishment.
+    /// layer uses the SAME Enclave-bound identity as the rest of the app), the
+    /// first-contact coordinator, and the mesh router that carries Envelopes.
     ///
-    /// PASS 2 (Phase 5a.3): the store is now PERSISTENT — its libsignal session
+    /// PASS 2 (Phase 5a.3): the store is PERSISTENT — its libsignal session
     /// state is vault-encrypted to disk under a Keychain-held DEK and survives a
     /// relaunch, so an old peer's traffic decrypts after a restart with no fresh
     /// first-contact. The DEK + store directory are stable across launches.
+    ///
+    /// PASS 3 (Phase 7b.1): a MessageRouter is built over the transport and the
+    /// coordinator is registered as its EnvelopeReceiver. The router consumes
+    /// `transport.incoming` (dedup + relay) and the coordinator's outbound seals
+    /// flow through `router.send`. Wiring + start happen in a Task because the
+    /// actor calls are async; the catch-up `onReachable` runs after.
     private func makeSessionStack(identity: IdentityKeypair) throws {
         let dek = try SessionStoreKey.loadOrCreate(service: sessionKeyService)
         let directory = try PersistentBeaconStore.defaultDirectory()
         let secure = try SignalSessionStore(appIdentity: identity,
                                             directory: directory, dek: dek)
         let coord = FirstContactCoordinator(store: secure, transport: transport)
+        let mesh = MessageRouter(transports: [transport])
         sessionStore = secure
         coordinator = coord
+        router = mesh
         print("session store ready (persistent) · identity \(secure.localIdentity.userIDHex.prefix(16))…")
-        // Catch up on any links that already formed before the coordinator
+
+        // Register the receiver + router and start consuming `incoming`, then
+        // catch up on any links that already formed before the coordinator
         // existed (e.g. a peer already in range at launch).
         let ids = presence.reachableIDs
-        Task { await coord.onReachable(ids) }
+        Task {
+            await mesh.setReceiver(coord)
+            await coord.setRouter(mesh)
+            do {
+                try await mesh.start()
+            } catch {
+                print("router start failed: \(error)")
+            }
+            await coord.onReachable(ids)
+        }
     }
 
     /// Stable bundle-scoped identifier for the Keychain item holding the
