@@ -41,6 +41,10 @@ struct ConversationView: View {
     /// The main-actor persistence/send bridge, injected by ReadyView.
     @Environment(MessageInbox.self) private var inbox
 
+    /// Live mesh presence (identity-resolved), injected by the composition
+    /// root. Drives the header's reachability line for this conversation's peer.
+    @Environment(MeshPresence.self) private var presence
+
     @State private var draft: String = ""
 
     /// The photo currently chosen in the system picker. Cleared back to nil
@@ -53,10 +57,6 @@ struct ConversationView: View {
     /// Shown when mic access has been denied.
     @State private var showMicDenied = false
 
-    /// Presence with the peer. Stubbed to .outOfRange until the BLE
-    /// transport exists and a real ReachabilityMonitor drives it.
-    @State private var presence: PresenceChain.Reachability = .outOfRange
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -64,7 +64,7 @@ struct ConversationView: View {
             transcript
             composer
         }
-        .background(Color.bgApp.ignoresSafeArea())
+        .readableColumn()
         .preferredColorScheme(.dark)
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
@@ -119,10 +119,10 @@ struct ConversationView: View {
 
     /// The reachability chain + label, under the peer name. This is the
     /// "alive" surface of the header — the line that breathes with the
-    /// state of the radio (once BLE lands).
+    /// state of the radio. Driven by live identity-resolved presence (7a).
     private var presenceRow: some View {
         HStack(spacing: 6) {
-            PresenceChain(reachability: presence)
+            PresenceChain(reachability: reachability)
             Text(presenceLabel)
                 .font(Typography.headerPresence)
                 .foregroundStyle(Color.textSecondary)
@@ -141,8 +141,20 @@ struct ConversationView: View {
         }
     }
 
+    /// Reachability to this conversation's peer right now, resolved from live
+    /// BLE presence. Phase 7a drives `.direct` vs `.outOfRange`; multi-hop
+    /// (`.oneHop` / `.twoHops`) arrives with the MessageRouter (7b). A mesh room
+    /// has no single peer, so it resolves to `.outOfRange` here.
+    private var reachability: PresenceChain.Reachability {
+        guard let key = conversation.peer?.publicKeyData,
+              presence.isReachable(key) else {
+            return .outOfRange
+        }
+        return .direct
+    }
+
     private var presenceLabel: String {
-        switch presence {
+        switch reachability {
         case .direct:     return "In range · direct"
         case .oneHop:     return "Reachable · 1 hop"
         case .twoHops:    return "Reachable · 2 hops"

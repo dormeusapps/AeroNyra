@@ -11,11 +11,19 @@
 //  dot is the always-present ALIVE element from the design posture —
 //  the radio breathing in the corner.
 //
-//  PRESENCE: the radar blips and the "N reachable" count are driven by
-//  MeshPresence, which reflects the BLE transport's live linked-peer set.
-//  These are unidentified devices (we sense them but don't yet know who
-//  they are), so they render as radar blips and a count — NOT named rows.
-//  The peer-row sections below stay empty until identity exchange exists;
+//  PRESENCE — TWO RESOLUTIONS:
+//   • The radar blips and the "N reachable" status count are driven by the
+//     RADIO-level set (MeshPresence.reachableIDs): ephemeral linked-device ids,
+//     including devices we sense but haven't yet identified. That's honest for a
+//     radar — it shows radios, not names.
+//   • The "Reachable now" / "Recently seen" peer SECTIONS are driven by the
+//     IDENTITY-resolved set (MeshPresence.isReachable, Phase 7a): a known peer
+//     is "Reachable now" iff its crypto identity is in the live presence set.
+//     This de-dups the per-role double-count — a peer linked over both GATT
+//     directions still surfaces as ONE named row.
+//
+//  A device linked but not yet identity-exchanged shows as a radar blip and in
+//  the count, but does NOT appear as a named row until identity exists —
 //  fabricating a Peer from a BLE id would be inventing identity.
 //
 
@@ -126,13 +134,18 @@ struct NearbyView: View {
                 isRecent: true)
     }
 
-    /// Currently reachable, IDENTIFIED peers. Empty until identity exchange
-    /// over BLE exists — radio reachability alone doesn't give us a Peer.
-    private var reachablePeers: [Peer] { [] }
+    /// Currently reachable, IDENTIFIED peers (Phase 7a): known peers whose
+    /// crypto identity is in the live identity-resolved presence set. Each peer
+    /// appears at most once — the per-role double-count is collapsed upstream.
+    private var reachablePeers: [Peer] {
+        allPeers.filter { presence.isReachable($0.publicKeyData) }
+    }
 
-    /// Peers we know about but aren't currently in range. Until BLE wires
-    /// real-time reachability to identity, every known peer falls here.
-    private var recentPeers: [Peer] { allPeers }
+    /// Known peers not currently reachable over BLE — the complement of
+    /// `reachablePeers` over everyone we've met.
+    private var recentPeers: [Peer] {
+        allPeers.filter { !presence.isReachable($0.publicKeyData) }
+    }
 
     @ViewBuilder
     private func section(title: String,
@@ -149,7 +162,7 @@ struct NearbyView: View {
                 ForEach(peers) { peer in
                     NearbyRow(
                         peer: peer,
-                        reachability: .outOfRange,
+                        reachability: isRecent ? .outOfRange : .direct,
                         signalStrength: nil,
                         signalColor: .statusNeutral,
                         isRecentlySeen: isRecent,

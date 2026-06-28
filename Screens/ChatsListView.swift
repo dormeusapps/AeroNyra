@@ -23,6 +23,10 @@ struct ChatsListView: View {
     @Query(sort: \Conversation.lastActivity, order: .reverse)
     private var conversations: [Conversation]
 
+    /// Live mesh presence (identity-resolved), injected by the composition
+    /// root. Drives each row's reachability chain.
+    @Environment(MeshPresence.self) private var presence
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -70,7 +74,7 @@ struct ChatsListView: View {
                     NavigationLink(value: conv) {
                         ChatRow(
                             conversation: conv,
-                            presence: .outOfRange,
+                            presence: reachability(for: conv),
                             hasUnread: hasUnread(conv)
                         )
                     }
@@ -86,9 +90,20 @@ struct ChatsListView: View {
         }
     }
 
+    /// Reachability to a conversation's peer right now, resolved from live BLE
+    /// presence (Phase 7a). Drives `.direct` vs `.outOfRange`; multi-hop arrives
+    /// with the MessageRouter (7b). A conversation with no single peer (a mesh
+    /// room) resolves to `.outOfRange`.
+    private func reachability(for conversation: Conversation) -> PresenceChain.Reachability {
+        guard let key = conversation.peer?.publicKeyData,
+              presence.isReachable(key) else {
+            return .outOfRange
+        }
+        return .direct
+    }
+
     /// A conversation is "unread" when it holds any INBOUND message the
-    /// user hasn't opened yet. Outbound messages never count. Presence
-    /// stays stubbed at `.outOfRange` until the BLE layer drives it.
+    /// user hasn't opened yet. Outbound messages never count.
     private func hasUnread(_ conversation: Conversation) -> Bool {
         conversation.messages.contains { !$0.isOutbound && !$0.isRead }
     }
