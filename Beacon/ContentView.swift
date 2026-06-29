@@ -208,9 +208,15 @@ struct ContentView: View {
         // secret so the internet pillar has an identity from launch. Best-effort
         // — a failure here must not block the BLE pillar, which is fully
         // functional without it. (npub is derived in Phase 8b.)
+        //
+        // Its raw x-only public key is hoisted here so the deferred wiring below
+        // can hand it to the coordinator for the npub-bootstrap (Phase 8d);
+        // stays nil if the load fails, which leaves the announce path a no-op.
+        var ourNostrPubkey: Data?
         do {
             let nostr = try NostrIdentity.loadOrCreate(service: nostrIdentityService)
             nostrIdentity = nostr
+            ourNostrPubkey = nostr.publicKeyBytes
             print("nostr identity ready · \(nostr.nsec?.prefix(12) ?? "nsec?")…")
         } catch {
             print("nostr identity load/create failed (BLE unaffected): \(error)")
@@ -223,6 +229,7 @@ struct ContentView: View {
         Task {
             await mesh.setReceiver(coord)
             await coord.setRouter(mesh)
+            await coord.setNostrPublicKey(ourNostrPubkey)   // Phase 8d npub-bootstrap
             do {
                 try await mesh.start()
             } catch {

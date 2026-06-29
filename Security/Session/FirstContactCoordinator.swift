@@ -108,6 +108,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// is no retain cycle. Outbound envelopes go through it; bundles do not.
     private var router: MessageRouter?
 
+    /// OUR raw 32-byte x-only secp256k1 Nostr public key, injected post-
+    /// construction by the composition root (`setNostrPublicKey`, mirroring
+    /// `setRouter`). Held so we can announce it to peers we converse with (the
+    /// npub-bootstrap). Optional: nil if the device has no Nostr identity yet, in
+    /// which case the announce path is a silent no-op and the BLE pillar is
+    /// unaffected.
+    private var ourNostrPublicKey: Data?
+
     /// Media chunking config. A chunk fills `mediaBucket` exactly once its
     /// 1-byte payload tag (`mediaReserved`) is accounted for — no wasted
     /// padding tier (see MediaChunker / MessagePayload).
@@ -121,6 +129,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
 
     /// Links we've already greeted with our bundle (don't re-send each tick).
     private var greetedLinks: Set<UUID> = []
+
+    /// Peers (by RAW 32-byte key) we've already sent our Nostr-identity
+    /// announcement to this session — so the npub-bootstrap fires at most once
+    /// per peer. RAM-only by design: a relaunch clears it, so we re-announce on
+    /// the next conversation, which the receiver harmlessly no-ops (last-write-
+    /// wins). That re-announce is the self-healing path if a prior one was lost.
+    private var announcedNostrTo: Set<Data> = []
     /// Peer identity learned per link from their bundle.
     ///
     /// STICKY: not pruned in the reachability hot path. Presence is computed by
@@ -171,6 +186,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// right after it registers this actor as the router's `EnvelopeReceiver`.
     func setRouter(_ router: MessageRouter) {
         self.router = router
+    }
+
+    /// Inject our Nostr public key (Phase 8d npub-bootstrap). Called once by the
+    /// composition root after it load-or-creates the device's NostrIdentity,
+    /// alongside `setRouter`. A nil key (no Nostr identity) leaves the announce
+    /// path a silent no-op.
+    func setNostrPublicKey(_ key: Data?) {
+        self.ourNostrPublicKey = key
     }
 
     // MARK: Reachability → send our bundle to new links + publish presence
@@ -285,6 +308,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     func send(_ text: String, toRawKey rawKey: Data) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
+        // npub-bootstrap: ensure this peer learns our Nostr id once we converse
+        // (once-per-peer, best-effort, before the message itself).
+        await announceNostrIdentity(to: peer, rawKey: rawKey)
         // Tag the plaintext as text so the receiver can tell it apart from a
         // media manifest/chunk (which now share this same sealed path).
         let sealed = try session.seal(MessagePayload.text(Data(text.utf8)).encoded())
@@ -314,6 +340,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     func sendMedia(_ blob: Data, mime: MediaMimeType, toRawKey rawKey: Data) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
+        // npub-bootstrap: ensure this peer learns our Nostr id once we converse
+        // (once-per-peer, best-effort, before the transfer burst).
+        await announceNostrIdentity(to: peer, rawKey: rawKey)
 
         let chunker = try MediaChunker(targetBucket: Self.mediaBucket,
                                        reservedBytes: Self.mediaReserved)
@@ -372,6 +401,29 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
     }
 
+    /// Announce OUR Nostr public key to an established peer over the sealed
+    /// channel (Phase 8d npub-bootstrap). Sent UNTRACKED + best-effort, exactly
+    /// like a delivery ack: never acked, no delivery state, and a failure simply
+    /// means we re-announce on the next conversation/relaunch (the receiver
+    /// no-ops a repeat). At most once per peer per session (`announcedNostrTo`),
+    /// and a silent no-op if we have no Nostr identity. Fired lazily on the first
+    /// REAL message in either direction — never on a bare handshake — so a stable
+    /// internet identifier is shared only with peers actually conversed with.
+    private func announceNostrIdentity(to peer: PublicIdentity, rawKey: Data) async {
+        guard let ourNostrPublicKey else { return }              // no Nostr identity
+        guard !announcedNostrTo.contains(rawKey) else { return }  // already told them
+        do {
+            let session = try store.session(with: peer)
+            let payload = MessagePayload.nostrIdentityAnnounce(pubkey: ourNostrPublicKey)
+            let sealed = try session.seal(payload.encoded())
+            await router?.send(Envelope(ciphertext: sealed), tracked: false)
+            announcedNostrTo.insert(rawKey)
+            print("first-contact: announced our Nostr id → \(peer.userIDHex.prefix(16))…")
+        } catch {
+            print("first-contact: nostr-id announce to \(peer.userIDHex.prefix(16))… failed: \(error)")
+        }
+    }
+
     /// Hop count an envelope travelled, read from its arrival ttl: 0 for a
     /// direct delivery, ≥1 if it was relayed (maxHops − ttl, floored at 0).
     private func hops(of envelope: Envelope) -> UInt8 {
@@ -405,6 +457,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         do {
             let (peer, plaintext) = try store.openInbound(envelope.ciphertext)
             let rawKey = store.rawPublicKey(of: peer)
+
+            // npub-bootstrap (responder side): opening this proves our session
+            // with the peer is live, so make sure they've learned our Nostr id
+            // even if we haven't sent them anything yet. Once-per-peer + best-
+            // effort; a no-op for a peer we already announced to (e.g. as the
+            // initiator via `send`). Never blocks inbound handling.
+            await announceNostrIdentity(to: peer, rawKey: rawKey)
 
             guard let payload = MessagePayload.decode(plaintext) else {
                 print("first-contact: opened but undecodable payload from \(peer.userIDHex.prefix(16))…")
