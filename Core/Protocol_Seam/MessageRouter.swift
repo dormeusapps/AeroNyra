@@ -215,7 +215,9 @@ public actor MessageRouter {
     /// or `.notDelivered` on timeout — are reported via `deliveryUpdates`.
     /// `@discardableResult` so `resend` and any fire-and-forget caller compile.
     @discardableResult
-    public func send(_ envelope: Envelope, tracked: Bool = true) async -> MessageDeliveryState {
+    public func send(_ envelope: Envelope,
+                     tracked: Bool = true,
+                     nostrRecipient: Data? = nil) async -> MessageDeliveryState {
         if tracked {
             outbox[envelope.id] = OutboxEntry(envelope: envelope, state: .sent)
         }
@@ -225,9 +227,12 @@ public actor MessageRouter {
         do {
             let ble = try transport(for: .ble)
             try await ble.send(envelope)
-            resulting = .sent                 // handed to radio
+            resulting = .sent                 // handed to radio (Tier 1)
         } catch TransportError.noReachablePeers {
-            resulting = .waitingForRange       // queued until in range
+            // TIER 2: BLE has no one in range. If we know the recipient's Nostr
+            // pubkey AND an addressed transport is wired, fall back to a gift
+            // wrap over the relay. Otherwise queue for Tier 3 (.waitingForRange).
+            resulting = await publishViaNostr(envelope, to: nostrRecipient)
         } catch {
             resulting = .notDelivered
         }
@@ -237,6 +242,24 @@ public actor MessageRouter {
             if resulting == .sent { armTimeout(for: envelope.id) }
         }
         return resulting
+    }
+
+    /// TIER 2 of the 3-tier DM routing (BLE → Nostr → queue). Attempt an
+    /// addressed publish over the internet transport. Returns `.sent` if the
+    /// wrap was handed to the relay, else `.waitingForRange` so the caller's
+    /// optimistic row queues for Tier 3 (the inbox outbox + flush-on-reachable).
+    /// A no-op `.waitingForRange` when we have no recipient pubkey or no
+    /// addressed transport is wired.
+    private func publishViaNostr(_ envelope: Envelope, to recipient: Data?) async -> MessageDeliveryState {
+        guard let recipient, let addressed = addressedTransport else {
+            return .waitingForRange
+        }
+        do {
+            try await addressed.publish(envelope, to: recipient)
+            return .sent
+        } catch {
+            return .waitingForRange
+        }
     }
 
     /// Register a message-level id for delivery tracking WITHOUT a backing
@@ -381,6 +404,13 @@ public actor MessageRouter {
             throw TransportError.unsupported(kind)
         }
         return t
+    }
+
+    /// The addressed (internet) transport, if one is wired in. Nostr publishes
+    /// to a specific recipient pubkey rather than broadcasting; BLE doesn't adopt
+    /// `AddressedTransport`, so this resolves to the Nostr transport when present.
+    private var addressedTransport: AddressedTransport? {
+        transports.compactMap { $0 as? AddressedTransport }.first
     }
 
     /// Whether an envelope arriving from `kind` may be relayed onward. ONLY the

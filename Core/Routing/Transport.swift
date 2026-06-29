@@ -100,3 +100,23 @@ public protocol MeshTransport: AnyObject, Sendable {
     /// an error here — a relay with no onward hop is a normal, silent no-op.
     func relay(_ envelope: Envelope, excludingLinks: Set<UUID>) async
 }
+
+// MARK: - AddressedTransport
+
+/// A transport that delivers to a SPECIFIC recipient rather than broadcasting
+/// to whoever is reachable (Phase 8d). The BLE mesh is broadcast — you hand it
+/// bytes and the flood finds the peer — so it does NOT adopt this. Nostr is the
+/// opposite: a gift wrap is built FOR one recipient pubkey (NIP-59), so its
+/// recipient-blind `MeshTransport.send` throws and this is the real send path.
+///
+/// Kept SEPARATE from `MeshTransport` on purpose: forcing an addressed face onto
+/// BLE would mean a meaningless no-op there. The router checks for this
+/// capability (`as? AddressedTransport`) only on the Tier-2 fallback leg, so the
+/// broadcast and addressed worlds stay cleanly distinct.
+public protocol AddressedTransport: AnyObject, Sendable {
+    /// Deliver `envelope` to exactly `recipient` (a raw 32-byte x-only pubkey,
+    /// the peer's bootstrapped `nostrPubkey`). Throws if the addressed send
+    /// fails — the router treats that as "not delivered here" and queues for
+    /// Tier 3 rather than reporting success.
+    func publish(_ envelope: Envelope, to recipient: Data) async throws
+}

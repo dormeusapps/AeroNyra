@@ -52,7 +52,7 @@ public enum NostrTransportError: Error, Equatable {
 
 // MARK: - NostrTransport
 
-public final class NostrTransport: MeshTransport, @unchecked Sendable {
+public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked Sendable {
 
     // MARK: Protocol: identity
     public let kind: TransportKind = .internet
