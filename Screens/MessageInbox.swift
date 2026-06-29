@@ -185,6 +185,7 @@ final class MessageInbox {
             return
         }
         let rawKey = peer.publicKeyData
+        let nostrRecipient = peer.nostrPubkey   // Tier-2 fallback target (nil until bootstrapped)
 
         let message = Message(content: trimmed, isOutbound: true, deliveryState: .sent)
         modelContext.insert(message)
@@ -193,7 +194,8 @@ final class MessageInbox {
         save()
 
         do {
-            let wireID = try await coordinator.send(trimmed, toRawKey: rawKey)
+            let wireID = try await coordinator.send(trimmed, toRawKey: rawKey,
+                                                    nostrRecipient: nostrRecipient)
             message.wireIDData = Data(wireID.bytes)
             save()
         } catch {
@@ -213,6 +215,7 @@ final class MessageInbox {
             return
         }
         let rawKey = peer.publicKeyData
+        let nostrRecipient = peer.nostrPubkey   // Tier-2 fallback target (nil until bootstrapped)
 
         let message = Message(content: "",
                               isOutbound: true,
@@ -225,7 +228,8 @@ final class MessageInbox {
         save()
 
         do {
-            let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey)
+            let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
+                                                         nostrRecipient: nostrRecipient)
             message.wireIDData = Data(wireID.bytes)
             save()
         } catch {
@@ -251,10 +255,12 @@ final class MessageInbox {
     /// and stores the fresh wireID; on failure it reverts to `.notDelivered`.
     func resend(_ message: Message) async {
         guard message.isOutbound, message.deliveryState == .notDelivered else { return }
-        guard let rawKey = message.conversation?.peer?.publicKeyData else {
+        guard let peer = message.conversation?.peer else {
             print("inbox: cannot resend — message has no peer")
             return
         }
+        let rawKey = peer.publicKeyData
+        let nostrRecipient = peer.nostrPubkey   // Tier-2 fallback target (nil until bootstrapped)
 
         // Flip to .sent up front: the chip stops saying "tap to resend" and a
         // concurrent flush won't re-pick this row (the fetch is .notDelivered
@@ -265,9 +271,11 @@ final class MessageInbox {
         do {
             let wireID: MessageID
             if message.isMedia, let data = message.mediaData, let mime = message.mediaMime {
-                wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey)
+                wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
+                                                         nostrRecipient: nostrRecipient)
             } else {
-                wireID = try await coordinator.send(message.content, toRawKey: rawKey)
+                wireID = try await coordinator.send(message.content, toRawKey: rawKey,
+                                                    nostrRecipient: nostrRecipient)
             }
             message.wireIDData = Data(wireID.bytes)
             message.conversation?.lastActivity = .now
