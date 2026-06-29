@@ -198,29 +198,43 @@ struct ContentView: View {
         let secure = try SignalSessionStore(appIdentity: identity,
                                             directory: directory, dek: dek)
         let coord = FirstContactCoordinator(store: secure, transport: transport)
-        let mesh = MessageRouter(transports: [transport])
-        sessionStore = secure
-        coordinator = coord
-        router = mesh
-        print("session store ready (persistent) · identity \(secure.localIdentity.userIDHex.prefix(16))…")
 
         // Nostr identity (Phase 8a): load-or-create the persistent secp256k1
         // secret so the internet pillar has an identity from launch. Best-effort
         // — a failure here must not block the BLE pillar, which is fully
-        // functional without it. (npub is derived in Phase 8b.)
+        // functional without it.
         //
-        // Its raw x-only public key is hoisted here so the deferred wiring below
-        // can hand it to the coordinator for the npub-bootstrap (Phase 8d);
-        // stays nil if the load fails, which leaves the announce path a no-op.
+        // Loaded BEFORE the router (Phase 8d-3) so PILLAR 2 — a NostrTransport
+        // over a single relay — can join the router's transport set when an
+        // identity exists. Its raw x-only public key is also hoisted for the
+        // coordinator's npub-bootstrap; stays nil if the load fails.
         var ourNostrPubkey: Data?
+        var nostrTransport: NostrTransport?
         do {
             let nostr = try NostrIdentity.loadOrCreate(service: nostrIdentityService)
             nostrIdentity = nostr
             ourNostrPubkey = nostr.publicKeyBytes
+            if let pub = nostr.publicKeyBytes, let url = URL(string: nostrRelayURL) {
+                nostrTransport = NostrTransport(relayURL: url,
+                                                ourSecretKey: nostr.secretKeyBytes,
+                                                ourPublicKey: pub)
+            }
             print("nostr identity ready · \(nostr.nsec?.prefix(12) ?? "nsec?")…")
         } catch {
             print("nostr identity load/create failed (BLE unaffected): \(error)")
         }
+
+        // PILLAR 1 (BLE) is always present; PILLAR 2 (Nostr) joins when an
+        // identity exists. The router consumes BOTH transports' `incoming`; the
+        // relay/TTL bypass for Nostr arrivals lives in the router (Phase 8d-2).
+        var transports: [MeshTransport] = [transport]
+        if let nostrTransport { transports.append(nostrTransport) }
+        let mesh = MessageRouter(transports: transports)
+
+        sessionStore = secure
+        coordinator = coord
+        router = mesh
+        print("session store ready (persistent) · identity \(secure.localIdentity.userIDHex.prefix(16))… · transports=\(transports.count)")
 
         // Register the receiver + router and start consuming `incoming`, then
         // catch up on any links that already formed before the coordinator
@@ -231,7 +245,7 @@ struct ContentView: View {
             await coord.setRouter(mesh)
             await coord.setNostrPublicKey(ourNostrPubkey)   // Phase 8d npub-bootstrap
             do {
-                try await mesh.start()
+                try await mesh.start()   // starts BOTH transports: BLE radio + Nostr relay
             } catch {
                 print("router start failed: \(error)")
             }
@@ -255,6 +269,10 @@ struct ContentView: View {
     /// Must not change across launches, or the internet identity reads as absent
     /// and is regenerated. The emergency wipe targets this same id.
     private var nostrIdentityService: String { "com.aeronyra.nostr.v1" }
+
+    /// The single Nostr relay PILLAR 2 connects to (Phase 8d). One relay for now;
+    /// multi-relay redundancy is a later substep. A widely-used public relay.
+    private var nostrRelayURL: String { "wss://relay.damus.io" }
 
     private func makeModelContainer() throws -> ModelContainer {
         let schema = Schema([
