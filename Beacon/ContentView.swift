@@ -31,7 +31,9 @@
 //     transport's `incoming`, dedups + relays (multi-hop, max 7 hops), and
 //     hands survivors to the coordinator (its `EnvelopeReceiver`). Outbound
 //     seals also go through it. The router is the SOLE consumer of
-//     `transport.incoming` — nothing else may read that stream.
+//     `transport.incoming` — nothing else may read that stream. Its
+//     `deliveryUpdates` stream (Phase 7b.2a) is likewise single-consumer and
+//     is read only by ReadyView, which feeds it into the MessageInbox.
 //   • MessageInbox — owned by ReadyView (below), on the main actor, so the
 //     coordinator's SessionEvents become SwiftData Peer/Conversation/Message.
 //   • Presence-by-identity — ReadyView consumes the coordinator's
@@ -68,6 +70,12 @@ struct ContentView: View {
     /// Built alongside the coordinator once we reach .ready; nil until then.
     @State private var router: MessageRouter?
 
+    /// The device's Nostr identity (Phase 8a): a persistent secp256k1 secret,
+    /// load-or-created at launch alongside the session store. Held so the
+    /// internet pillar (Phase 8) has its identity ready; its npub lights up once
+    /// the public key is derived (Phase 8b). nil until .ready.
+    @State private var nostrIdentity: NostrIdentity?
+
     var body: some View {
         Group {
             switch phase {
@@ -82,10 +90,15 @@ struct ContentView: View {
 
             case .ready(_, let container, _):
                 // ReadyView owns the main-actor MessageInbox for this phase.
-                if let coordinator {
-                    ReadyView(container: container, coordinator: coordinator)
+                // coordinator + router are set together in makeSessionStack, so
+                // unwrapping both here is safe — whenever one is non-nil, so is
+                // the other.
+                if let coordinator, let router {
+                    ReadyView(container: container,
+                              coordinator: coordinator,
+                              router: router)
                 } else {
-                    launchScreen   // unreachable: coordinator is set before .ready
+                    launchScreen   // unreachable: both are set before .ready
                 }
             }
         }
@@ -191,6 +204,18 @@ struct ContentView: View {
         router = mesh
         print("session store ready (persistent) · identity \(secure.localIdentity.userIDHex.prefix(16))…")
 
+        // Nostr identity (Phase 8a): load-or-create the persistent secp256k1
+        // secret so the internet pillar has an identity from launch. Best-effort
+        // — a failure here must not block the BLE pillar, which is fully
+        // functional without it. (npub is derived in Phase 8b.)
+        do {
+            let nostr = try NostrIdentity.loadOrCreate(service: nostrIdentityService)
+            nostrIdentity = nostr
+            print("nostr identity ready · \(nostr.nsec?.prefix(12) ?? "nsec?")…")
+        } catch {
+            print("nostr identity load/create failed (BLE unaffected): \(error)")
+        }
+
         // Register the receiver + router and start consuming `incoming`, then
         // catch up on any links that already formed before the coordinator
         // existed (e.g. a peer already in range at launch).
@@ -218,6 +243,11 @@ struct ContentView: View {
     /// Stable bundle-scoped identifier for the persistent session store's DEK.
     /// Must not change across launches, or the session store reads as wiped.
     private var sessionKeyService: String { "com.aeronyra.sessionkey.v1" }
+
+    /// Stable bundle-scoped identifier for the Nostr identity secret (Phase 8a).
+    /// Must not change across launches, or the internet identity reads as absent
+    /// and is regenerated. The emergency wipe targets this same id.
+    private var nostrIdentityService: String { "com.aeronyra.nostr.v1" }
 
     private func makeModelContainer() throws -> ModelContainer {
         let schema = Schema([
@@ -283,9 +313,18 @@ struct ContentView: View {
 /// `.task` runs on the main actor, and `presence` is the same instance ContentView
 /// injects above the phase switch. (Done alongside, not inside, the inbox loop —
 /// presence flows even before the inbox exists.)
+///
+/// DELIVERY STATE (Phase 7b.2a): ReadyView also feeds the router's
+/// `deliveryUpdates` stream into the inbox, so router-side state transitions land
+/// on the matching SwiftData row. Single-consumer: this is the ONLY reader of
+/// that stream. Today the stream is effectively inert (the router emits `.sent`
+/// echoes only); it becomes meaningful once acks + a delivery timeout land
+/// (Phase 7b.2b) and start producing real `.delivered` / `.relayed` /
+/// timed-out `.notDelivered` transitions.
 private struct ReadyView: View {
     let container: ModelContainer
     let coordinator: FirstContactCoordinator
+    let router: MessageRouter
 
     @State private var inbox: MessageInbox?
 
@@ -299,6 +338,7 @@ private struct ReadyView: View {
                 MainTabView()
                     .environment(inbox)
                     .task { await inbox.run() }
+                    .task { await inbox.runDeliveryUpdates(router.deliveryUpdates) }   // 7b.2a
             } else {
                 Color.bgApp.ignoresSafeArea()
             }

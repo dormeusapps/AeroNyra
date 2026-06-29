@@ -112,6 +112,47 @@ final class MessageInbox {
         save()
     }
 
+    // MARK: - Delivery-state updates (router → row)  Phase 7b.2a
+
+    /// Consume the router's `deliveryUpdates` for the app's lifetime, applying
+    /// each one to the matching outbound row. Started once from the composition
+    /// root (a `.task`, right next to `run()`), fed `router.deliveryUpdates`.
+    ///
+    /// `deliveryUpdates` is single-consumer: this method must be the ONLY reader
+    /// of that stream. It is the rail the ack path (7b.2b) rides. Today the
+    /// router emits `.sent` for rows that already hold a wireID (a no-op here)
+    /// and, on a SYNCHRONOUS failure, `.waitingForRange` / `.notDelivered` for
+    /// an id whose row has not been stamped with a wireID yet (so those match
+    /// nothing) — so this loop is effectively idempotent until acks + a timeout
+    /// begin producing real `.delivered` / `.relayed` / timed-out `.notDelivered`
+    /// transitions.
+    func runDeliveryUpdates(_ updates: AsyncStream<DeliveryUpdate>) async {
+        for await update in updates {
+            apply(update)
+        }
+    }
+
+    /// Match a `DeliveryUpdate` (keyed by wire `MessageID`) to its outbound row
+    /// and advance the row's `deliveryState`. Conservative on purpose:
+    ///   • a TERMINAL row (delivered / relayed / notDelivered) is never pulled
+    ///     back to a non-terminal state by a late or stale update, so the
+    ///     inbox's optimistic `.notDelivered` and any settled ack hold; and
+    ///   • an update that wouldn't change the row is dropped, so there's no
+    ///     redundant SwiftData write on the common echo of `.sent`.
+    private func apply(_ update: DeliveryUpdate) {
+        let wire: Data? = Data(update.id.bytes)
+        let descriptor = FetchDescriptor<Message>(
+            predicate: #Predicate { $0.isOutbound && $0.wireIDData == wire }
+        )
+        guard let row = try? modelContext.fetch(descriptor).first else { return }
+
+        if row.deliveryState.isTerminal && !update.state.isTerminal { return }
+        guard row.deliveryState != update.state else { return }
+
+        row.deliveryState = update.state
+        save()
+    }
+
     // MARK: - Outbound (composer-driven, optimistic)
 
     /// Persist `text` as an outbound Message IMMEDIATELY (so it is never lost),
