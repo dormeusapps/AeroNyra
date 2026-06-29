@@ -34,13 +34,16 @@
 //  out via `router.send`, so our own ids are marked seen and flooding echoes
 //  don't loop back to us. BUNDLES stay link-local and direct (`sendBundle`).
 //
-//  DELIVERY ACKS (Phase 7b.2b). When we open a TEXT message we seal a tiny
-//  delivery receipt back to the sender — its wire id plus the hop count the
-//  message travelled (maxHops − arrival ttl). The receipt rides the same sealed
-//  Envelope path (untracked: no receipt-of-receipt, no delivery tracking on the
-//  ack itself). On the sending side, opening an `.ack` calls
-//  `router.confirmDelivery`, which turns the sender's chip into Delivered /
-//  Relayed and cancels its stuck-send timeout. Media acks come in 7b.2c.
+//  DELIVERY ACKS (Phase 7b.2b/c). When we open a data message we seal a tiny
+//  delivery receipt back to the sender — the acked message's wire id plus the
+//  hop count it travelled (maxHops − arrival ttl). For TEXT the acked id is the
+//  envelope id; for MEDIA it is the mediaID-derived message id, stamped once the
+//  transfer reassembles whole. The receipt rides the same sealed Envelope path,
+//  UNTRACKED (no receipt-of-receipt, no tracking on the ack itself). On the
+//  sending side, opening an `.ack` calls `router.confirmDelivery`, which turns
+//  the chip into Delivered / Relayed and cancels that message's timeout. Media
+//  is registered for tracking around its burst (`beginTracking` before,
+//  `startDeliveryTimeout` after) so its message-level id can be confirmed.
 //
 //  PRESENCE-BY-IDENTITY (Phase 7a). The coordinator is ALSO the only place that
 //  knows which ephemeral BLE link maps to which crypto identity (`linkPeers`,
@@ -254,10 +257,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// `tracked` (default true) is forwarded to the router: a real text message
     /// is tracked (delivery state + stuck-send timeout), while a media
     /// manifest/chunk goes untracked (still flooded + seen-marked, but not
-    /// individually delivery-tracked — media gets message-level acks in 7b.2c).
-    /// Richer, asynchronous transitions (delivered / relayed, or a timeout)
-    /// arrive via the router's `deliveryUpdates` stream and are wired into the
-    /// inbox in Phase 7b.2.
+    /// individually delivery-tracked — media's message-level tracking is
+    /// registered around the burst in `sendMedia`).
     private func routeOut(_ envelope: Envelope, tracked: Bool = true) async throws {
         guard let router else { throw TransportError.notStarted }
         let state = await router.send(envelope, tracked: tracked)
@@ -294,9 +295,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// out sequentially — the transport's notify path is strict-FIFO
     /// (Phase 6b.2a), so this ordered burst reassembles cleanly on the peer.
     ///
-    /// Throws if no session exists, sealing fails, or a send fails. The caller
-    /// (MessageInbox) has optimistically persisted the row, so on a throw it
-    /// marks that message `.notDelivered` — nothing the user picked is lost.
+    /// DELIVERY TRACKING (7b.2c): the manifest + chunks are UNTRACKED control
+    /// envelopes, but the TRANSFER is tracked by its message-level id. We
+    /// `beginTracking` that id BEFORE the burst (so a fast media ack still finds
+    /// an entry to confirm) and `startDeliveryTimeout` AFTER the whole burst is
+    /// on the radio (so the timeout doesn't count our own send time). If the
+    /// burst fails mid-way we mark the transfer failed and rethrow, so the
+    /// inbox's optimistic row becomes `.notDelivered` — nothing the user picked
+    /// is lost.
     func sendMedia(_ blob: Data, mime: MediaMimeType, toRawKey rawKey: Data) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
@@ -304,44 +310,64 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let chunker = try MediaChunker(targetBucket: Self.mediaBucket,
                                        reservedBytes: Self.mediaReserved)
         // Use a CSPRNG 16-byte id (a MessageID's bytes) as the mediaID, so the
-        // same value is both the transfer key and the dedup MessageID.
+        // same value is both the transfer key and the dedup / tracking MessageID.
         let idBytes = MessageID.random().bytes
+        let mediaWireID = MessageID(bytes: idBytes)!
         let (manifest, chunks) = try chunker.split(blob, mime: mime, mediaID: idBytes)
 
-        // Manifest + chunks are UNTRACKED control envelopes: flooded + seen-
-        // marked, but not individually delivery-tracked (no per-chunk timeout,
-        // no outbox bloat). Message-level media acks land in 7b.2c.
+        // Register the transfer for delivery tracking up front, so an ack that
+        // races back before the burst finishes still matches.
+        await router?.beginTracking(of: mediaWireID)
+
+        // Manifest + chunks are UNTRACKED: flooded + seen-marked, but not
+        // individually delivery-tracked (no per-chunk timeout, no outbox bloat).
         func emit(_ payload: MessagePayload) async throws {
             let sealed = try session.seal(payload.encoded())
             try await routeOut(Envelope(ciphertext: sealed), tracked: false)
         }
 
-        let manifestJSON = try JSONEncoder().encode(manifest)
-        try await emit(.mediaManifest(manifestJSON))
-        for chunk in chunks {
-            try await emit(.mediaChunk(chunk))
+        do {
+            let manifestJSON = try JSONEncoder().encode(manifest)
+            try await emit(.mediaManifest(manifestJSON))
+            for chunk in chunks {
+                try await emit(.mediaChunk(chunk))
+            }
+        } catch {
+            // The burst broke before completing; fail the tracked transfer so
+            // the router cancels any state and the inbox marks the row failed.
+            await router?.confirmFailure(of: mediaWireID)
+            throw error
         }
+
+        // Whole burst is on the radio — now start the (longer) media timeout.
+        await router?.startDeliveryTimeout(for: mediaWireID,
+                                           after: MessageRouter.mediaDeliveryTimeout)
         print("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks → \(peer.userIDHex.prefix(16))…")
-        return MessageID(bytes: idBytes)!
+        return mediaWireID
     }
 
-    /// Seal a delivery receipt back to `peer` for a data envelope we just
-    /// opened, stamped with the hop count it travelled (maxHops − arrival ttl:
-    /// 0 for a direct delivery, ≥1 if relayed). The receipt rides the same
-    /// sealed Envelope path but is sent UNTRACKED — it is itself never acked
-    /// (no receipt loop) and earns no delivery state. Best-effort: a failed ack
-    /// just means the sender keeps showing "Sent" until its timeout, and it
-    /// never blocks or fails inbound handling.
-    private func sendDeliveryAck(for envelope: Envelope, to peer: PublicIdentity) async {
-        let hops = UInt8(max(0, Int(Envelope.maxHops) - Int(envelope.ttl)))
+    /// Seal a delivery receipt back to `peer` for a message we just opened,
+    /// stamped with the hop count it travelled. The receipt rides the same
+    /// sealed Envelope path but is sent UNTRACKED — it is itself never acked (no
+    /// receipt loop) and earns no delivery state. Best-effort: a failed ack just
+    /// means the sender keeps showing "Sent" until its timeout, and it never
+    /// blocks or fails inbound handling. `wireID` is the acked message's id —
+    /// the envelope id for text, or the mediaID-derived id for a media transfer.
+    private func sendDeliveryAck(wireID: MessageID, hops: UInt8, to peer: PublicIdentity) async {
         do {
             let session = try store.session(with: peer)
-            let payload = MessagePayload.deliveryAck(wireID: envelope.id, hops: hops)
+            let payload = MessagePayload.deliveryAck(wireID: wireID, hops: hops)
             let sealed = try session.seal(payload.encoded())
             await router?.send(Envelope(ciphertext: sealed), tracked: false)
         } catch {
             print("first-contact: delivery-ack seal/send failed: \(error)")
         }
+    }
+
+    /// Hop count an envelope travelled, read from its arrival ttl: 0 for a
+    /// direct delivery, ≥1 if it was relayed (maxHops − ttl, floored at 0).
+    private func hops(of envelope: Envelope) -> UInt8 {
+        UInt8(max(0, Int(Envelope.maxHops) - Int(envelope.ttl)))
     }
 
     // MARK: Relay split-horizon + inbound open  (EnvelopeReceiver)
@@ -383,27 +409,34 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     .received(peerKey: rawKey, plaintext: body, wireID: envelope.id)
                 )
                 print("first-contact: OPENED text from \(peer.userIDHex.prefix(16))…")
-                // Acknowledge: tell the sender we received it, with hop count.
-                await sendDeliveryAck(for: envelope, to: peer)
+                // Acknowledge the text message by its envelope id, with hops.
+                await sendDeliveryAck(wireID: envelope.id, hops: hops(of: envelope), to: peer)
 
             case .mediaManifest(let json):
                 guard let manifest = try? JSONDecoder().decode(MediaManifest.self, from: json) else {
                     print("first-contact: bad media manifest from \(peer.userIDHex.prefix(16))…")
                     return
                 }
-                if let done = reassembler.ingest(manifest: manifest) {
-                    emitMedia(done, rawKey: rawKey)
+                if let done = reassembler.ingest(manifest: manifest),
+                   let wireID = emitMedia(done, rawKey: rawKey) {
+                    // The transfer completed on the manifest — ack the whole
+                    // media by its message-level id, stamped with this leg's hops.
+                    await sendDeliveryAck(wireID: wireID, hops: hops(of: envelope), to: peer)
                 }
 
             case .mediaChunk(let chunk):
-                if let done = reassembler.ingest(chunk: chunk) {
-                    emitMedia(done, rawKey: rawKey)
+                if let done = reassembler.ingest(chunk: chunk),
+                   let wireID = emitMedia(done, rawKey: rawKey) {
+                    // The transfer completed on this chunk — ack the whole media
+                    // by its message-level id, stamped with this leg's hops.
+                    await sendDeliveryAck(wireID: wireID, hops: hops(of: envelope), to: peer)
                 }
 
             case .ack(let body):
                 // A delivery receipt for one of OUR sent messages. Match it to
-                // the router's outbox and advance the sender-side chip to
-                // Delivered / Relayed (and cancel that message's timeout). We
+                // the router's outbox (text envelope id, or a media transfer's
+                // message-level id) and advance the sender-side chip to
+                // Delivered / Relayed, cancelling that message's timeout. We
                 // never ack an ack, so this terminates the receipt exchange.
                 guard let (wireID, hops) = MessagePayload.parseDeliveryAck(body) else {
                     print("first-contact: malformed delivery ack from \(peer.userIDHex.prefix(16))…")
@@ -417,15 +450,19 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
     }
 
-    /// Emit a completed media transfer to the persistence layer. The mediaID hex
-    /// (16 bytes) becomes the dedup `MessageID`.
-    private func emitMedia(_ done: MediaReassembler.Completed, rawKey: Data) {
+    /// Emit a completed media transfer to the persistence layer and return the
+    /// message-level `MessageID` (derived from the 16-byte mediaID hex) so the
+    /// caller can ack the transfer by that id. Returns nil only if the mediaID
+    /// is malformed (in which case nothing is emitted and no ack is sent).
+    @discardableResult
+    private func emitMedia(_ done: MediaReassembler.Completed, rawKey: Data) -> MessageID? {
         guard let idBytes = Self.hexToBytes(done.mediaID),
-              let wireID = MessageID(bytes: idBytes) else { return }
+              let wireID = MessageID(bytes: idBytes) else { return nil }
         eventsContinuation.yield(
             .receivedMedia(peerKey: rawKey, data: done.data, mime: done.mime, wireID: wireID)
         )
         print("first-contact: MEDIA complete \(done.data.count)B (\(done.mime.rawValue))")
+        return wireID
     }
 
     /// Decode a lowercase-hex string to bytes. nil on odd length or non-hex.

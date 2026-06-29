@@ -23,15 +23,16 @@
 //  is marked seen up front and the echoes that flooding produces are recognised
 //  as duplicates rather than re-relayed or handed back to us to "open".
 //
-//  DELIVERY STATE (Phase 7b.2b): a TRACKED send (a real outbound message) arms a
-//  stuck-send timeout — if no confirmation lands within `deliveryTimeout`, the
-//  message is reported `.notDelivered`. A delivery ack decoded by the Security
-//  layer calls `confirmDelivery`, which cancels that timeout and reports
-//  `.delivered` / `.relayed(hops)`. Control envelopes that are not themselves
-//  messages — delivery acks, and the manifest/chunk envelopes of a media
-//  transfer — send UNTRACKED: still flooded and marked seen, but with no outbox
-//  entry, no delivery update, and no timeout. (Media gets its own message-level
-//  tracking + acks in Phase 7b.2c.)
+//  DELIVERY STATE (Phase 7b.2b/c). A TRACKED text send arms a stuck-send timeout
+//  keyed by its envelope id; an ack decoded above calls `confirmDelivery`, which
+//  cancels the timeout and reports `.delivered` / `.relayed(hops)`. MEDIA is one
+//  message spread across many envelopes, so its row wireID (the mediaID-derived
+//  id) is not any single envelope's id — the Security layer therefore registers
+//  that message-level id explicitly via `beginTracking` (before the burst, so a
+//  fast ack still matches) and arms its timeout via `startDeliveryTimeout` (once
+//  the whole burst is on the radio). The chunk/manifest envelopes themselves go
+//  out UNTRACKED — flooded + seen-marked, but with no outbox entry, no update,
+//  and no per-chunk timeout.
 //
 
 import Foundation
@@ -101,26 +102,35 @@ public actor MessageRouter {
     /// Default dedup window. Sized for a busy room; tune against real traffic.
     public static let defaultSeenCapacity = 2048
 
-    /// How long a tracked outbound message may sit on `.sent` (handed to the
-    /// radio, awaiting a delivery ack) before the router gives up and reports it
+    /// How long a tracked TEXT message may sit on `.sent` (handed to the radio,
+    /// awaiting a delivery ack) before the router gives up and reports it
     /// `.notDelivered`. A direct hop confirms in well under a second; a multi-hop
     /// relay path is slower, so this is generous on purpose — too short would
     /// false-fail a legitimate 7-hop delivery. Tune against real mesh traffic.
     public static let deliveryTimeout: Duration = .seconds(45)
 
+    /// Stuck-send timeout for a MEDIA transfer. Longer than text because the
+    /// burst itself (manifest + N chunks, each a sealed Envelope over GATT)
+    /// takes real time before the receiver can reassemble + ack — a flat 45s
+    /// would false-fail a legitimate large transfer. Tune against real traffic.
+    public static let mediaDeliveryTimeout: Duration = .seconds(90)
+
     private let transports: [MeshTransport]
     private var seen: SeenCache
     private weak var receiver: EnvelopeReceiver?
 
-    /// Outbound messages awaiting confirmation, keyed by envelope id. Retained
-    /// so we can report state and re-send on a failed delivery. Only TRACKED
-    /// sends land here; untracked control envelopes (acks, media chunks) do not.
+    /// Outbound messages awaiting confirmation, keyed by the message's wire id.
+    /// For text that id IS the envelope id (and `envelope` is retained for a
+    /// router-level resend). For media it is the mediaID-derived message id and
+    /// `envelope` is nil — the transfer is many envelopes, and media resend is
+    /// driven by the inbox (re-seal from the row), not `router.resend`.
     private var outbox: [MessageID: OutboxEntry] = [:]
 
-    /// Per-message stuck-send timers, keyed by envelope id. Armed when a tracked
-    /// send reaches `.sent`; cancelled the instant a terminal state (delivered /
-    /// relayed / notDelivered) is recorded for that id. A fired timer flips a
-    /// still-unconfirmed message to `.notDelivered`.
+    /// Per-message stuck-send timers, keyed by the message's wire id. Armed when
+    /// a tracked send reaches `.sent` (text) or when `startDeliveryTimeout` is
+    /// called (media); cancelled the instant a terminal state (delivered /
+    /// relayed / notDelivered) is recorded. A fired timer flips a still-
+    /// unconfirmed message to `.notDelivered`.
     private var timeouts: [MessageID: Task<Void, Never>] = [:]
 
     private var consumeTasks: [Task<Void, Never>] = []
@@ -130,7 +140,9 @@ public actor MessageRouter {
     private nonisolated let updates: AsyncStream<DeliveryUpdate>.Continuation
 
     private struct OutboxEntry {
-        let envelope: Envelope
+        /// The sealed bytes, for a router-level resend. Nil for a media transfer
+        /// (no single envelope represents the message).
+        let envelope: Envelope?
         var state: MessageDeliveryState
     }
 
@@ -191,8 +203,8 @@ public actor MessageRouter {
     ///                 `DeliveryUpdate`, and arms the stuck-send timeout.
     ///   • untracked — a delivery ack, or a media manifest/chunk. Flooded and
     ///                 seen-marked, but no outbox entry, no update, no timeout.
-    ///                 (These are not individually confirmable messages; media
-    ///                 gets message-level tracking in 7b.2c.)
+    ///                 (Media's message-level tracking is registered separately
+    ///                 via `beginTracking` / `startDeliveryTimeout`.)
     ///
     /// Returns the IMMEDIATE routing outcome so a synchronous caller can react:
     ///   • `.sent`            — handed to the radio for broadcast.
@@ -226,16 +238,39 @@ public actor MessageRouter {
         return resulting
     }
 
+    /// Register a message-level id for delivery tracking WITHOUT a backing
+    /// envelope — used for a multi-envelope media transfer, whose row wireID is
+    /// the mediaID-derived id rather than any single chunk's envelope id.
+    ///
+    /// Called BEFORE the chunk burst goes out, so an ack that races back before
+    /// the burst finishes still finds an entry to confirm. Idempotent, and arms
+    /// no timer; call `startDeliveryTimeout` once the whole transfer is on the
+    /// radio.
+    public func beginTracking(of id: MessageID) {
+        if outbox[id] == nil {
+            outbox[id] = OutboxEntry(envelope: nil, state: .sent)
+        }
+    }
+
+    /// Arm the stuck-send timeout for an already-tracked message (media). No-op
+    /// if the id isn't tracked, or already reached a terminal state — e.g. an
+    /// ack beat the burst's completion, in which case there is nothing to time.
+    public func startDeliveryTimeout(for id: MessageID, after duration: Duration) {
+        guard let entry = outbox[id], !entry.state.isTerminal else { return }
+        armTimeout(for: id, after: duration)
+    }
+
     /// Re-send a previously failed message.
     ///
     /// Caveat: this re-sends the *same* sealed bytes, so any relay still
     /// holding this id in its seen-cache will drop it. That is correct for the
     /// common case (a `.waitingForRange` message no relay ever saw). For a
     /// retry after partial propagation, ask Security to reseal with a fresh id
-    /// instead — resealing is not the router's call to make.
+    /// instead — resealing is not the router's call to make. A media entry has
+    /// no single envelope, so this no-ops for media (the inbox re-seals).
     public func resend(_ id: MessageID) async {
-        guard let entry = outbox[id] else { return }
-        await send(entry.envelope)
+        guard let entry = outbox[id], let envelope = entry.envelope else { return }
+        await send(envelope)
     }
 
     /// Mark an in-flight message as actively routing through the mesh. Drives
@@ -300,12 +335,14 @@ public actor MessageRouter {
         updates.yield(DeliveryUpdate(id: id, state: state))
     }
 
-    /// Arm (or re-arm) the stuck-send timer for a tracked, just-sent message.
-    /// Fires once after `deliveryTimeout`; a terminal state cancels it first.
-    private func armTimeout(for id: MessageID) {
+    /// Arm (or re-arm) the stuck-send timer for a tracked message. Fires once
+    /// after `duration`; a terminal state cancels it first. `duration` defaults
+    /// to the text timeout; media passes `mediaDeliveryTimeout`.
+    private func armTimeout(for id: MessageID,
+                            after duration: Duration = MessageRouter.deliveryTimeout) {
         cancelTimeout(for: id)
         timeouts[id] = Task { [weak self] in
-            try? await Task.sleep(for: MessageRouter.deliveryTimeout)
+            try? await Task.sleep(for: duration)
             guard !Task.isCancelled else { return }
             await self?.timeoutFired(for: id)
         }
