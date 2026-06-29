@@ -4,5 +4,6 @@
 #include "../../../Vendor/secp256k1/include/secp256k1.h"
 #include "../../../Vendor/secp256k1/include/secp256k1_extrakeys.h"
 #include "../../../Vendor/secp256k1/include/secp256k1_schnorrsig.h"
+#include "../../../Vendor/secp256k1/include/secp256k1_ecdh.h"
 
 #endif /* BEACON_CSECP256K1_SHIM_H */
