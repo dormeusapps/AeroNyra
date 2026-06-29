@@ -2,27 +2,39 @@
 //  Secp256k1.swift
 //  Core/Nostr
 //
-//  Curve operations for the Nostr identity (Phase 8b), backed by the vendored
-//  libsecp256k1 (the `Csecp256k1` module from 8b-i-0). This is the ONE place the
-//  app does secp256k1 curve math, keeping NostrIdentity itself free of any C
-//  import — identity stays Swift-pure, the curve lives here.
+//  Curve operations for the Nostr identity (Phase 8b/8c), backed by the vendored
+//  libsecp256k1 (the `Csecp256k1` module). This is the ONE place the app does
+//  secp256k1 curve math, keeping NostrIdentity itself free of any C import —
+//  identity stays Swift-pure, the curve lives here.
 //
-//  8b-i-1 added x-only public-key derivation. 8b-ii adds BIP-340 schnorr
-//  signing and verification alongside it (same context/keypair machinery),
-//  which is why this is a standalone helper rather than inlined into
-//  NostrIdentity. The schnorrsig + extrakeys modules were compiled in by the
-//  8b-i-0 build flags, so signing needs no build changes.
+//  Contents:
+//   - xOnlyPublicKey (8b-i-1): BIP-340 x-only public-key derivation -> npub.
+//   - sign / verify  (8b-ii):  BIP-340 schnorr signing + verification.
+//   - ecdh           (8c-i-0): raw secp256k1 ECDH shared X for NIP-44.
 //
 //  A fresh context is created per call and randomized before any secret-key
 //  operation (side-channel hardening, per libsecp256k1 guidance). These
-//  operations are rare (once per identity load / per outbound event), so the
-//  per-call context cost is not a concern; if it ever becomes one, a cached
-//  randomized context can replace it without changing this surface.
+//  operations are rare, so the per-call context cost is not a concern; if it
+//  ever becomes one, a cached randomized context can replace it without
+//  changing this surface.
 //
 
 import Foundation
 import Security
 import Csecp256k1
+
+/// File-private ECDH hash callback: copy the shared point's 32-byte X coordinate
+/// out verbatim. libsecp256k1's default ECDH hashes the compressed point with
+/// SHA256; NIP-44 instead wants the RAW shared X, so we pass this passthrough.
+/// Must be non-capturing to bridge to a C function pointer.
+private func secp256k1RawXCopyHash(_ output: UnsafeMutablePointer<UInt8>?,
+                                   _ x32: UnsafePointer<UInt8>?,
+                                   _ y32: UnsafePointer<UInt8>?,
+                                   _ data: UnsafeMutableRawPointer?) -> Int32 {
+    guard let output = output, let x32 = x32 else { return 0 }
+    output.update(from: x32, count: 32)
+    return 1
+}
 
 enum Secp256k1 {
 
@@ -158,5 +170,65 @@ enum Secp256k1 {
                                                  messageBytes.count,
                                                  &xonly)
         return result == 1
+    }
+
+    // MARK: - ECDH (8c-i-0)
+
+    /// Compute the raw secp256k1 ECDH shared X coordinate between our 32-byte
+    /// secret scalar and a peer's 32-byte x-only public key.
+    ///
+    /// This returns the BARE 32-byte X of the shared point (no SHA256), which is
+    /// the input NIP-44 v2 feeds into HKDF to form the conversation key. The
+    /// per-conversation HKDF/salt step is NIP-44's concern and lives there, not
+    /// here — this helper stays a pure curve op.
+    ///
+    /// The peer key is x-only, so it is lifted to the even-Y point (0x02 prefix)
+    /// before the multiply. The shared X is parity-independent (negating a point
+    /// preserves its X), so the result matches regardless of either key's Y
+    /// parity — which is exactly why the NIP-44 conversation key is symmetric.
+    ///
+    /// Returns nil on wrong-length inputs, an invalid secret scalar, a peer key
+    /// that is not a valid curve x-coordinate, or any curve failure.
+    static func ecdh(secretKey secret: Data, peerXOnlyPublicKey peerKey: Data) -> Data? {
+        guard secret.count == 32, peerKey.count == 32 else { return nil }
+        guard let ctx = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_NONE)) else {
+            return nil
+        }
+        defer { secp256k1_context_destroy(ctx) }
+
+        // Randomize before the secret-key multiply (DPA hardening).
+        var seed = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, seed.count, &seed) == errSecSuccess,
+              secp256k1_context_randomize(ctx, seed) == 1 else {
+            return nil
+        }
+
+        // Lift the peer x-only key to a full point as the even-Y candidate by
+        // prefixing 0x02, then parse it as a compressed public key.
+        var compressed = [UInt8](repeating: 0, count: 33)
+        compressed[0] = 0x02
+        let peerBytes = [UInt8](peerKey)
+        for i in 0..<32 { compressed[1 + i] = peerBytes[i] }
+
+        var pubkey = secp256k1_pubkey()
+        guard secp256k1_ec_pubkey_parse(ctx, &pubkey, compressed, 33) == 1 else {
+            return nil   // peer key not a valid curve x-coordinate
+        }
+
+        // Local copy of the secret; zeroed on the way out for hygiene.
+        var secretBytes = [UInt8](secret)
+        defer { for i in secretBytes.indices { secretBytes[i] = 0 } }
+
+        var output = [UInt8](repeating: 0, count: 32)
+        guard secp256k1_ecdh(ctx,
+                             &output,
+                             &pubkey,
+                             secretBytes,
+                             secp256k1RawXCopyHash,
+                             nil) == 1 else {
+            return nil   // invalid scalar, or shared point at infinity
+        }
+
+        return Data(output)
     }
 }
