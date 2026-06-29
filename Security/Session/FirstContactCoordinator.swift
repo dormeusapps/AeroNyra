@@ -290,9 +290,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// manifest/chunk goes untracked (still flooded + seen-marked, but not
     /// individually delivery-tracked — media's message-level tracking is
     /// registered around the burst in `sendMedia`).
-    private func routeOut(_ envelope: Envelope, tracked: Bool = true) async throws {
+    private func routeOut(_ envelope: Envelope,
+                          tracked: Bool = true,
+                          nostrRecipient: Data? = nil) async throws {
         guard let router else { throw TransportError.notStarted }
-        let state = await router.send(envelope, tracked: tracked)
+        let state = await router.send(envelope, tracked: tracked, nostrRecipient: nostrRecipient)
         guard state == .sent else { throw TransportError.sendFailed }
     }
 
@@ -305,7 +307,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// hand the envelope to the radio. The caller (MessageInbox) has already
     /// optimistically persisted the row, so on a throw it simply marks that
     /// message `.notDelivered` — nothing the user typed is ever lost.
-    func send(_ text: String, toRawKey rawKey: Data) async throws -> MessageID {
+    func send(_ text: String, toRawKey rawKey: Data, nostrRecipient: Data? = nil) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
@@ -315,7 +317,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // media manifest/chunk (which now share this same sealed path).
         let sealed = try session.seal(MessagePayload.text(Data(text.utf8)).encoded())
         let envelope = Envelope(ciphertext: sealed)
-        try await routeOut(envelope)   // tracked: a real message earns a receipt
+        // tracked: a real message earns a receipt. nostrRecipient enables the
+        // router's Tier-2 fallback (BLE → Nostr) when BLE is out of range.
+        try await routeOut(envelope, nostrRecipient: nostrRecipient)
         return envelope.id
     }
 
@@ -337,7 +341,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// burst fails mid-way we mark the transfer failed and rethrow, so the
     /// inbox's optimistic row becomes `.notDelivered` — nothing the user picked
     /// is lost.
-    func sendMedia(_ blob: Data, mime: MediaMimeType, toRawKey rawKey: Data) async throws -> MessageID {
+    func sendMedia(_ blob: Data, mime: MediaMimeType, toRawKey rawKey: Data,
+                   nostrRecipient: Data? = nil) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
@@ -358,9 +363,12 @@ actor FirstContactCoordinator: EnvelopeReceiver {
 
         // Manifest + chunks are UNTRACKED: flooded + seen-marked, but not
         // individually delivery-tracked (no per-chunk timeout, no outbox bloat).
+        // Each still carries nostrRecipient so a transfer falls back to Nostr,
+        // envelope-by-envelope, when BLE is out of range (Tier-2).
         func emit(_ payload: MessagePayload) async throws {
             let sealed = try session.seal(payload.encoded())
-            try await routeOut(Envelope(ciphertext: sealed), tracked: false)
+            try await routeOut(Envelope(ciphertext: sealed), tracked: false,
+                               nostrRecipient: nostrRecipient)
         }
 
         do {
