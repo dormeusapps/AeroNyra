@@ -99,6 +99,15 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7C18938A2FF2C49900C69ADA /* Exceptions for "Nostr" folder in "Beacon" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			additionalCompilerFlagsByRelativePath = {
+				Csecp256k1/precomputed_ecmult.c = "-w";
+				Csecp256k1/precomputed_ecmult_gen.c = "-w";
+				Csecp256k1/secp256k1.c = "-w";
+			};
+			target = 7C3B094B2FED902E00AE9EC1 /* Beacon */;
+		};
 		7CE0C8702FEF23FC00151314 /* Exceptions for "Beacon" folder in "Beacon" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -111,6 +120,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7C18935B2FF2873A00C69ADA /* Nostr */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7C18938A2FF2C49900C69ADA /* Exceptions for "Nostr" folder in "Beacon" target */,
+			);
 			path = Nostr;
 			sourceTree = "<group>";
 		};
@@ -389,6 +401,7 @@
 				TargetAttributes = {
 					7C3B094B2FED902E00AE9EC1 = {
 						CreatedOnToolsVersion = 26.5;
+						LastSwiftMigration = 2650;
 					};
 					7C3B09582FED902F00AE9EC1 = {
 						CreatedOnToolsVersion = 26.5;
@@ -405,6 +418,8 @@
 			);
 			mainGroup = 7C3B09432FED902E00AE9EC1;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7C3B094D2FED902E00AE9EC1 /* Products */;
 			projectDirPath = "";
@@ -689,12 +704,28 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = QUAZFH79QS;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COCOAPODS=1",
+					"ENABLE_MODULE_SCHNORRSIG=1",
+					"ECMULT_WINDOW_SIZE=15",
+					"ENABLE_MODULE_EXTRAKEYS=1",
+					"ECMULT_GEN_PREC_BITS=4",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"${PODS_CONFIGURATION_BUILD_DIR}/LibSignalClient/LibSignalClient.framework/Headers\"",
+					"$(SRCROOT)/Vendor/secp256k1/include",
+					"$(SRCROOT)/Vendor/secp256k1",
+					"$(SRCROOT)/Vendor/secp256k1/src",
+				);
 				INFOPLIST_FILE = Beacon/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = AeroNyra;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and relay your messages directly between phones. No servers, no internet.";
@@ -720,6 +751,9 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/Core/Nostr/Csecp256k1";
+				SWIFT_OBJC_BRIDGING_HEADER = "";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -732,12 +766,28 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = QUAZFH79QS;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"COCOAPODS=1",
+					"ENABLE_MODULE_SCHNORRSIG=1",
+					"ECMULT_GEN_PREC_BITS=4",
+					"ECMULT_WINDOW_SIZE=15",
+					"ENABLE_MODULE_EXTRAKEYS=1",
+				);
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"${PODS_CONFIGURATION_BUILD_DIR}/LibSignalClient/LibSignalClient.framework/Headers\"",
+					"$(SRCROOT)/Vendor/secp256k1/src",
+					"$(SRCROOT)/Vendor/secp256k1",
+					"$(SRCROOT)/Vendor/secp256k1/include",
+				);
 				INFOPLIST_FILE = Beacon/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = AeroNyra;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and relay your messages directly between phones. No servers, no internet.";
@@ -763,6 +813,8 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/Core/Nostr/Csecp256k1";
+				SWIFT_OBJC_BRIDGING_HEADER = "";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

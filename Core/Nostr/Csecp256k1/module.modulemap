@@ -1,0 +1,4 @@
+module Csecp256k1 {
+    header "shim.h"
+    export *
+}
