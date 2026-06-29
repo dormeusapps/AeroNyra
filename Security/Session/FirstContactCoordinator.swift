@@ -86,6 +86,14 @@ enum SessionEvent: Sendable {
     /// derived from the 16-byte mediaID (stable across the transfer) so dedup
     /// works the same as for text. Partial transfers never surface here.
     case receivedMedia(peerKey: Data, data: Data, mime: MediaMimeType, wireID: MessageID)
+
+    /// This peer announced their raw 32-byte x-only secp256k1 Nostr public key
+    /// over the established sealed channel (Phase 8d npub-bootstrap — never from
+    /// the PrekeyBundle). The persistence layer should create-or-fetch the Peer
+    /// and store `nostrPubkey` on the row, so the router can later address a
+    /// Nostr gift wrap to this peer when BLE is out of range. Identity metadata,
+    /// not a message: no Message row, no unread dot.
+    case learnedNostrIdentity(peerKey: Data, nostrPubkey: Data)
 }
 
 actor FirstContactCoordinator: EnvelopeReceiver {
@@ -449,19 +457,19 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // A peer announced their raw 32-byte x-only secp256k1 pubkey over
                 // the established sealed channel (the npub-bootstrap, LOCKED:
                 // never embedded in the PrekeyBundle). Validate strictly on this
-                // untrusted path; a malformed body is ignored.
-                //
-                // Phase 8d-0 stops here on purpose: there is no peer→Nostr-pubkey
-                // directory to persist into yet. Storing the learned key — keyed
-                // by `rawKey` (the peer's libsignal identity), which is how the
-                // router will resolve a recipient to address a gift wrap to — is
-                // the next substep, paired with where the Nostr peer directory
-                // lives. For now we confirm receipt and drop.
+                // untrusted path; a malformed body is ignored. We then emit it
+                // across the actor→SwiftData boundary like every other write:
+                // the main-actor MessageInbox persists it onto the matching Peer
+                // row (keyed by `rawKey`), so the router can later address a Nostr
+                // gift wrap to this peer when BLE is out of range.
                 guard let nostrKey = MessagePayload.parseNostrIdentity(body) else {
                     print("first-contact: malformed nostr-identity from \(peer.userIDHex.prefix(16))…")
                     return
                 }
-                print("first-contact: NOSTR identity \(nostrKey.count)B from \(peer.userIDHex.prefix(16))… (not yet stored — Phase 8d)")
+                eventsContinuation.yield(
+                    .learnedNostrIdentity(peerKey: rawKey, nostrPubkey: nostrKey)
+                )
+                print("first-contact: NOSTR identity \(nostrKey.count)B from \(peer.userIDHex.prefix(16))…")
             }
         } catch {
             print("first-contact: open failed: \(error)")

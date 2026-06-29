@@ -52,6 +52,8 @@ final class MessageInbox {
                 handleReceived(peerKey: key, plaintext: plaintext, wireID: wireID)
             case .receivedMedia(let key, let data, let mime, let wireID):
                 handleReceivedMedia(peerKey: key, data: data, mime: mime, wireID: wireID)
+            case .learnedNostrIdentity(let key, let nostrPubkey):
+                handleLearnedNostrIdentity(peerKey: key, nostrPubkey: nostrPubkey)
             }
         }
     }
@@ -112,7 +114,23 @@ final class MessageInbox {
         save()
     }
 
-    // MARK: - Delivery-state updates (router → row)  Phase 7b.2a
+    /// A peer announced their Nostr public key over the established sealed
+    /// channel (Phase 8d npub-bootstrap). Create-or-fetch the peer by its raw
+    /// 32-byte key and store the announced key on the row, so the router can
+    /// later address a Nostr gift wrap to this peer. This is identity metadata,
+    /// not a message — no Message row, no unread dot, no conversation forced.
+    ///
+    /// Last-announcement-wins, and a re-announcement of the SAME key is a pure
+    /// no-op (no redundant SwiftData write, mirroring the delivery-update path).
+    /// Overwrite is safe: the channel carrying the announcement is already
+    /// sealed and authenticated to this exact peer.
+    private func handleLearnedNostrIdentity(peerKey: Data, nostrPubkey: Data) {
+        let peer = peer(forRawKey: peerKey)
+        guard peer.nostrPubkey != nostrPubkey else { return }
+        peer.nostrPubkey = nostrPubkey
+        peer.lastSeen = .now
+        save()
+    }
 
     /// Consume the router's `deliveryUpdates` for the app's lifetime, applying
     /// each one to the matching outbound row. Started once from the composition
