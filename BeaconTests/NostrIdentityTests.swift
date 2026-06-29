@@ -2,9 +2,10 @@
 //  NostrIdentityTests.swift
 //  BeaconTests
 //
-//  Proves 8a's dependency-free identity: scalar validity, generation, the
-//  nsec encoding, and the load-or-create persistence round-trip. No secp256k1,
-//  no device — pure logic + Keychain. XCTest (project convention).
+//  Proves the Nostr identity: scalar validity, generation, the nsec encoding,
+//  the load-or-create persistence round-trip (8a), and — as of 8b-i-1 — x-only
+//  public-key derivation and the npub encoding against a known-answer vector.
+//  XCTest (project convention). Device-free.
 //
 
 import XCTest
@@ -75,7 +76,7 @@ final class NostrIdentityTests: XCTestCase {
         XCTAssertNotEqual(a.secretKeyBytes, b.secretKeyBytes)
     }
 
-    // MARK: - Encoding
+    // MARK: - Encoding (nsec)
 
     func testNsecIsProducedAndRoundTrips() throws {
         let id = try NostrIdentity()
@@ -84,11 +85,44 @@ final class NostrIdentityTests: XCTestCase {
         XCTAssertEqual(NIP19.secretKey(fromNsec: nsec), id.secretKeyBytes)
     }
 
-    func testPublicKeyDeferredUntil8b() throws {
-        // The x-only pubkey/npub are intentionally not derived yet (Phase 8b).
+    // MARK: - Public key derivation (8b-i-1)
+
+    /// Known-answer vector derived from first principles: the secret scalar 1
+    /// has public key equal to the secp256k1 generator G, whose x-coordinate is
+    /// a published constant. G has an even y, so the x-only key is G.x unchanged.
+    /// This pins the whole secret → pubkey → npub pipeline to a value anyone can
+    /// verify independently of this code.
+    func testKnownVectorSecretOneDerivesGeneratorX() throws {
+        var secret = [UInt8](repeating: 0, count: 32); secret[31] = 1
+        let id = NostrIdentity(secretKeyBytes: Data(secret))
+
+        let expectedPubHex =
+            "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        let expectedNpub =
+            "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d"
+
+        let pub = try XCTUnwrap(id.publicKeyBytes, "pubkey derivation returned nil")
+        XCTAssertEqual(pub.count, 32)
+        XCTAssertEqual(hex(pub), expectedPubHex)
+
+        let npub = try XCTUnwrap(id.npub, "npub should be non-nil once pubkey derives")
+        XCTAssertEqual(npub, expectedNpub)
+    }
+
+    /// A freshly generated identity produces a well-formed npub that decodes back
+    /// to its own derived public-key bytes (encode/derive consistency).
+    func testGeneratedIdentityNpubRoundTrips() throws {
         let id = try NostrIdentity()
-        XCTAssertNil(id.publicKeyBytes)
-        XCTAssertNil(id.npub)
+        let pub = try XCTUnwrap(id.publicKeyBytes)
+        let npub = try XCTUnwrap(id.npub)
+        XCTAssertTrue(npub.hasPrefix("npub1"))
+        XCTAssertEqual(NIP19.publicKey(fromNpub: npub), pub)
+    }
+
+    /// Derivation is deterministic: the same secret always yields the same pubkey.
+    func testDerivationIsDeterministic() throws {
+        let id = try NostrIdentity()
+        XCTAssertEqual(id.publicKeyBytes, id.publicKeyBytes)
     }
 
     // MARK: - Persistence
@@ -102,5 +136,11 @@ final class NostrIdentityTests: XCTestCase {
     func testLoadOrCreatePersistsToStore() throws {
         let id = try NostrIdentity.loadOrCreate(service: service)
         XCTAssertEqual(try NostrSecretStore.load(service: service), id.secretKeyBytes)
+    }
+
+    // MARK: -
+
+    private func hex(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined()
     }
 }

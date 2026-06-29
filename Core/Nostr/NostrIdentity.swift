@@ -2,7 +2,7 @@
 //  NostrIdentity.swift
 //  Core/Nostr
 //
-//  The device's Nostr identity for the internet pillar (Phase 8a).
+//  The device's Nostr identity for the internet pillar (Phase 8).
 //
 //  A secp256k1 secret scalar — SEPARATE from the app's Enclave-bound Curve25519
 //  identity, because Nostr is a different curve and the Enclave key is
@@ -10,20 +10,17 @@
 //  NostrSecretStore (Keychain, ThisDeviceOnly). The public half is an x-only
 //  32-byte key, shown/shared as `npub…` (NIP-19, see Bech32).
 //
-//  DEPENDENCY POSTURE (deliberate): this file has NO third-party crypto
-//  dependency. Generating the identity is just choosing a valid 32-byte scalar,
-//  which we do here with the platform CSPRNG. The ONE operation that needs
-//  secp256k1 curve math — deriving the x-only PUBLIC key from the secret — is
-//  deferred to Phase 8b, where it lands together with schnorr EVENT SIGNING
-//  (they share the same curve code, and signing is the first place the public
-//  key is actually needed on the wire). Until then `publicKeyBytes` / `npub`
-//  return nil, and that is intentional: 8a establishes and persists the secret;
-//  8b lights up the public side + signing. See `publicKeyBytes`.
+//  DEPENDENCY POSTURE: identity generation/persistence is dependency-free (8a) —
+//  choosing a valid 32-byte scalar with the platform CSPRNG. The curve math that
+//  derives the x-only PUBLIC key from the secret lives in `Secp256k1` (8b-i-1),
+//  backed by the vendored libsecp256k1. This file imports no C: it stays Swift-
+//  pure and delegates the one curve operation to the helper. Schnorr event
+//  signing (8b-ii) will live alongside the derivation in that same helper.
 //
 //  SECRET VALIDITY: a secp256k1 private key must be in [1, n-1] where n is the
 //  curve order. A uniform random 32-byte value is overwhelmingly valid; we still
 //  reject the two degenerate cases (zero, or ≥ n) and re-draw, so a stored
-//  secret is always a usable scalar once 8b derives from it.
+//  secret is always a usable scalar for derivation.
 //
 
 import Foundation
@@ -31,27 +28,30 @@ import Security
 
 enum NostrIdentityError: Error {
     case randomGenerationFailed
-    /// The x-only public key / signing path is not implemented until Phase 8b.
-    case publicKeyNotAvailableUntil8b
 }
 
-/// The persistent Nostr identity. In 8a this is the secret scalar plus its
-/// `nsec` encoding; the public key / `npub` arrive in 8b with curve math.
+/// The persistent Nostr identity: the secret scalar, its `nsec` encoding, and —
+/// as of 8b — the derived x-only public key and its `npub` encoding.
 struct NostrIdentity {
 
     /// The 32-byte secret scalar. Never leaves the device; persisted in the
     /// Keychain via NostrSecretStore.
     let secretKeyBytes: Data
 
-    /// The x-only public key — NOT YET DERIVED. Returns nil until Phase 8b wires
-    /// the secp256k1 curve math (alongside schnorr event signing). Callers that
-    /// need the npub before 8b should treat nil as "internet identity not ready".
-    var publicKeyBytes: Data? { nil }   // 8b: derive x-only pubkey from secret
+    /// The 32-byte x-only public key, derived from the secret via libsecp256k1
+    /// (see `Secp256k1.xOnlyPublicKey`). nil only if derivation fails (which, for
+    /// a stored scalar that passed `isValidScalar`, should not happen).
+    ///
+    /// Derivation runs on each access; callers that read it repeatedly (e.g. UI)
+    /// may cache. Kept computed here to leave identity construction non-throwing.
+    var publicKeyBytes: Data? {
+        Secp256k1.xOnlyPublicKey(fromSecretKey: secretKeyBytes)
+    }
 
-    /// `npub1…` form of the public key (NIP-19). nil until 8b (see publicKeyBytes).
+    /// `npub1…` form of the public key (NIP-19). Non-nil once the pubkey derives.
     var npub: String? { publicKeyBytes.flatMap(NIP19.npub(fromPublicKey:)) }
 
-    /// `nsec1…` form of the secret key (NIP-19). Available now — pure encoding.
+    /// `nsec1…` form of the secret key (NIP-19). Pure encoding.
     /// Handle with care: this is the private key in shareable form.
     var nsec: String? { NIP19.nsec(fromSecretKey: secretKeyBytes) }
 
