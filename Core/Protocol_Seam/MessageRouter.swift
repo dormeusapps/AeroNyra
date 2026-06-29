@@ -164,9 +164,10 @@ public actor MessageRouter {
     public func start() async throws {
         for t in transports { try await t.start() }
         for t in transports {
+            let kind = t.kind
             let task = Task { [weak self, t] in
                 for await (link, envelope) in t.incoming {
-                    await self?.handleInbound(link: link, envelope)
+                    await self?.handleInbound(link: link, envelope, from: kind)
                 }
             }
             consumeTasks.append(task)
@@ -302,28 +303,39 @@ public actor MessageRouter {
 
     // MARK: Inbound
 
-    private func handleInbound(link: UUID, _ envelope: Envelope) async {
+    private func handleInbound(link: UUID, _ envelope: Envelope, from kind: TransportKind) async {
         // 1. Dedup. A message arriving by two relay paths (different ttl) has
         //    the same id and collapses to one here; loops break here too. This
         //    is also where the transport's notify+write duplicate of a single
-        //    envelope is folded to one.
+        //    envelope is folded to one. The cache is router-wide, so the SAME
+        //    message arriving over BOTH transports (BLE and Nostr — belt-and-
+        //    suspenders delivery) likewise collapses to a single delivery.
         if seen.containsOrInsert(envelope.id) { return }
 
-        // 2. Relay (split-horizon). Flooding: rebroadcast onward within the hop
-        //    budget, regardless of whether the message turns out to be for us —
-        //    uniform relay avoids leaking recipiency through whether we forward.
-        //    But NEVER back to the source peer: ask the receiver (which alone
-        //    knows identity) for every link belonging to that peer and exclude
-        //    them all. In a 2-node mesh that leaves no one to forward to, which
-        //    is exactly what stops the relay storm (Phase 7b.1a).
-        if let forwarded = envelope.forwarded() {
+        // 2. Relay (split-horizon) — BLE MESH ONLY. Flooding: rebroadcast onward
+        //    within the hop budget, regardless of whether the message turns out
+        //    to be for us — uniform relay avoids leaking recipiency through
+        //    whether we forward. But NEVER back to the source peer: ask the
+        //    receiver (which alone knows identity) for every link belonging to
+        //    that peer and exclude them all. In a 2-node mesh that leaves no one
+        //    to forward to, which is exactly what stops the relay storm
+        //    (Phase 7b.1a).
+        //
+        //    A Nostr-arrived envelope is NEVER relayed (LOCKED: Nostr is not a
+        //    flood mesh — the relays are the infrastructure, and relay /
+        //    forwarded() / TTL / split-horizon do not apply to it). Re-flooding a
+        //    Nostr arrival onto the radio would also leak that we received it.
+        //    `shouldRelay` gates the whole step on the source transport kind.
+        if Self.shouldRelay(from: kind), let forwarded = envelope.forwarded() {
             let exclusions = await receiver?.relayExclusions(forSourceLink: link) ?? [link]
             for t in transports {
                 await t.relay(forwarded, excludingLinks: exclusions)
             }
         }
 
-        // 3. Local delivery. Hand to Security, which alone can open it.
+        // 3. Local delivery. Hand to Security, which alone can open it. (Same
+        //    receiver for BOTH transports — Nostr inbound feeds the identical
+        //    EnvelopeReceiver the BLE path uses.)
         await receiver?.receive(envelope)
     }
 
@@ -369,5 +381,14 @@ public actor MessageRouter {
             throw TransportError.unsupported(kind)
         }
         return t
+    }
+
+    /// Whether an envelope arriving from `kind` may be relayed onward. ONLY the
+    /// BLE mesh floods; a Nostr arrival is never re-flooded (LOCKED: Nostr is not
+    /// a flood mesh — the relays are the infrastructure, and the router's relay /
+    /// forwarded() / TTL / split-horizon logic must not apply to the internet
+    /// transport). Pure + static so the rule is pinned by a unit test.
+    static func shouldRelay(from kind: TransportKind) -> Bool {
+        kind == .ble
     }
 }
