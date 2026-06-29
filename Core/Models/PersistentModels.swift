@@ -54,6 +54,17 @@ public final class Peer {
     /// Trust-on-first-use defaults this to false until the user verifies.
     public var isVerified: Bool
 
+    /// This peer's raw 32-byte x-only secp256k1 Nostr public key, learned over
+    /// the established sealed channel via the npub-bootstrap (Phase 8d-0, a
+    /// `.nostrIdentity` MessagePayload — NEVER from the libsignal PrekeyBundle).
+    /// Nil until that announcement arrives. This is a DISTINCT key from
+    /// `publicKeyData`: that one is the X25519 libsignal identity (the canonical
+    /// user ID); this is what the router addresses a Nostr gift wrap to when the
+    /// BLE path is out of range. Stored raw because that is exactly the `Data`
+    /// the crypto layer (`Secp256k1.ecdh`, `NIP44.conversationKey`,
+    /// `NostrGiftWrap.wrap`) consumes — no bech32 round-trip.
+    public var nostrPubkey: Data?
+
     @Relationship(deleteRule: .nullify, inverse: \Conversation.peer)
     public var conversations: [Conversation]
 
@@ -61,12 +72,14 @@ public final class Peer {
                 displayName: String? = nil,
                 firstSeen: Date = .now,
                 lastSeen: Date = .now,
-                isVerified: Bool = false) {
+                isVerified: Bool = false,
+                nostrPubkey: Data? = nil) {
         self.publicKeyData = publicKeyData
         self.displayName = displayName
         self.firstSeen = firstSeen
         self.lastSeen = lastSeen
         self.isVerified = isVerified
+        self.nostrPubkey = nostrPubkey
         self.conversations = []
     }
 
