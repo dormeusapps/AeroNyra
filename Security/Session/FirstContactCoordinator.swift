@@ -444,6 +444,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 }
                 await router?.confirmDelivery(of: wireID, hops: Int(hops))
                 print("first-contact: ACK \(wireID) (\(hops) hop(s)) from \(peer.userIDHex.prefix(16))…")
+
+            case .nostrIdentity(let body):
+                // A peer announced their raw 32-byte x-only secp256k1 pubkey over
+                // the established sealed channel (the npub-bootstrap, LOCKED:
+                // never embedded in the PrekeyBundle). Validate strictly on this
+                // untrusted path; a malformed body is ignored.
+                //
+                // Phase 8d-0 stops here on purpose: there is no peer→Nostr-pubkey
+                // directory to persist into yet. Storing the learned key — keyed
+                // by `rawKey` (the peer's libsignal identity), which is how the
+                // router will resolve a recipient to address a gift wrap to — is
+                // the next substep, paired with where the Nostr peer directory
+                // lives. For now we confirm receipt and drop.
+                guard let nostrKey = MessagePayload.parseNostrIdentity(body) else {
+                    print("first-contact: malformed nostr-identity from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                print("first-contact: NOSTR identity \(nostrKey.count)B from \(peer.userIDHex.prefix(16))… (not yet stored — Phase 8d)")
             }
         } catch {
             print("first-contact: open failed: \(error)")

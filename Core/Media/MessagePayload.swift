@@ -16,10 +16,21 @@
 // path (opaque to relays, forward-secret), and its body is a fixed 17 bytes:
 // the acked message's 16-byte wire id followed by a 1-byte hop count.
 //
+// Phase 8d-0 adds a fifth kind — NOSTR IDENTITY — a tiny sealed announcement
+// that hands a peer our raw 32-byte x-only secp256k1 public key. It is the
+// npub-bootstrap (LOCKED): a peer's Nostr pubkey is NOT embedded in the
+// libsignal PrekeyBundle; instead it is sent as its own payload over the
+// already-established sealed channel, exactly like an ack. Once a peer's pubkey
+// is learned this way, the router can address Nostr gift wraps to them. The
+// body is the bare 32-byte x-only key — the same `Data` the crypto layer
+// (`Secp256k1.ecdh`, `NIP44.conversationKey`, `NostrGiftWrap.wrap`) consumes
+// directly — so no bech32 round-trip is needed on the wire.
+//
 // SIZE NOTE: for a media chunk the body is already sized (via MediaChunker's
 // `reservedBytes`) so that tag + chunk together still fill one PayloadBucket
-// tier exactly — the tag costs no extra padding. For text, manifests, and acks
-// the body is far under a tier, so the tag is free there too.
+// tier exactly — the tag costs no extra padding. For text, manifests, acks, and
+// the nostr-identity announcement the body is far under a tier, so the tag is
+// free there too.
 //
 
 import Foundation
@@ -33,6 +44,7 @@ public enum WirePayloadKind: UInt8, Sendable, CaseIterable {
     case mediaManifest = 2
     case mediaChunk    = 3
     case ack           = 4   // delivery receipt: 16-byte wireID ‖ 1-byte hops
+    case nostrIdentity = 5   // npub bootstrap: 32-byte x-only secp256k1 pubkey
 }
 
 // MARK: - MessagePayload
@@ -45,6 +57,7 @@ public enum MessagePayload: Sendable, Equatable {
     case mediaManifest(Data)   // JSON-encoded MediaManifest
     case mediaChunk(Data)      // one MediaChunker chunk (its own header inside)
     case ack(Data)             // delivery receipt body: wireID(16) ‖ hops(1)
+    case nostrIdentity(Data)   // npub bootstrap body: x-only pubkey (32 bytes)
 
     public var kind: WirePayloadKind {
         switch self {
@@ -52,13 +65,18 @@ public enum MessagePayload: Sendable, Equatable {
         case .mediaManifest: return .mediaManifest
         case .mediaChunk:    return .mediaChunk
         case .ack:           return .ack
+        case .nostrIdentity: return .nostrIdentity
         }
     }
 
     /// The untagged body bytes.
     public var body: Data {
         switch self {
-        case .text(let d), .mediaManifest(let d), .mediaChunk(let d), .ack(let d):
+        case .text(let d),
+             .mediaManifest(let d),
+             .mediaChunk(let d),
+             .ack(let d),
+             .nostrIdentity(let d):
             return d
         }
     }
@@ -74,6 +92,11 @@ public enum MessagePayload: Sendable, Equatable {
     /// Parse an opened plaintext back into a tagged payload. Returns nil on an
     /// empty buffer or an unknown tag (a forward-compat guard: a future kind
     /// from a newer peer is ignored rather than misread).
+    ///
+    /// This is intentionally permissive about body LENGTH — it splits tag from
+    /// body and nothing more. Per-kind body validation (e.g. the ack's fixed
+    /// 17 bytes, or the nostr-identity's 32 bytes) lives in the dedicated
+    /// parsers below, which run on the untrusted receive path.
     public static func decode(_ data: Data) -> MessagePayload? {
         guard let tag = data.first, let kind = WirePayloadKind(rawValue: tag) else {
             return nil
@@ -84,6 +107,7 @@ public enum MessagePayload: Sendable, Equatable {
         case .mediaManifest: return .mediaManifest(body)
         case .mediaChunk:    return .mediaChunk(body)
         case .ack:           return .ack(body)
+        case .nostrIdentity: return .nostrIdentity(body)
         }
     }
 }
@@ -111,5 +135,34 @@ public extension MessagePayload {
             return nil
         }
         return (id, bytes[MessageID.byteCount])
+    }
+}
+
+// MARK: - Nostr identity bootstrap body  (Phase 8d-0)
+
+public extension MessagePayload {
+
+    /// Byte length of a raw x-only secp256k1 public key — the entire body of a
+    /// `.nostrIdentity` announcement. (NIP keys are 32-byte x-only.)
+    static var nostrPubkeyByteCount: Int { 32 }
+
+    /// Build a Nostr-identity bootstrap payload carrying our raw 32-byte x-only
+    /// secp256k1 public key (e.g. `NostrIdentity.publicKeyBytes`). The body is
+    /// the bare key — no bech32, no extra framing — because that is exactly the
+    /// `Data` the crypto layer consumes when addressing a gift wrap.
+    ///
+    /// Named distinctly from the `.nostrIdentity` case (cf. `deliveryAck` vs
+    /// `.ack`) so call sites read intent without colliding with the case label.
+    static func nostrIdentityAnnounce(pubkey: Data) -> MessagePayload {
+        .nostrIdentity(pubkey)
+    }
+
+    /// Parse a `.nostrIdentity` body back into the raw 32-byte x-only pubkey.
+    /// Returns nil unless the body is exactly 32 bytes — the caller ignores a
+    /// malformed announcement. This is the strict, untrusted-input boundary;
+    /// `decode` deliberately does not length-check.
+    static func parseNostrIdentity(_ body: Data) -> Data? {
+        guard body.count == nostrPubkeyByteCount else { return nil }
+        return body
     }
 }
