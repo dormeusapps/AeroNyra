@@ -26,6 +26,19 @@
 // (`Secp256k1.ecdh`, `NIP44.conversationKey`, `NostrGiftWrap.wrap`) consumes
 // directly — so no bech32 round-trip is needed on the wire.
 //
+// Phase 5d (Closed-Contact) adds a sixth kind — RECONNECT HELLO — the sealed
+// "it's-me" of the reconnection auth handshake (RECONNECT_AUTH_WIRING_5d.md
+// §2.2). After the cheap, replayable beacon layer NAMES which contact is on a
+// fresh BLE link, the recognizer seals exactly one `.reconnectHello` under that
+// contact's existing session and sends it link-local (never relayed). Opening
+// it authenticates the peer (a stranger holds no session and produces nothing
+// `openInbound` opens; a replay's message key is already spent), and that — not
+// the beacon — is what admits the link. The body is a single 1-byte version tag
+// (0x01): the content is irrelevant to auth, the ratchet does the work; the tag
+// is cheap future-proofing. It is one of the SMALL padded kinds below, so 9b
+// pads it to the smallest bucket and it is byte-indistinguishable on the wire
+// from any short `.whisper` (e.g. a one-word text or an ack).
+//
 // SIZE NOTE: for a media chunk the body is already sized (via MediaChunker's
 // `reservedBytes`) so that tag + chunk together still fill one PayloadBucket
 // tier exactly — the tag costs no extra padding. For text, manifests, acks, and
@@ -56,6 +69,7 @@ public enum WirePayloadKind: UInt8, Sendable, CaseIterable {
     case mediaChunk    = 3
     case ack           = 4   // delivery receipt: 16-byte wireID ‖ 1-byte hops
     case nostrIdentity = 5   // npub bootstrap: 32-byte x-only secp256k1 pubkey
+    case reconnectHello = 6  // closed-contact auth it's-me: 1-byte version tag
 }
 
 // MARK: - MessagePayload
@@ -69,6 +83,7 @@ public enum MessagePayload: Sendable, Equatable {
     case mediaChunk(Data)      // one MediaChunker chunk (its own header inside)
     case ack(Data)             // delivery receipt body: wireID(16) ‖ hops(1)
     case nostrIdentity(Data)   // npub bootstrap body: x-only pubkey (32 bytes)
+    case reconnectHello(Data)  // closed-contact auth it's-me body: version(1)
 
     public var kind: WirePayloadKind {
         switch self {
@@ -77,6 +92,7 @@ public enum MessagePayload: Sendable, Equatable {
         case .mediaChunk:    return .mediaChunk
         case .ack:           return .ack
         case .nostrIdentity: return .nostrIdentity
+        case .reconnectHello: return .reconnectHello
         }
     }
 
@@ -87,7 +103,8 @@ public enum MessagePayload: Sendable, Equatable {
              .mediaManifest(let d),
              .mediaChunk(let d),
              .ack(let d),
-             .nostrIdentity(let d):
+             .nostrIdentity(let d),
+             .reconnectHello(let d):
             return d
         }
     }
@@ -111,7 +128,7 @@ public enum MessagePayload: Sendable, Equatable {
         switch self {
         case .mediaManifest, .mediaChunk:
             return encoded()                        // already bucket-shaped
-        case .text, .ack, .nostrIdentity:
+        case .text, .ack, .nostrIdentity, .reconnectHello:
             return PayloadPadding.pad(encoded())    // collapse length to a bucket
         }
     }
@@ -135,6 +152,7 @@ public enum MessagePayload: Sendable, Equatable {
         case .mediaChunk:    return .mediaChunk(body)
         case .ack:           return .ack(body)
         case .nostrIdentity: return .nostrIdentity(body)
+        case .reconnectHello: return .reconnectHello(body)
         }
     }
 
@@ -214,5 +232,40 @@ public extension MessagePayload {
     static func parseNostrIdentity(_ body: Data) -> Data? {
         guard body.count == nostrPubkeyByteCount else { return nil }
         return body
+    }
+}
+
+// MARK: - Reconnect hello body  (Phase 5d — Closed-Contact)
+
+public extension MessagePayload {
+
+    /// The current reconnect-hello version tag. The body of a `.reconnectHello`
+    /// is exactly this one byte. Content is irrelevant to authentication — the
+    /// ratchet does the work (RECONNECT_AUTH_WIRING_5d.md §2.2) — so the body is
+    /// purely a version discriminator: cheap future-proofing for a later
+    /// handshake revision. Bumping this is a wire-version change; add a
+    /// `reconnectHelloV2()` builder rather than mutating call sites by hand.
+    static var reconnectHelloVersion: UInt8 { 0x01 }
+
+    /// Build the v1 reconnect-hello it's-me — the sealed authentication frame of
+    /// the closed-contact reconnection handshake. Named distinctly from the
+    /// `.reconnectHello` case (cf. `deliveryAck` vs `.ack`) so call sites read
+    /// intent without colliding with the case label.
+    ///
+    /// The caller seals this under the recognized contact's existing session and
+    /// sends it link-local via the 0x03 reconnect frame; opening it is what
+    /// admits the link (Invariant #2 — never admit on a beacon match alone).
+    static func reconnectHelloV1() -> MessagePayload {
+        .reconnectHello(Data([reconnectHelloVersion]))
+    }
+
+    /// Parse a `.reconnectHello` body back into its version byte. Returns nil
+    /// unless the body is exactly one byte — the strict, untrusted-input
+    /// boundary, like `parseNostrIdentity`; `decode` deliberately does not
+    /// length-check. A returned version the caller does not recognize is treated
+    /// as an undecodable hello (forward-compat: reject, don't misread).
+    static func parseReconnectHello(_ body: Data) -> UInt8? {
+        guard body.count == 1 else { return nil }
+        return body[body.startIndex]
     }
 }

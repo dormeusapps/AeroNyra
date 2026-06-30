@@ -542,6 +542,16 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     .learnedNostrIdentity(peerKey: rawKey, nostrPubkey: nostrKey)
                 )
                 print("first-contact: NOSTR identity \(nostrKey.count)B from \(peer.userIDHex.prefix(16))…")
+
+            case .reconnectHello:
+                // A reconnect it's-me must NEVER arrive on the envelope /
+                // MessageRouter path. It is link-local (the 0x03 reconnect frame)
+                // and is opened ONLY by the dedicated onReconnectItsMe handler
+                // (RECONNECT_AUTH_WIRING_5d.md §2.1), where admission happens and
+                // ONLY there (Invariant #2 — never admit on this relayable path).
+                // Reaching here means a misroute or an adversary stuffing a
+                // reconnect kind into a 0x01 envelope: ignore it, admit nothing.
+                print("first-contact: ignoring reconnectHello on the envelope path (link-local only) from \(peer.userIDHex.prefix(16))…")
             }
         } catch {
             print("first-contact: open failed: \(error)")

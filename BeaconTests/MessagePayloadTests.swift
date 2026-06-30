@@ -87,7 +87,8 @@ final class MessagePayloadTests: XCTestCase {
         XCTAssertEqual(WirePayloadKind.mediaChunk.rawValue,    3)
         XCTAssertEqual(WirePayloadKind.ack.rawValue,           4)
         XCTAssertEqual(WirePayloadKind.nostrIdentity.rawValue, 5)
-        XCTAssertEqual(WirePayloadKind.allCases.count,         5)
+        XCTAssertEqual(WirePayloadKind.reconnectHello.rawValue, 6)
+        XCTAssertEqual(WirePayloadKind.allCases.count,         6)
     }
 
     func testTextStillRoundTripsAlongsideNewKind() {
