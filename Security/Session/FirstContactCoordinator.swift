@@ -314,8 +314,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // (once-per-peer, best-effort, before the message itself).
         await announceNostrIdentity(to: peer, rawKey: rawKey)
         // Tag the plaintext as text so the receiver can tell it apart from a
-        // media manifest/chunk (which now share this same sealed path).
-        let sealed = try session.seal(MessagePayload.text(Data(text.utf8)).encoded())
+        // media manifest/chunk (which now share this same sealed path). 9b:
+        // sealedPlaintext() pads text to a fixed bucket so length doesn't leak.
+        let sealed = try session.seal(MessagePayload.text(Data(text.utf8)).sealedPlaintext())
         let envelope = Envelope(ciphertext: sealed)
         // tracked: a real message earns a receipt. nostrRecipient enables the
         // router's Tier-2 fallback (BLE → Nostr) when BLE is out of range.
@@ -366,7 +367,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // Each still carries nostrRecipient so a transfer falls back to Nostr,
         // envelope-by-envelope, when BLE is out of range (Tier-2).
         func emit(_ payload: MessagePayload) async throws {
-            let sealed = try session.seal(payload.encoded())
+            // 9b: media kinds are returned unpadded by sealedPlaintext() (already
+            // bucket-shaped by MediaChunker), so this is byte-identical to
+            // encoded() for manifests/chunks — routed through the same method so
+            // every seal site shares one rule.
+            let sealed = try session.seal(payload.sealedPlaintext())
             try await routeOut(Envelope(ciphertext: sealed), tracked: false,
                                nostrRecipient: nostrRecipient)
         }
@@ -402,7 +407,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         do {
             let session = try store.session(with: peer)
             let payload = MessagePayload.deliveryAck(wireID: wireID, hops: hops)
-            let sealed = try session.seal(payload.encoded())
+            let sealed = try session.seal(payload.sealedPlaintext())
             await router?.send(Envelope(ciphertext: sealed), tracked: false)
         } catch {
             print("first-contact: delivery-ack seal/send failed: \(error)")
@@ -423,7 +428,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         do {
             let session = try store.session(with: peer)
             let payload = MessagePayload.nostrIdentityAnnounce(pubkey: ourNostrPublicKey)
-            let sealed = try session.seal(payload.encoded())
+            let sealed = try session.seal(payload.sealedPlaintext())
             await router?.send(Envelope(ciphertext: sealed), tracked: false)
             announcedNostrTo.insert(rawKey)
             print("first-contact: announced our Nostr id → \(peer.userIDHex.prefix(16))…")
@@ -473,7 +478,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // initiator via `send`). Never blocks inbound handling.
             await announceNostrIdentity(to: peer, rawKey: rawKey)
 
-            guard let payload = MessagePayload.decode(plaintext) else {
+            guard let payload = MessagePayload.decodeSealed(plaintext) else {
                 print("first-contact: opened but undecodable payload from \(peer.userIDHex.prefix(16))…")
                 return
             }

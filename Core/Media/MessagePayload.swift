@@ -32,6 +32,17 @@
 // the nostr-identity announcement the body is far under a tier, so the tag is
 // free there too.
 //
+// PADDING (Phase 9b): `sealedPlaintext()` is the bytes that actually get sealed.
+// It pads the SMALL kinds (text / ack / nostrIdentity) up to a fixed
+// `PayloadBucket` size via `PayloadPadding`, so their ciphertext length no
+// longer leaks message length (THREAT_MODEL.md §7). MEDIA is exempt: a manifest
+// or chunk is already bucket-shaped by MediaChunker, so padding it would only
+// add a length header and spill it into the next tier. `decodeSealed(_:)` is the
+// exact inverse on the receive side. NOTE: this changes the sealed-plaintext
+// wire format — both peers must run a 9b-or-later build for text/ack/nostr to
+// decode (media is unaffected). Sessions are untouched (padding is inside the
+// seal, not the ratchet), so no re-handshake is needed.
+//
 
 import Foundation
 
@@ -89,6 +100,22 @@ public enum MessagePayload: Sendable, Equatable {
         return out
     }
 
+    /// The exact bytes to hand to `session.seal` (Phase 9b). For the small kinds
+    /// (text / ack / nostrIdentity) this pads `encoded()` up to a fixed
+    /// `PayloadBucket` size so the sealed ciphertext length no longer leaks the
+    /// message length. MEDIA (`mediaManifest` / `mediaChunk`) is returned as
+    /// plain `encoded()`: MediaChunker already sizes each chunk to fill a bucket
+    /// tier exactly, so padding it here would add a length header and spill it
+    /// into the next (4×-larger) tier. The inverse is `decodeSealed(_:)`.
+    public func sealedPlaintext() -> Data {
+        switch self {
+        case .mediaManifest, .mediaChunk:
+            return encoded()                        // already bucket-shaped
+        case .text, .ack, .nostrIdentity:
+            return PayloadPadding.pad(encoded())    // collapse length to a bucket
+        }
+    }
+
     /// Parse an opened plaintext back into a tagged payload. Returns nil on an
     /// empty buffer or an unknown tag (a forward-compat guard: a future kind
     /// from a newer peer is ignored rather than misread).
@@ -109,6 +136,29 @@ public enum MessagePayload: Sendable, Equatable {
         case .ack:           return .ack(body)
         case .nostrIdentity: return .nostrIdentity(body)
         }
+    }
+
+    /// Inverse of `sealedPlaintext()` (Phase 9b): decode a plaintext that a
+    /// 9b-or-later sender produced. Media kinds are unpadded — they are decoded
+    /// directly; every other kind is `PayloadPadding`-wrapped and is unpadded
+    /// first.
+    ///
+    /// Disambiguation is by the leading byte. A media payload starts with its
+    /// kind tag — `mediaManifest` (2) or `mediaChunk` (3). A padded payload
+    /// starts with the `PayloadPadding` length header's high byte, which is
+    /// `0x00` for any realistic message size and therefore never 2 or 3. So a
+    /// leading 2/3 means "media, decode as-is"; anything else means "unpad, then
+    /// decode". A buffer whose length header runs past its end (e.g. an
+    /// unpadded text from a pre-9b peer) fails `unpad` and returns nil, which the
+    /// caller treats as an undecodable payload.
+    public static func decodeSealed(_ plaintext: Data) -> MessagePayload? {
+        if let first = plaintext.first,
+           first == WirePayloadKind.mediaManifest.rawValue ||
+           first == WirePayloadKind.mediaChunk.rawValue {
+            return decode(plaintext)
+        }
+        guard let unpadded = PayloadPadding.unpad(plaintext) else { return nil }
+        return decode(unpadded)
     }
 }
 
