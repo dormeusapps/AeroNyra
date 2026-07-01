@@ -70,6 +70,12 @@ struct ContentView: View {
     /// Built alongside the coordinator once we reach .ready; nil until then.
     @State private var router: MessageRouter?
 
+    /// The persisted closed-contact allowlist store (STEP 7a). Loaded at launch to
+    /// seed reconnect (warmInboundSessions + enableReconnect) and held so later
+    /// enrollment can save to it and EmergencyWipe can crypto-erase it. nil until
+    /// .ready.
+    @State private var contactAllowlistStore: ContactAllowlistStore?
+
     /// The device's Nostr identity (Phase 8a): a persistent secp256k1 secret,
     /// load-or-created at launch alongside the session store. Held so the
     /// internet pillar (Phase 8) has its identity ready; its npub lights up once
@@ -207,6 +213,29 @@ struct ContentView: View {
                                             directory: directory, dek: dek)
         let coord = FirstContactCoordinator(store: secure, transport: transport)
 
+        // STEP 7a — persisted closed-contact allowlist. Its own DEK (a distinct
+        // Keychain service) seals a distinct file in the same store directory.
+        // Loaded now so the paired set seeds reconnect below; held on the view so
+        // later enrollment can save to it and EmergencyWipe can crypto-erase it.
+        let contactStore = try ContactAllowlistStore(
+            directory: directory,
+            dek: try SessionStoreKey.loadOrCreate(
+                service: ContactAllowlistStore.defaultKeychainService))
+        let pairedIdentities: [Data]
+        do {
+            pairedIdentities = Array(try contactStore.load().identities)
+            print("contact allowlist loaded · \(pairedIdentities.count) paired contact(s)")
+        } catch {
+            // The store threw rather than silently emptying (its contract). At the
+            // composition root we log loudly and boot with an empty set: during
+            // coexistence the in-session noteReconnectContact hook still populates
+            // reconnect, so an empty seed here does not darken the mesh. When the
+            // admission gate is later flipped authoritative, a corrupt load will
+            // need a real re-pair recovery path rather than this degrade.
+            print("⚠️ contact allowlist load FAILED — booting with empty set: \(error)")
+            pairedIdentities = []
+        }
+
         // Nostr identity (Phase 8a): load-or-create the persistent secp256k1
         // secret so the internet pillar has an identity from launch. Best-effort
         // — a failure here must not block the BLE pillar, which is fully
@@ -242,6 +271,7 @@ struct ContentView: View {
         sessionStore = secure
         coordinator = coord
         router = mesh
+        contactAllowlistStore = contactStore
         print("session store ready (persistent) · identity \(secure.localIdentity.userIDHex.prefix(16))… · transports=\(transports.count)")
 
         // Register the receiver + router and start consuming `incoming`, then
@@ -255,14 +285,14 @@ struct ContentView: View {
 
             // Closed-contact reconnect (5d). Warm the trial-decrypt cache from the
             // allowlist (Invariant #1) BEFORE any 0x03 frame can arrive, then
-            // enable the handshake with our X25519 agreement key. NOTE: the
-            // persisted allowlist + enrollment is step 7, so for now the set is
-            // empty at launch and grows in-session as bundles are exchanged
-            // (FirstContactCoordinator.noteReconnectContact). When step-7
-            // enrollment lands, source both from the persisted ContactAllowlist.
-            secure.warmInboundSessions(for: [])
+            // enable the handshake with our X25519 agreement key. STEP 7a: the set
+            // is now sourced from the PERSISTED ContactAllowlist loaded above, so a
+            // paired contact reconnects after a relaunch with no re-exchange. The
+            // in-session noteReconnectContact hook still runs alongside during
+            // coexistence (it retires with the over-RF bundle path in a later step).
+            secure.warmInboundSessions(for: pairedIdentities)
             await coord.enableReconnect(agreementPrivate: identity.agreement,
-                                        allowlistIdentities: [])
+                                        allowlistIdentities: pairedIdentities)
 
             do {
                 try await mesh.start()   // starts BOTH transports: BLE radio + Nostr relay
