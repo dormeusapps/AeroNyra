@@ -195,6 +195,35 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
 
     // MARK: Inbound attribution (completes the boundary's receive side)
 
+    /// Warm the trial-decrypt cache from the closed-contact allowlist
+    /// (RECONNECT_HANDSHAKE.md §4 / RECONNECT_AUTH_WIRING_5d.md §2.3, Invariant #1).
+    ///
+    /// `openInbound`'s `.whisper` branch trial-opens only the in-RAM `sessions`
+    /// cache, which is populated lazily and is EMPTY after relaunch — even though
+    /// the persistent store still holds every ratchet on disk. In the closed model
+    /// nothing re-runs `establishSession` to repopulate it (the over-RF bundle
+    /// re-exchange is gone), so a reconnecting pair's sealed it's-me would open
+    /// against an empty set → not admitted → BLE dark for real pairs. This warms a
+    /// peer-bound wrapper for every paired identity at startup, BEFORE any 0x03
+    /// reconnect frame can arrive, so the `.whisper` loop opens against the
+    /// on-disk ratchet.
+    ///
+    /// Mechanics: it reuses `session(with:)` purely for its cache-insert side
+    /// effect (the same responder-path constructor already trusted on first
+    /// inbound), via the store's own `peerIdentity(fromRawKey:)` so the raw↔
+    /// serialized mapping stays inside this adapter. Resilient by design — a
+    /// malformed entry is skipped, not fatal, and a failed warm for one identity
+    /// never aborts the rest (this runs on the launch path and must not crash).
+    ///
+    /// - Parameter rawIdentities: paired contacts' raw 32-byte X25519 keys
+    ///   (`ContactAllowlist.identities`, i.e. `store.rawPublicKey(of:)` form).
+    public func warmInboundSessions(for rawIdentities: [Data]) {
+        for raw in rawIdentities {
+            guard raw.count == 32 else { continue }   // skip a corrupt entry, don't trap
+            _ = try? session(with: peerIdentity(fromRawKey: raw))
+        }
+    }
+
     /// Read the peer's public identity from a received bundle WITHOUT
     /// establishing a session. Used to attribute a link and to pick a
     /// deterministic first-contact initiator (so both sides don't initiate at

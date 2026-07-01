@@ -284,6 +284,18 @@ public actor MessageRouter {
         armTimeout(for: id, after: duration)
     }
 
+    /// Re-arm a still-in-flight message's stuck-send timer with a fresh deadline
+    /// (STEP 0b / A). Used during a peer's reconnect grace so a delivery ack
+    /// delayed by link churn is not pre-empted by a false `.notDelivered`, and so
+    /// the sender's chip stops lying mid-reconnect. Per-MESSAGE and identity-free:
+    /// the router never learns which peer this is for — the caller (which owns
+    /// peer↔message) decides which ids to extend. No-op if the id isn't tracked or
+    /// already reached a terminal state (an ack that already won the race).
+    public func extendTimeout(for id: MessageID, by duration: Duration) {
+        guard let entry = outbox[id], !entry.state.isTerminal else { return }
+        armTimeout(for: id, after: duration)
+    }
+
     /// Re-send a previously failed message.
     ///
     /// Caveat: this re-sends the *same* sealed bytes, so any relay still

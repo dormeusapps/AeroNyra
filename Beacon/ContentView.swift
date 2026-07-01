@@ -126,6 +126,14 @@ struct ContentView: View {
                 await coordinator?.onBundle(link: item.link, data: item.data)
             }
         }
+        .task {
+            // Inbound reconnect frames (0x03) → closed-contact auth handshake
+            // (5d). Link-local; the coordinator owns the 1-byte inner
+            // discriminator (beacon-set vs it's-me).
+            for await item in transport.reconnects {
+                await coordinator?.onReconnectFrame(link: item.link, data: item.data)
+            }
+        }
     }
 
     private var launchScreen: some View {
@@ -244,6 +252,18 @@ struct ContentView: View {
             await mesh.setReceiver(coord)
             await coord.setRouter(mesh)
             await coord.setNostrPublicKey(ourNostrPubkey)   // Phase 8d npub-bootstrap
+
+            // Closed-contact reconnect (5d). Warm the trial-decrypt cache from the
+            // allowlist (Invariant #1) BEFORE any 0x03 frame can arrive, then
+            // enable the handshake with our X25519 agreement key. NOTE: the
+            // persisted allowlist + enrollment is step 7, so for now the set is
+            // empty at launch and grows in-session as bundles are exchanged
+            // (FirstContactCoordinator.noteReconnectContact). When step-7
+            // enrollment lands, source both from the persisted ContactAllowlist.
+            secure.warmInboundSessions(for: [])
+            await coord.enableReconnect(agreementPrivate: identity.agreement,
+                                        allowlistIdentities: [])
+
             do {
                 try await mesh.start()   // starts BOTH transports: BLE radio + Nostr relay
             } catch {
@@ -372,7 +392,8 @@ private struct ReadyView: View {
         .task {
             if inbox == nil {
                 let built = MessageInbox(modelContext: container.mainContext,
-                                         coordinator: coordinator)
+                                         coordinator: coordinator,
+                                         router: router)
                 inbox = built
                 // Initial auto-retry: any peers already reachable at launch get
                 // their stuck `.notDelivered` messages re-sent now. No-op if the

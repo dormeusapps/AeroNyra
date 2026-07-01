@@ -61,6 +61,14 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     public let bundles: AsyncStream<(link: UUID, data: Data)>
     private let bundlesCont: AsyncStream<(link: UUID, data: Data)>.Continuation
 
+    // MARK: - Closed-contact: inbound reconnect stream (link-local auth handshake)
+    // The 0x03 reconnect frame (RECONNECT_AUTH_WIRING_5d.md §2.1): both the
+    // Phase-1 beacon set and the Phase-2 sealed it's-me ride here, distinguished
+    // by a 1-byte inner discriminator handled ABOVE the transport (the coordinator).
+    // Link-local, point-to-point, NEVER relayed and NEVER handed to MessageRouter.
+    public let reconnects: AsyncStream<(link: UUID, data: Data)>
+    private let reconnectsCont: AsyncStream<(link: UUID, data: Data)>.Continuation
+
     // MARK: - Presence: linked peers (ephemeral BLE ids, NOT crypto identities)
     public let reachabilityUpdates: AsyncStream<[UUID]>
     private let reachabilityCont: AsyncStream<[UUID]>.Continuation
@@ -69,6 +77,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     private enum FrameType: UInt8 {
         case envelope = 0x01   // relayable sealed payload
         case bundle   = 0x02   // link-local prekey bundle (first contact)
+        case reconnect = 0x03  // link-local reconnect handshake (closed-contact auth)
     }
 
     // MARK: - Protocol constants (permanent, like a port number — NOT placeholder)
@@ -117,6 +126,10 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
         var bnd: AsyncStream<(link: UUID, data: Data)>.Continuation!
         self.bundles = AsyncStream<(link: UUID, data: Data)> { bnd = $0 }
         self.bundlesCont = bnd
+
+        var rcn: AsyncStream<(link: UUID, data: Data)>.Continuation!
+        self.reconnects = AsyncStream<(link: UUID, data: Data)> { rcn = $0 }
+        self.reconnectsCont = rcn
 
         var rch: AsyncStream<[UUID]>.Continuation!
         self.reachabilityUpdates = AsyncStream<[UUID]> { rch = $0 }
@@ -260,6 +273,28 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
                 guard self.started else { cont.resume(throwing: TransportError.notStarted); return }
                 if self.sendFrameToLink(frame, id: id) {
                     self.log.info("TX bundle \(data.count) bytes → link \(id)")
+                    cont.resume()
+                } else {
+                    cont.resume(throwing: TransportError.noReachablePeers)
+                }
+            }
+        }
+    }
+
+    // MARK: - Transmit: Reconnect (closed-contact auth) — to ONE specific link
+    /// Send a link-local reconnect frame (0x03) to a single linked peer. Carries
+    /// the opaque reconnect bytes already assembled by the coordinator (the
+    /// 1-byte inner discriminator + payload — knob A lives above the transport).
+    /// Point-to-point like `sendBundle`: NEVER broadcast, NEVER relayed, NEVER
+    /// handed to MessageRouter (RECONNECT_AUTH_WIRING_5d.md §2.1).
+    public func sendReconnect(_ data: Data, toLink id: UUID) async throws {
+        let frame = Self.frame(.reconnect, data)
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            cbQueue.async { [weak self] in
+                guard let self else { cont.resume(); return }
+                guard self.started else { cont.resume(throwing: TransportError.notStarted); return }
+                if self.sendFrameToLink(frame, id: id) {
+                    self.log.info("TX reconnect \(data.count) bytes → link \(id)")
                     cont.resume()
                 } else {
                     cont.resume(throwing: TransportError.noReachablePeers)
@@ -568,6 +603,9 @@ extension BLEMeshTransport {
         case .bundle:
             log.info("RX bundle \(payload.count) bytes from link \(link) → yielding")
             bundlesCont.yield((link: link, data: payload))
+        case .reconnect:
+            log.info("RX reconnect \(payload.count) bytes from link \(link) → yielding")
+            reconnectsCont.yield((link: link, data: payload))
         }
     }
 }

@@ -62,6 +62,7 @@
 //
 
 import Foundation
+import CryptoKit
 
 /// What the coordinator tells the (main-actor) persistence layer happened.
 ///
@@ -94,6 +95,15 @@ enum SessionEvent: Sendable {
     /// Nostr gift wrap to this peer when BLE is out of range. Identity metadata,
     /// not a message: no Message row, no unread dot.
     case learnedNostrIdentity(peerKey: Data, nostrPubkey: Data)
+
+    /// This peer completed the closed-contact reconnect handshake (5d admission).
+    /// NOT a message — no Peer / Conversation / Message write is required — but the
+    /// persistence layer uses it to open a PER-PEER reconnect GRACE (STEP 0b / A):
+    /// briefly defer this peer's auto-retry so a delivery ack delayed by link churn
+    /// can land before we'd resend, and extend this peer's live stuck-send timeouts
+    /// so the sender's chip doesn't falsely flip to `.notDelivered` mid-reconnect.
+    /// Per-peer by construction, so no other peer's timeouts or retries are touched.
+    case reconnected(peerKey: Data)
 }
 
 actor FirstContactCoordinator: EnvelopeReceiver {
@@ -152,6 +162,37 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// always intersects against the current live set.
     private var reachableLinks: Set<UUID> = []
 
+    // MARK: Reconnect (Closed-Contact 5d) — injected, no-op until enabled
+    //
+    // The reconnection auth handshake (RECONNECT_AUTH_WIRING_5d.md). Disabled by
+    // default: every reconnect path below early-returns until `enableReconnect`
+    // injects our agreement key + the paired identities, so a build that never
+    // calls it behaves exactly as the pre-5d coordinator (coexistence-safe).
+
+    /// 15-minute epoch buckets; ±1 skew (BeaconRecognizer default) tolerates up
+    /// to ~30 min of inter-device clock drift. Bumping this is a wire change.
+    private static let reconnectEpochLength: UInt64 = 900
+    /// Inner discriminators carried in the 0x03 reconnect frame's first byte
+    /// (knob A — kept ABOVE the transport so it stays a dumb Ethertype).
+    private static let reconnectBeaconSet: UInt8 = 0x00
+    private static let reconnectItsMe: UInt8 = 0x01
+
+    private var reconnectEnabled = false
+    /// Our X25519 identity-agreement private key (drives every S_AC). The store
+    /// holds only the bridged libsignal identity, not this raw scalar, so it is
+    /// injected. nil until `enableReconnect`.
+    private var reconnectAgreementPrivate: Curve25519.KeyAgreement.PrivateKey?
+    /// The paired raw 32-byte identities (`ContactAllowlist.identities`). Re-inject
+    /// via `enableReconnect` if the allowlist changes (step-7 enrollment concern).
+    private var reconnectAllowlistIdentities: [Data] = []
+    /// Injectable clock (seconds since Unix epoch) — wall-time in production, a
+    /// fixed value in tests so epoch bucketing is deterministic.
+    private var reconnectNow: @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) }
+    /// Cached recognizer contacts (identity + S_AC). Epoch-INDEPENDENT — the
+    /// epoch is applied at `recognize` time — so this is rebuilt only when the
+    /// allowlist changes (or each emission, cheaply), not per epoch.
+    private var reconnectRecognizerContacts: [BeaconRecognizer.Contact] = []
+
     /// Events for the main-actor persistence layer (MessageInbox). `nonisolated`
     /// so the consumer can `for await` it without hopping into actor isolation;
     /// `AsyncStream` is `Sendable` and `SessionEvent` carries no actor state.
@@ -196,6 +237,22 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         self.ourNostrPublicKey = key
     }
 
+    /// Enable the closed-contact reconnection handshake (5d). Called once by the
+    /// composition root at startup, AFTER `store.warmInboundSessions(for:)` has
+    /// warmed the trial-decrypt cache from the same allowlist (Invariant #1), so
+    /// an inbound it's-me can open. Injects our agreement private key, the paired
+    /// identities, and a clock. Eagerly builds the recognizer cache so a beacon
+    /// that arrives before our first `onReachable` emission can still be matched.
+    func enableReconnect(agreementPrivate: Curve25519.KeyAgreement.PrivateKey,
+                         allowlistIdentities: [Data],
+                         now: @escaping @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) }) {
+        self.reconnectAgreementPrivate = agreementPrivate
+        self.reconnectAllowlistIdentities = allowlistIdentities
+        self.reconnectNow = now
+        self.reconnectEnabled = true
+        refreshRecognizerCache()
+    }
+
     // MARK: Reachability → send our bundle to new links + publish presence
 
     func onReachable(_ ids: [UUID]) async {
@@ -205,6 +262,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         for link in current where !greetedLinks.contains(link) {
             greetedLinks.insert(link)
             await sendOurBundle(to: link)
+            await sendReconnectBeacons(to: link)   // 5d: both run; bundle leaves at step 6
         }
         emitReachablePeers()
     }
@@ -244,6 +302,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             return
         }
         linkPeers[link] = peer
+        noteReconnectContact(rawIdentity: store.rawPublicKey(of: peer))   // 5d transitional
         // A link just became identified — if it's currently reachable, this is
         // the moment its peer's presence flips on. Recompute + publish.
         emitReachablePeers()
@@ -277,6 +336,181 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
     }
 
+    // MARK: Reconnect handshake (Closed-Contact 5d)
+
+    /// TRANSITIONAL (5d coexistence). Until step-7 enrollment persists a real
+    /// `ContactAllowlist`, a peer we exchange a bundle with IS our de-facto paired
+    /// contact, so the reconnect layer learns it here (called from `onBundle`).
+    /// In-RAM only and cleared on relaunch — step 7 replaces this with the
+    /// persisted allowlist + the enrollment flow, at which point this hook (and
+    /// the bundle path itself) goes away. No-op until `enableReconnect`.
+    private func noteReconnectContact(rawIdentity: Data) {
+        guard reconnectEnabled, rawIdentity.count == 32 else { return }
+        guard !reconnectAllowlistIdentities.contains(rawIdentity) else { return }
+        reconnectAllowlistIdentities.append(rawIdentity)
+        refreshRecognizerCache()
+        print("first-contact: reconnect contact noted (\(reconnectAllowlistIdentities.count) total)")
+    }
+
+    /// Current epoch from the injected clock.
+    private func currentEpoch() -> UInt64 {
+        ReconnectBeacon.epoch(at: reconnectNow(), epochLength: Self.reconnectEpochLength)
+    }
+
+    /// Rebuild the cached recognizer contacts (identity + S_AC) from the paired
+    /// identities. Epoch-independent; a throwaway emission set is discarded. Best
+    /// effort — a malformed contact key throws inside the builder and leaves the
+    /// cache empty rather than crashing the actor.
+    private func refreshRecognizerCache() {
+        guard reconnectEnabled, let priv = reconnectAgreementPrivate else {
+            reconnectRecognizerContacts = []
+            return
+        }
+        var rng = SystemRandomNumberGenerator()
+        let ourIdentity = store.rawPublicKey(of: store.localIdentity)
+        if let plan = try? ReconnectEpochBuilder.plan(
+            ourAgreementPrivate: priv, ourIdentity: ourIdentity,
+            contacts: reconnectAllowlistIdentities, epoch: currentEpoch(), using: &rng) {
+            reconnectRecognizerContacts = plan.recognizerContacts
+        }
+    }
+
+    /// Phase 1: blast our decoy-padded emission set to a new link (0x00 frame).
+    /// Reuses the `greetedLinks` once-per-link gate via `onReachable`. Also
+    /// refreshes the recognizer cache for the current epoch.
+    private func sendReconnectBeacons(to link: UUID) async {
+        guard reconnectEnabled, let priv = reconnectAgreementPrivate else { return }
+        let ourIdentity = store.rawPublicKey(of: store.localIdentity)
+        do {
+            var rng = SystemRandomNumberGenerator()
+            let plan = try ReconnectEpochBuilder.plan(
+                ourAgreementPrivate: priv, ourIdentity: ourIdentity,
+                contacts: reconnectAllowlistIdentities, epoch: currentEpoch(), using: &rng)
+            reconnectRecognizerContacts = plan.recognizerContacts   // refresh (epoch-independent)
+            let frame = Self.reconnectFrame(Self.reconnectBeaconSet,
+                                            Self.encodeEmissionSet(plan.emissionSet))
+            try await transport.sendReconnect(frame, toLink: link)
+            print("first-contact: sent reconnect beacons (\(plan.emissionSet.count)) → link \(link)")
+        } catch {
+            print("first-contact: reconnect beacon send to \(link) failed: \(error)")
+        }
+    }
+
+    /// The single 0x03-frame entry point the composition root feeds from
+    /// `transport.reconnects`. Owns the 1-byte inner discriminator (knob A): the
+    /// transport stays a dumb Ethertype; beacon-vs-auth is resolved here.
+    func onReconnectFrame(link: UUID, data: Data) async {
+        guard reconnectEnabled else { return }
+        guard let discriminator = data.first else { return }
+        let payload = Data(data.dropFirst())
+        switch discriminator {
+        case Self.reconnectBeaconSet:
+            await onReconnectBeacon(link: link, emissionSetData: payload)
+        case Self.reconnectItsMe:
+            await onReconnectItsMe(link: link, ciphertext: payload)
+        default:
+            print("first-contact: unknown reconnect discriminator \(discriminator) on link \(link)")
+        }
+    }
+
+    /// Phase 2 (recognize): which paired contact, if any, is in the observed set.
+    /// A match is a HINT ONLY (Invariant #2) — we answer with a sealed it's-me
+    /// but admit NOTHING here. Admission happens when the PEER opens our it's-me;
+    /// our own presence flips only when WE open theirs (`onReconnectItsMe`).
+    private func onReconnectBeacon(link: UUID, emissionSetData: Data) async {
+        guard let set = Self.decodeEmissionSet(emissionSetData) else {
+            print("first-contact: malformed reconnect emission set on link \(link)")
+            return
+        }
+        let present = BeaconRecognizer.recognize(
+            emissionSet: set, contacts: reconnectRecognizerContacts,
+            epoch: currentEpoch(), skew: 1)
+        for identity in present {
+            await sendItsMe(toContact: identity, link: link)
+        }
+    }
+
+    /// Seal a `reconnectHello` under the recognized contact's existing session
+    /// and send it link-local (0x01 frame). 9b pads it to the 256 bucket, so it
+    /// is byte-indistinguishable from any short `.whisper`.
+    private func sendItsMe(toContact identity: Data, link: UUID) async {
+        do {
+            let peer = store.peerIdentity(fromRawKey: identity)
+            let session = try store.session(with: peer)
+            let sealed = try session.seal(MessagePayload.reconnectHelloV1().sealedPlaintext())
+            let frame = Self.reconnectFrame(Self.reconnectItsMe, sealed)
+            try await transport.sendReconnect(frame, toLink: link)
+            print("first-contact: sent reconnect it's-me → \(peer.userIDHex.prefix(16))… on link \(link)")
+        } catch {
+            print("first-contact: it's-me seal/send failed on link \(link): \(error)")
+        }
+    }
+
+    /// Phase 2 (authenticate): open the peer's sealed it's-me. This is the ONLY
+    /// place a reconnect flips presence (Invariant #2). `openInbound` trial-opens
+    /// against the warmed session cache (Invariant #1); a stranger holds no
+    /// session and a replay's message key is already spent, so both throw out
+    /// here and admit nothing.
+    private func onReconnectItsMe(link: UUID, ciphertext: Data) async {
+        do {
+            let (peer, plaintext) = try store.openInbound(ciphertext)
+            guard let payload = MessagePayload.decodeSealed(plaintext),
+                  case .reconnectHello = payload else {
+                print("first-contact: reconnect it's-me opened but not a hello on link \(link)")
+                return
+            }
+            // AUTHENTICATED admission — set presence here and nowhere else on the
+            // reconnect path. The peer is already known from pairing, so we do not
+            // re-emit `.established`; we only flip reachability (§2.4).
+            linkPeers[link] = peer
+            emitReachablePeers()
+            // A reconnect is exactly where an in-flight message's delivery ack is
+            // most likely delayed by link churn. Tell the persistence layer this
+            // peer just reconnected so it can hold that peer's auto-retry briefly
+            // and extend its live delivery timeouts (A / STEP 0b) — per-peer.
+            eventsContinuation.yield(.reconnected(peerKey: store.rawPublicKey(of: peer)))
+            print("first-contact: reconnect ADMITTED \(peer.userIDHex.prefix(16))… on link \(link)")
+        } catch {
+            // Stranger / replay / undecodable: admit nothing. Quiet by design.
+            print("first-contact: reconnect it's-me did not open on link \(link): \(error)")
+        }
+    }
+
+    // MARK: Reconnect wire framing (coordinator-owned; transport carries opaque bytes)
+
+    /// `[discriminator] ‖ payload` — the inner framing inside the 0x03 frame.
+    private static func reconnectFrame(_ discriminator: UInt8, _ payload: Data) -> Data {
+        var d = Data([discriminator])
+        d.append(payload)
+        return d
+    }
+
+    /// Concatenate the fixed-size emission set (64 × 16-byte tokens) into the
+    /// beacon-set payload. No length prefixes: every token is exactly
+    /// `ReconnectBeacon.tokenLength`, so the receiver splits on that boundary.
+    private static func encodeEmissionSet(_ set: [Data]) -> Data {
+        var d = Data(capacity: set.count * ReconnectBeacon.tokenLength)
+        for token in set { d.append(token) }
+        return d
+    }
+
+    /// Inverse of `encodeEmissionSet`: split into `tokenLength`-byte tokens.
+    /// Returns nil if the payload is not a whole multiple of the token length
+    /// (malformed) — the caller ignores it. Empty in → empty set (matches nothing).
+    private static func decodeEmissionSet(_ data: Data) -> [Data]? {
+        let n = ReconnectBeacon.tokenLength
+        guard data.count % n == 0 else { return nil }
+        var out: [Data] = []
+        out.reserveCapacity(data.count / n)
+        var i = data.startIndex
+        while i < data.endIndex {
+            let j = data.index(i, offsetBy: n)
+            out.append(Data(data[i..<j]))
+            i = j
+        }
+        return out
+    }
+
     // MARK: Outbound send (composer-driven)
 
     /// Hand a sealed envelope to the mesh router and translate the immediate
@@ -307,7 +541,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// hand the envelope to the radio. The caller (MessageInbox) has already
     /// optimistically persisted the row, so on a throw it simply marks that
     /// message `.notDelivered` — nothing the user typed is ever lost.
-    func send(_ text: String, toRawKey rawKey: Data, nostrRecipient: Data? = nil) async throws -> MessageID {
+    func send(_ text: String, toRawKey rawKey: Data, nostrRecipient: Data? = nil,
+              reuseID: MessageID? = nil) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
@@ -317,7 +552,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // media manifest/chunk (which now share this same sealed path). 9b:
         // sealedPlaintext() pads text to a fixed bucket so length doesn't leak.
         let sealed = try session.seal(MessagePayload.text(Data(text.utf8)).sealedPlaintext())
-        let envelope = Envelope(ciphertext: sealed)
+        // B2 (idempotency backstop): on a RESEND the caller passes the wireID this
+        // row was already sent under, so the re-sealed envelope carries the SAME
+        // cleartext id and the receiver's dedup drops it. On a first send reuseID
+        // is nil → a fresh random id, exactly as before.
+        let envelope = Envelope(id: reuseID ?? .random(), ciphertext: sealed)
         // tracked: a real message earns a receipt. nostrRecipient enables the
         // router's Tier-2 fallback (BLE → Nostr) when BLE is out of range.
         try await routeOut(envelope, nostrRecipient: nostrRecipient)
@@ -343,7 +582,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// inbox's optimistic row becomes `.notDelivered` — nothing the user picked
     /// is lost.
     func sendMedia(_ blob: Data, mime: MediaMimeType, toRawKey rawKey: Data,
-                   nostrRecipient: Data? = nil) async throws -> MessageID {
+                   nostrRecipient: Data? = nil,
+                   reuseID: MessageID? = nil) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
@@ -354,7 +594,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                                        reservedBytes: Self.mediaReserved)
         // Use a CSPRNG 16-byte id (a MessageID's bytes) as the mediaID, so the
         // same value is both the transfer key and the dedup / tracking MessageID.
-        let idBytes = MessageID.random().bytes
+        // B2 (idempotency backstop): on a RESEND the caller passes the wireID this
+        // row was already sent under, so the whole re-sent transfer is dedup-
+        // identical to the first. On a first send reuseID is nil → fresh random.
+        let idBytes = (reuseID ?? .random()).bytes
         let mediaWireID = MessageID(bytes: idBytes)!
         let (manifest, chunks) = try chunker.split(blob, mime: mime, mediaID: idBytes)
 

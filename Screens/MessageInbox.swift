@@ -32,9 +32,30 @@ final class MessageInbox {
     private let modelContext: ModelContext
     private let coordinator: FirstContactCoordinator
 
-    init(modelContext: ModelContext, coordinator: FirstContactCoordinator) {
+    /// The mesh router — held so a reconnect can EXTEND this peer's live stuck-send
+    /// timers (STEP 0b / A). `@ObservationIgnored`: it is not view state.
+    @ObservationIgnored private let router: MessageRouter
+
+    /// Per-peer reconnect grace deadlines (STEP 0b / A). While a peer sits in this
+    /// map with a future deadline, its auto-retry (`flushUndelivered`) is held so a
+    /// delivery ack delayed by link churn can land before we'd needlessly resend —
+    /// which matters most for a slow media re-transfer the receiver would just dedup
+    /// away. PER-PEER: a grace for one peer never stalls another's flush.
+    /// `@ObservationIgnored`: internal scheduling state, not view state.
+    @ObservationIgnored private var reconnectGraceUntil: [Data: Date] = [:]
+
+    /// How long a peer's auto-retry is held after it reconnects, and how far its
+    /// live delivery timers are pushed out. Sized to cover a text/voice ack landing
+    /// post-reconnect (text <1s, voice ack ~12s in hardware tests) without stalling
+    /// a genuinely-failed message's resend for long. Tune against real traffic.
+    private static let reconnectGraceSeconds: TimeInterval = 10
+
+    init(modelContext: ModelContext,
+         coordinator: FirstContactCoordinator,
+         router: MessageRouter) {
         self.modelContext = modelContext
         self.coordinator = coordinator
+        self.router = router
     }
 
     // MARK: - Inbound event loop
@@ -54,6 +75,8 @@ final class MessageInbox {
                 handleReceivedMedia(peerKey: key, data: data, mime: mime, wireID: wireID)
             case .learnedNostrIdentity(let key, let nostrPubkey):
                 handleLearnedNostrIdentity(peerKey: key, nostrPubkey: nostrPubkey)
+            case .reconnected(let key):
+                await handleReconnected(peerKey: key)
             }
         }
     }
@@ -242,12 +265,19 @@ final class MessageInbox {
     // MARK: - Resend (manual tap + auto-retry on return-to-range)  Phase 7c
 
     /// Re-attempt delivery of a single `.notDelivered` outbound message by
-    /// RE-SEALING it from the persisted row (OPEN-4: reuse the row, fresh
-    /// wireID). The row holds the plaintext (`content`) and any media blob
-    /// (`mediaData` + `mediaMime`), so the natural retry is to call the same
-    /// coordinator path again — which advances the ratchet and mints a NEW
-    /// envelope id. This is the only retry that survives a relaunch: the
-    /// router's in-memory outbox is gone after a restart, but the row is not.
+    /// RE-SEALING it from the persisted row (OPEN-4: reuse the row). The row
+    /// holds the plaintext (`content`) and any media blob (`mediaData` +
+    /// `mediaMime`), so the natural retry is to call the same coordinator path
+    /// again — which advances the ratchet (a FRESH ciphertext).
+    ///
+    /// B2 (idempotency backstop): the retry REUSES the wireID this row was
+    /// already sent under, so the re-sealed envelope carries the SAME cleartext
+    /// id even though the ciphertext is new. That is what lets the receiver's
+    /// `alreadyStored(envelope.id)` dedup recognize the retry and drop it — a
+    /// redelivery lands ZERO duplicates instead of one. (Reuse is safe from the
+    /// ratchet's replay rejection: a fresh seal is a new `.whisper`, never an
+    /// identical ciphertext.) This is the only retry that survives a relaunch:
+    /// the router's in-memory outbox is gone after a restart, but the row is not.
     ///
     /// Only acts on an outbound row that is currently `.notDelivered`, and flips
     /// it to `.sent` up front, so a double-tap or an overlapping auto-flush
@@ -268,14 +298,22 @@ final class MessageInbox {
         message.deliveryState = .sent
         save()
 
+        // B2: reuse the wireID this row was already sent under so the receiver's
+        // dedup catches the retry. Nil only for a NEVER-SEALED row (one that hit
+        // .notDelivered before ever getting a wireID) — in that case the
+        // coordinator mints a fresh id and returns it, and the write below records
+        // it, exactly as before.
+        let reuse = message.wireID
         do {
             let wireID: MessageID
             if message.isMedia, let data = message.mediaData, let mime = message.mediaMime {
                 wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
-                                                         nostrRecipient: nostrRecipient)
+                                                         nostrRecipient: nostrRecipient,
+                                                         reuseID: reuse)
             } else {
                 wireID = try await coordinator.send(message.content, toRawKey: rawKey,
-                                                    nostrRecipient: nostrRecipient)
+                                                    nostrRecipient: nostrRecipient,
+                                                    reuseID: reuse)
             }
             message.wireIDData = Data(wireID.bytes)
             message.conversation?.lastActivity = .now
@@ -291,7 +329,7 @@ final class MessageInbox {
     /// Auto-retry (Tier 3): flush every `.notDelivered` outbound message whose
     /// peer is now reachable. Called from the composition root when presence
     /// gains a peer. Each row re-seals via `resend` (so the same guard +
-    /// fresh-wireID semantics apply). A no-op when no one is reachable.
+    /// reused-wireID semantics apply). A no-op when no one is reachable.
     func flushUndelivered(toReachableKeys reachableKeys: Set<Data>) async {
         guard !reachableKeys.isEmpty else { return }
 
@@ -305,7 +343,76 @@ final class MessageInbox {
         for message in stuck {
             guard let key = message.conversation?.peer?.publicKeyData,
                   reachableKeys.contains(key) else { continue }
+            // Per-peer reconnect grace (STEP 0b / A): if this peer just reconnected,
+            // hold its auto-retry until the grace elapses so an in-flight ack can
+            // land first — the deferred flush scheduled in `handleReconnected` picks
+            // this row up afterward. Every other peer flushes normally.
+            if isInReconnectGrace(key) { continue }
             await resend(message)
+        }
+    }
+
+    // MARK: - Reconnect grace (STEP 0b / A)
+
+    /// A peer completed the closed-contact reconnect handshake. Open (or extend) a
+    /// per-peer grace window: defer that peer's auto-retry so a delivery ack delayed
+    /// by link churn can land before we'd resend, and push out its live stuck-send
+    /// timers so the sender's chip doesn't falsely flip to `.notDelivered`. Strictly
+    /// per-peer — no other peer's retries or timers are touched.
+    private func handleReconnected(peerKey: Data) async {
+        reconnectGraceUntil[peerKey] =
+            Date.now.addingTimeInterval(Self.reconnectGraceSeconds)
+
+        // Extend live delivery timers for THIS peer's still-in-flight messages.
+        // No-op after a relaunch (the router's in-memory outbox is gone) — the
+        // deferred flush below still applies to the persisted `.notDelivered` rows.
+        for id in inFlightWireIDs(forPeerKey: peerKey) {
+            await router.extendTimeout(for: id, by: .seconds(Self.reconnectGraceSeconds))
+        }
+
+        scheduleGraceFlush(forPeerKey: peerKey)
+    }
+
+    /// True while `peerKey` sits in an unexpired reconnect grace. Clears the entry
+    /// lazily once it has elapsed so the map doesn't accrete stale peers.
+    private func isInReconnectGrace(_ peerKey: Data) -> Bool {
+        guard let until = reconnectGraceUntil[peerKey] else { return false }
+        if Date.now < until { return true }
+        reconnectGraceUntil[peerKey] = nil
+        return false
+    }
+
+    /// After the grace elapses, flush just this peer's held `.notDelivered` rows.
+    /// Re-reads the deadline each wake so a fresh reconnect that EXTENDS the grace
+    /// defers the flush further; the first waking task to see the grace expired
+    /// clears it and flushes, and any superseded sibling task then no-ops.
+    private func scheduleGraceFlush(forPeerKey peerKey: Data) {
+        Task { @MainActor [weak self] in
+            while let until = self?.reconnectGraceUntil[peerKey], Date.now < until {
+                try? await Task.sleep(for: .seconds(max(0.05, until.timeIntervalSinceNow)))
+            }
+            guard let self, self.reconnectGraceUntil[peerKey] != nil else { return }
+            self.reconnectGraceUntil[peerKey] = nil
+            // resend is idempotent (B2), so this is safe even if the peer drifted
+            // back out of range; a truly failed retry simply re-queues .notDelivered.
+            await self.flushUndelivered(toReachableKeys: [peerKey])
+        }
+    }
+
+    /// The wire ids of this peer's still-in-flight outbound messages (non-terminal,
+    /// already sealed). A coarse fetch (outbound + has a wireID) filtered in Swift,
+    /// since `#Predicate` can't traverse the peer relationship or read the computed
+    /// `deliveryState`. The set is small (only unconfirmed sends).
+    private func inFlightWireIDs(forPeerKey peerKey: Data) -> [MessageID] {
+        let descriptor = FetchDescriptor<Message>(
+            predicate: #Predicate { $0.isOutbound && $0.wireIDData != nil }
+        )
+        guard let rows = try? modelContext.fetch(descriptor) else { return [] }
+        return rows.compactMap { row in
+            guard row.conversation?.peer?.publicKeyData == peerKey,
+                  !row.deliveryState.isTerminal,
+                  let wire = row.wireID else { return nil }
+            return wire
         }
     }
 
