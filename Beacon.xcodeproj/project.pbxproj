@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		3BCC97A51FE2DB8813B40849 /* Pods_BeaconTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4709345FFA32D3E197EED0BB /* Pods_BeaconTests.framework */; };
+		7C27E3D12FF5763400D7CD0B /* PeerAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C27E3D02FF5762D00D7CD0B /* PeerAvatar.swift */; };
 		7CAEDF912FF16D6A0084A5C4 /* PhotoViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF902FF16D660084A5C4 /* PhotoViewer.swift */; };
 		7CAEDF932FF1708A0084A5C4 /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF922FF170870084A5C4 /* VoiceRecorder.swift */; };
 		7CAEDF952FF1732C0084A5C4 /* VoiceNoteBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF942FF173280084A5C4 /* VoiceNoteBubble.swift */; };
@@ -34,9 +35,6 @@
 		7CE0C8892FEF4B0500151314 /* PeerSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */; };
 		7CE0C8902FEF580800151314 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88F2FEF51AA00151314 /* ConversationView.swift */; };
 		7CE0C8912FEF581000151314 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */; };
-		7CE0C8922FEF581800151314 /*  NearbyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88D2FEF4D9900151314 /*  NearbyView.swift */; };
-		7CE0C8932FEF581F00151314 /* NearbyRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88C2FEF4D5D00151314 /* NearbyRow.swift */; };
-		7CE0C8942FEF582600151314 /* RadarHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88B2FEF4D4300151314 /* RadarHero.swift */; };
 		7CEC9F8E2FF0379000AA3D10 /* MeshPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEC9F8D2FF0379000AA3D10 /* MeshPresence.swift */; };
 		7CEC9F932FF0549300AA3D10 /* MessageInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEC9F922FF0549200AA3D10 /* MessageInbox.swift */; };
 		F2E8EC044F1CFA3555C9E47A /* Pods_Beacon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03E293A426253218704E16E0 /* Pods_Beacon.framework */; };
@@ -57,6 +55,7 @@
 		29187184E4E30F24A648E9BD /* Pods-Beacon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Beacon.release.xcconfig"; path = "Target Support Files/Pods-Beacon/Pods-Beacon.release.xcconfig"; sourceTree = "<group>"; };
 		385B234981B516F83A0E6044 /* Pods-Beacon-BeaconUITests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Beacon-BeaconUITests.debug.xcconfig"; path = "Target Support Files/Pods-Beacon-BeaconUITests/Pods-Beacon-BeaconUITests.debug.xcconfig"; sourceTree = "<group>"; };
 		4709345FFA32D3E197EED0BB /* Pods_BeaconTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_BeaconTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		7C27E3D02FF5762D00D7CD0B /* PeerAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerAvatar.swift; sourceTree = "<group>"; };
 		7C3B094C2FED902E00AE9EC1 /* Beacon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Beacon.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C3B09592FED902F00AE9EC1 /* BeaconTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeaconTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CAEDF902FF16D660084A5C4 /* PhotoViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewer.swift; sourceTree = "<group>"; };
@@ -84,9 +83,6 @@
 		7CE0C8842FEF45FC00151314 /* ChatRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatRow.swift; sourceTree = "<group>"; };
 		7CE0C8862FEF461800151314 /* ChatsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatsListView.swift; sourceTree = "<group>"; };
 		7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerSettingsView.swift; sourceTree = "<group>"; };
-		7CE0C88B2FEF4D4300151314 /* RadarHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarHero.swift; sourceTree = "<group>"; };
-		7CE0C88C2FEF4D5D00151314 /* NearbyRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyRow.swift; sourceTree = "<group>"; };
-		7CE0C88D2FEF4D9900151314 /*  NearbyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = " NearbyView.swift"; sourceTree = "<group>"; };
 		7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		7CE0C88F2FEF51AA00151314 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		7CEC9F8D2FF0379000AA3D10 /* MeshPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshPresence.swift; sourceTree = "<group>"; };
@@ -116,6 +112,9 @@
 			target = 7C3B094B2FED902E00AE9EC1 /* Beacon */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7C18935B2FF2873A00C69ADA /* Nostr */ = {
@@ -286,6 +285,7 @@
 		7CE0C8712FEF287A00151314 /* DesignSystem */ = {
 			isa = PBXGroup;
 			children = (
+				7C27E3D02FF5762D00D7CD0B /* PeerAvatar.swift */,
 				7CAEDF9D2FF177CC0084A5C4 /* ReadableColumn.swift */,
 				7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */,
 				7CE0C8842FEF45FC00151314 /* ChatRow.swift */,
@@ -313,9 +313,6 @@
 				7CEC9F8D2FF0379000AA3D10 /* MeshPresence.swift */,
 				7CE0C88F2FEF51AA00151314 /* ConversationView.swift */,
 				7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */,
-				7CE0C88D2FEF4D9900151314 /*  NearbyView.swift */,
-				7CE0C88C2FEF4D5D00151314 /* NearbyRow.swift */,
-				7CE0C88B2FEF4D4300151314 /* RadarHero.swift */,
 			);
 			path = Screens;
 			sourceTree = "<group>";
@@ -531,7 +528,6 @@
 			files = (
 				7CE0C8912FEF581000151314 /* OnboardingView.swift in Sources */,
 				7CE0C8792FEF2CD300151314 /* PresenceChain.swift in Sources */,
-				7CE0C8942FEF582600151314 /* RadarHero.swift in Sources */,
 				7CAEDF952FF1732C0084A5C4 /* VoiceNoteBubble.swift in Sources */,
 				7CAEDF972FF1734B0084A5C4 /* VoicePlayer.swift in Sources */,
 				7CE0C8752FEF2C3400151314 /* SignalBars.swift in Sources */,
@@ -541,15 +537,14 @@
 				7CEC9F932FF0549300AA3D10 /* MessageInbox.swift in Sources */,
 				7CAEDF932FF1708A0084A5C4 /* VoiceRecorder.swift in Sources */,
 				7CE0C8902FEF580800151314 /* ConversationView.swift in Sources */,
-				7CE0C8932FEF581F00151314 /* NearbyRow.swift in Sources */,
 				7CE0C87D2FEF33B500151314 /* LiveTransit.swift in Sources */,
 				7CE0C87B2FEF2E4700151314 /* DeliveryReceipt.swift in Sources */,
 				7CE0C8812FEF3B2400151314 /* MessageRow.swift in Sources */,
 				7CE0C8872FEF462A00151314 /* ChatsListView.swift in Sources */,
 				7CAEDF912FF16D6A0084A5C4 /* PhotoViewer.swift in Sources */,
 				7CEC9F8E2FF0379000AA3D10 /* MeshPresence.swift in Sources */,
-				7CE0C8922FEF581800151314 /*  NearbyView.swift in Sources */,
 				7CE0C8772FEF2C4100151314 /* Typography.swift in Sources */,
+				7C27E3D12FF5763400D7CD0B /* PeerAvatar.swift in Sources */,
 				7CAEDF9E2FF177D10084A5C4 /* ReadableColumn.swift in Sources */,
 				7CE0C8852FEF45FF00151314 /* ChatRow.swift in Sources */,
 			);

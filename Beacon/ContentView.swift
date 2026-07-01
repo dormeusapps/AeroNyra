@@ -38,6 +38,11 @@
 //     coordinator's SessionEvents become SwiftData Peer/Conversation/Message.
 //   • Presence-by-identity — ReadyView consumes the coordinator's
 //     `reachablePeers` stream and mirrors it into MeshPresence.
+//   • EmergencyWipe (STEP 7b-3) — constructed here with every live secret-bearing
+//     component (identity store, session store, shared Enclave wrapper, session
+//     DEK, Nostr secret, contact allowlist, SwiftData message store). Held on the
+//     view and invoked via `performEmergencyWipe()`. NO gesture yet (that is 7d);
+//     this makes crypto-erase constructible and callable. See EMERGENCY_WIPE_7b3.md.
 //
 
 import SwiftUI
@@ -56,7 +61,8 @@ struct ContentView: View {
     /// The single long-lived BLE transport, started at launch.
     @State private var transport = BLEMeshTransport()
 
-    /// Live radio presence, fed from the transport and read by NearbyView.
+    /// Live radio presence, fed from the transport and read by the Chats list
+    /// and conversation headers (identity-resolved reachability).
     @State private var presence = MeshPresence()
 
     /// The single secure-session store, built from the real loaded identity
@@ -81,6 +87,12 @@ struct ContentView: View {
     /// internet pillar (Phase 8) has its identity ready; its npub lights up once
     /// the public key is derived (Phase 8b). nil until .ready.
     @State private var nostrIdentity: NostrIdentity?
+
+    /// The assembled crypto-erase (STEP 7b-3). Constructed in `makeSessionStack`
+    /// with every live secret-bearing component and invoked by
+    /// `performEmergencyWipe()`. nil until .ready. No trigger is wired yet — the
+    /// triple-tap gesture is 7d; this only makes the wipe callable.
+    @State private var emergencyWipe: EmergencyWipe?
 
     var body: some View {
         Group {
@@ -162,7 +174,9 @@ struct ContentView: View {
         do {
             let identity = try store.load()
             let container = try makeModelContainer()
-            try makeSessionStack(identity: identity)
+            try makeSessionStack(identity: identity,
+                                 identityStore: store,
+                                 enclaveWrapper: wrapper)
             phase = .ready(identity, container, store)
         } catch IdentityError.notFound {
             phase = .onboarding(store)
@@ -181,7 +195,13 @@ struct ContentView: View {
         do {
             try store.save(identity, overwrite: true)
             let container = try makeModelContainer()
-            try makeSessionStack(identity: identity)
+            // Reconstruct the same Enclave wrapper the store uses, so the wipe's
+            // safety-net Enclave teardown targets the right key. try? mirrors
+            // bootstrap(): absent on the simulator (no Enclave), present on device.
+            let wrapper = try? SecureEnclaveWrapper(service: enclaveService)
+            try makeSessionStack(identity: identity,
+                                 identityStore: store,
+                                 enclaveWrapper: wrapper)
             phase = .ready(identity, container, store)
         } catch {
             // Stay in onboarding so the user can tap again. A real UX
@@ -206,7 +226,14 @@ struct ContentView: View {
     /// `transport.incoming` (dedup + relay) and the coordinator's outbound seals
     /// flow through `router.send`. Wiring + start happen in a Task because the
     /// actor calls are async; the catch-up `onReachable` runs after.
-    private func makeSessionStack(identity: IdentityKeypair) throws {
+    ///
+    /// STEP 7b-3: `identityStore` + `enclaveWrapper` are threaded in from the
+    /// caller (they are provisioned in bootstrap/onboarding, not here) so the
+    /// EmergencyWipe assembled at the end of this method can target the long-term
+    /// identity item and the shared Enclave key. No trigger is wired — 7d.
+    private func makeSessionStack(identity: IdentityKeypair,
+                                  identityStore: IdentityStore,
+                                  enclaveWrapper: SecureEnclaveWrapper?) throws {
         let dek = try SessionStoreKey.loadOrCreate(service: sessionKeyService)
         let directory = try PersistentBeaconStore.defaultDirectory()
         let secure = try SignalSessionStore(appIdentity: identity,
@@ -272,6 +299,32 @@ struct ContentView: View {
         coordinator = coord
         router = mesh
         contactAllowlistStore = contactStore
+
+        // STEP 7b-3 — assemble the crypto-erase now that every secret-bearing
+        // component exists. Service ids are the SAME `private var` constants used
+        // above to PROVISION each secret, so the wipe cannot target the wrong
+        // Keychain item (the silent-failure trap in EMERGENCY_WIPE_7b3.md §3):
+        //   • core: identity item (unconditional), shared Enclave key (safety net),
+        //     session store file (via secure.deleteAllSessions → store.wipe()).
+        //   • additional: session DEK, Nostr secret, contact allowlist, SwiftData
+        //     message store. Order among additional steps is immaterial (each is
+        //     independent + idempotent).
+        // SwiftDataStoreWipe() resolves the default store directory the same way
+        // makeModelContainer() does; it throws, so it is built inside this
+        // throwing method. No trigger is wired — performEmergencyWipe() below is
+        // the sole entry point until the 7d gesture calls it.
+        emergencyWipe = EmergencyWipe(
+            identityStore: identityStore,
+            sessionStore: secure,
+            sharedEnclaveWrapper: enclaveWrapper,
+            additionalSteps: [
+                SessionKeyWipe(service: sessionKeyService),
+                NostrIdentityWipe(service: nostrIdentityService),
+                contactStore,
+                try SwiftDataStoreWipe(),
+            ]
+        )
+
         print("session store ready (persistent) · identity \(secure.localIdentity.userIDHex.prefix(16))… · transports=\(transports.count)")
 
         // Register the receiver + router and start consuming `incoming`, then
@@ -301,6 +354,25 @@ struct ContentView: View {
             }
             await coord.onReachable(ids)
         }
+    }
+
+    // MARK: - Emergency crypto-erase (STEP 7b-3)
+
+    /// Run the assembled crypto-erase, best-effort. Destroys every secret-bearing
+    /// component (identity, Enclave key, session store + its DEK, Nostr secret,
+    /// contact allowlist, SwiftData message store) and returns the errors from any
+    /// steps that failed — an empty array means a fully clean wipe.
+    ///
+    /// UI-AGNOSTIC ON PURPOSE. No gesture, no confirmation, no navigation lives
+    /// here — the 7d trigger owns those. After a wipe the app must route back to
+    /// onboarding / terminate (there is no identity left to operate with — see the
+    /// EmergencyWipe header and EMERGENCY_WIPE_7b3.md §4.1): that lifecycle step
+    /// belongs to the caller, above this method. A no-op (returns []) if the wipe
+    /// has not been assembled yet (pre-.ready).
+    @discardableResult
+    func performEmergencyWipe() async -> [Error] {
+        guard let emergencyWipe else { return [] }
+        return await emergencyWipe.perform()
     }
 
     /// Stable bundle-scoped identifier for the Keychain item holding the
@@ -410,7 +482,7 @@ private struct ReadyView: View {
     var body: some View {
         Group {
             if let inbox {
-                MainTabView()
+                ChatsRootView()
                     .environment(inbox)
                     .task { await inbox.run() }
                     .task { await inbox.runDeliveryUpdates(router.deliveryUpdates) }   // 7b.2a
@@ -454,27 +526,17 @@ private struct ReadyView: View {
     }
 }
 
-// MARK: - MainTabView
+// MARK: - ChatsRootView
 
-/// The two-tab spine of the app — Chats and Nearby. Each tab gets its
-/// own NavigationStack so push state is independent per tab.
-private struct MainTabView: View {
+/// The app's single root — the Chats list in one NavigationStack. There is no
+/// tab bar: the Nearby/radar screen was removed with the closed-contact pivot
+/// (you don't discover strangers; you pair deliberately). Add-contact and
+/// Settings live in the Chats top bar. `MeshPresence` is injected above by
+/// ContentView and read here for per-row and per-conversation reachability.
+private struct ChatsRootView: View {
     var body: some View {
-        TabView {
-            NavigationStack {
-                ChatsListView()
-            }
-            .tabItem {
-                Label("Chats", systemImage: "message")
-            }
-
-            NavigationStack {
-                NearbyView()
-            }
-            .tabItem {
-                Label("Nearby",
-                      systemImage: "dot.radiowaves.left.and.right")
-            }
+        NavigationStack {
+            ChatsListView()
         }
         .tint(Color.brand)
     }
