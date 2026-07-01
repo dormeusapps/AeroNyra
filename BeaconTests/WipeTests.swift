@@ -191,4 +191,39 @@ final class WipeTests: XCTestCase {
         _ = await wipe.perform()
         XCTAssertTrue(step.ran)
     }
+
+    // MARK: No vault (SwiftData-message posture)
+
+    /// With no vault wired (the post-SwiftData default), the vault step is
+    /// skipped but the rest of the sequence must still run in full: identity is
+    /// erased, the session hook fires, and additional steps run. This is the
+    /// shape the composition root uses now — messages are erased via an
+    /// `additionalSteps` Wipeable, not the vault (see §3.7/§3.8).
+    func testWipeWithoutVaultStillErasesEverythingElse() async throws {
+        let idStore = makeIdentityStore()
+        _ = try idStore.loadOrCreate()          // provision identity
+        XCTAssertNoThrow(try idStore.load())    // sanity: exists beforehand
+
+        let sessions = MockSessionStore()
+        let step = RecordingStep()
+
+        // No vault argument at all — exercises the `vault: nil` default and the
+        // `if let vault` skip in perform().
+        let wipe = EmergencyWipe(identityStore: idStore,
+                                 sessionStore: sessions,
+                                 additionalSteps: [step])
+        let errors = await wipe.perform()
+
+        // Clean wipe: skipping the vault must not manufacture an error.
+        XCTAssertTrue(errors.isEmpty)
+
+        // Identity (step 3) still erased — no ghost.
+        XCTAssertThrowsError(try idStore.load()) {
+            XCTAssertEqual($0 as? IdentityError, .notFound)
+        }
+        // Session hook (step 2) still fired.
+        XCTAssertTrue(sessions.deleteAllCalled)
+        // Additional step (step 5) still ran.
+        XCTAssertTrue(step.ran)
+    }
 }

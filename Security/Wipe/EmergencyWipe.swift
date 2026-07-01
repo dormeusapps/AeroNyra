@@ -57,7 +57,7 @@ public struct EmergencyWipe {
     }
 
     private let identityStore: IdentityStore
-    private let vault: MessageVault
+    private let vault: MessageVault?
     private let sessionStore: SecureSessionStore?
     private let sharedEnclaveWrapper: SecureEnclaveWrapper?
     private let additionalSteps: [Wipeable]
@@ -65,6 +65,11 @@ public struct EmergencyWipe {
     /// - Parameters:
     ///   - identityStore: the long-term identity store (its item is always deleted).
     ///   - vault: the at-rest message vault (DEK + its Enclave key destroyed).
+    ///     Optional: predates the SwiftData message migration, where at-rest
+    ///     messages moved out of the vault. When nil, the vault step is skipped
+    ///     and the SwiftData store is erased via `additionalSteps` instead
+    ///     (see §3.7/§3.8). The parameter is retained so the vault path still
+    ///     works if a vault is ever resurrected.
     ///   - sessionStore: the secure-session store, when one exists (ratchet
     ///     state destroyed). Optional until the session adapter ships.
     ///   - sharedEnclaveWrapper: the Enclave wrapper shared by identity + vault,
@@ -73,7 +78,7 @@ public struct EmergencyWipe {
     ///   - additionalSteps: any other secret-bearing components (message DB,
     ///     caches…) to erase.
     public init(identityStore: IdentityStore,
-                vault: MessageVault,
+                vault: MessageVault? = nil,
                 sessionStore: SecureSessionStore? = nil,
                 sharedEnclaveWrapper: SecureEnclaveWrapper? = nil,
                 additionalSteps: [Wipeable] = []) {
@@ -93,7 +98,11 @@ public struct EmergencyWipe {
 
         // 1. Vault: destroy the DEK (and, via its wrapper, the Enclave key).
         //    The message store at rest becomes immediately unreadable.
-        do { try await vault.destroy() } catch { errors.append(error) }
+        //    Skipped when no vault is wired (SwiftData-message builds erase the
+        //    store via `additionalSteps` instead).
+        if let vault {
+            do { try await vault.destroy() } catch { errors.append(error) }
+        }
 
         // 2. Sessions: destroy all ratchet/handshake state, if a store exists.
         if let sessionStore {
