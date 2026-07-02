@@ -43,6 +43,10 @@
 //     DEK, Nostr secret, contact allowlist, SwiftData message store). Held on the
 //     view and invoked via `performEmergencyWipe()`. NO gesture yet (that is 7d);
 //     this makes crypto-erase constructible and callable. See EMERGENCY_WIPE_7b3.md.
+//   • EnrollmentService (STEP 7c-1) — the single serializing owner of the live
+//     ContactAllowlist. Constructed here with the same allowlist store + coordinator,
+//     seeded from the loaded paired set. Held on the view; the pairing UI (7d) drives
+//     enroll/markVerified/revoke. No caller yet. See ENROLLMENT_7c1.md.
 //
 
 import SwiftUI
@@ -93,6 +97,12 @@ struct ContentView: View {
     /// `performEmergencyWipe()`. nil until .ready. No trigger is wired yet — the
     /// triple-tap gesture is 7d; this only makes the wipe callable.
     @State private var emergencyWipe: EmergencyWipe?
+
+    /// The enrollment seam (STEP 7c-1): the single serializing owner of the live
+    /// ContactAllowlist. Constructed in `makeSessionStack` from the same allowlist
+    /// store + coordinator, seeded with the loaded paired set. nil until .ready. No
+    /// caller yet — the pairing UI (7d) drives enroll/markVerified/revoke.
+    @State private var enrollmentService: EnrollmentService?
 
     var body: some View {
         Group {
@@ -248,9 +258,15 @@ struct ContentView: View {
             directory: directory,
             dek: try SessionStoreKey.loadOrCreate(
                 service: ContactAllowlistStore.defaultKeychainService))
+
+        // Load the WHOLE allowlist once: `pairedIdentities` seeds reconnect below,
+        // and the full `loadedAllowlist` (with verified-states intact) seeds the
+        // EnrollmentService so it starts from the real persisted set, not empty.
+        let loadedAllowlist: ContactAllowlist
         let pairedIdentities: [Data]
         do {
-            pairedIdentities = Array(try contactStore.load().identities)
+            loadedAllowlist = try contactStore.load()
+            pairedIdentities = Array(loadedAllowlist.identities)
             print("contact allowlist loaded · \(pairedIdentities.count) paired contact(s)")
         } catch {
             // The store threw rather than silently emptying (its contract). At the
@@ -260,6 +276,7 @@ struct ContentView: View {
             // admission gate is later flipped authoritative, a corrupt load will
             // need a real re-pair recovery path rather than this degrade.
             print("⚠️ contact allowlist load FAILED — booting with empty set: \(error)")
+            loadedAllowlist = ContactAllowlist()
             pairedIdentities = []
         }
 
@@ -299,6 +316,17 @@ struct ContentView: View {
         coordinator = coord
         router = mesh
         contactAllowlistStore = contactStore
+
+        // STEP 7c-1 — the enrollment seam: the single serializing owner of the live
+        // ContactAllowlist. Seeded with `loadedAllowlist` so it starts from the real
+        // persisted set (verified-states intact), sharing the same store instance so
+        // its saves land in the same sealed file, and the same coordinator so a new
+        // enroll reconnects immediately via `addReconnectContact`. `coord` conforms
+        // to `ReconnectEnrolling`. No caller yet — the pairing UI (7d) drives it.
+        enrollmentService = EnrollmentService(
+            store: contactStore,
+            coordinator: coord,
+            initialAllowlist: loadedAllowlist)
 
         // STEP 7b-3 — assemble the crypto-erase now that every secret-bearing
         // component exists. Service ids are the SAME `private var` constants used

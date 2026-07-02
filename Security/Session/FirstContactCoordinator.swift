@@ -352,6 +352,17 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         print("first-contact: reconnect contact noted (\(reconnectAllowlistIdentities.count) total)")
     }
 
+    /// PUBLIC enrollment entry (STEP 7c-1). The EnrollmentService calls this after
+    /// a successful enroll + persist so a newly-paired contact reconnects immediately.
+    /// Mirrors noteReconnectContact exactly; the two coexist until Step 6.
+    func addReconnectContact(rawIdentity: Data) {
+        guard reconnectEnabled, rawIdentity.count == 32 else { return }
+        guard !reconnectAllowlistIdentities.contains(rawIdentity) else { return }
+        reconnectAllowlistIdentities.append(rawIdentity)
+        refreshRecognizerCache()
+        print("first-contact: reconnect contact added via enrollment (\(reconnectAllowlistIdentities.count) total)")
+    }
+
     /// Current epoch from the injected clock.
     private func currentEpoch() -> UInt64 {
         ReconnectBeacon.epoch(at: reconnectNow(), epochLength: Self.reconnectEpochLength)
@@ -831,3 +842,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         return out
     }
 }
+
+// STEP 7c-1 — conformance so EnrollmentService depends on the narrow
+// ReconnectEnrolling contract, not the concrete coordinator.
+extension FirstContactCoordinator: ReconnectEnrolling {}
