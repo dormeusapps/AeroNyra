@@ -11,6 +11,12 @@
 		<string>GeistMono-Regular.ttf</string>
 		<string>GeistMono-Medium.ttf</string>
 		<string>GeistMono-SemiBold.ttf</string>
+		<string>Newsreader_14pt-Regular.ttf</string>
+		<string>Newsreader_14pt-Italic.ttf</string>
+		<string>Newsreader_14pt-Medium.ttf</string>
+		<string>Newsreader_14pt-MediumItalic.ttf</string>
+		<string>SplineSansMono-Regular.ttf</string>
+		<string>SplineSansMono-Medium.ttf</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
