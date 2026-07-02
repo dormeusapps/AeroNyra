@@ -409,7 +409,17 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
 
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {
         guard central.state == .poweredOn else {
-            log.error("central state not poweredOn: \(central.state.rawValue)")
+            // BLE off / resetting / unauthorized: CoreBluetooth invalidates every
+            // connection WITHOUT delivering per-peripheral didDisconnect callbacks,
+            // so writeTargets would otherwise keep its entries and presence would
+            // stick — a zombie link that only clears on relaunch. Tear down the
+            // central-side link state and re-emit so reachability drops NOW. The
+            // .poweredOn branch below re-scans and rebuilds it when the radio returns.
+            log.error("central state not poweredOn: \(central.state.rawValue) → clearing central-side presence")
+            peers.removeAll()
+            writeTargets.removeAll()
+            notifyReassembly.removeAll()
+            emitReachable()
             return
         }
         log.info("central poweredOn → scanning for AeroNyra service")
@@ -517,7 +527,18 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
 
     public func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         guard peripheral.state == .poweredOn else {
-            log.error("peripheral state not poweredOn: \(peripheral.state.rawValue)")
+            // Same failure mode as the central side: no per-central didUnsubscribe
+            // fires on a power-off, so subscribedCentrals would stick and presence
+            // would zombie. Clear the peripheral-side link state (plus the now-
+            // invalid mailbox and any queued notify bytes for links that are gone)
+            // and re-emit. The .poweredOn branch below re-adds the service and
+            // re-advertises, repopulating subscribers when the radio returns.
+            log.error("peripheral state not poweredOn: \(peripheral.state.rawValue) → clearing peripheral-side presence")
+            subscribedCentrals.removeAll()
+            writeReassembly.removeAll()
+            pendingNotifications.removeAll()
+            mailbox = nil
+            emitReachable()
             return
         }
         let mailbox = CBMutableCharacteristic(
