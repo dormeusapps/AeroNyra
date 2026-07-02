@@ -16,6 +16,9 @@
 		7C3450E92FF6D54600148C83 /* SplineSansMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7C3450E32FF6D54600148C83 /* SplineSansMono-Regular.ttf */; };
 		7C3450EA2FF6D54600148C83 /* SplineSansMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 7C3450E42FF6D54600148C83 /* SplineSansMono-Medium.ttf */; };
 		7C3450EC2FF6DB2500148C83 /* Stillwater.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450EB2FF6DB1F00148C83 /* Stillwater.swift */; };
+		7C3450EE2FF6DDAB00148C83 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450ED2FF6DDA700148C83 /* PairingView.swift */; };
+		7C3450F02FF6DF5200148C83 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450EF2FF6DF4A00148C83 /* HomeView.swift */; };
+		7C3450F22FF6E1DD00148C83 /* Conversation1View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */; };
 		7CAEDF912FF16D6A0084A5C4 /* PhotoViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF902FF16D660084A5C4 /* PhotoViewer.swift */; };
 		7CAEDF932FF1708A0084A5C4 /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF922FF170870084A5C4 /* VoiceRecorder.swift */; };
 		7CAEDF952FF1732C0084A5C4 /* VoiceNoteBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF942FF173280084A5C4 /* VoiceNoteBubble.swift */; };
@@ -70,6 +73,9 @@
 		7C3450E32FF6D54600148C83 /* SplineSansMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "SplineSansMono-Regular.ttf"; path = "Resource_Fonts/SplineSansMono-Regular.ttf"; sourceTree = "<group>"; };
 		7C3450E42FF6D54600148C83 /* SplineSansMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = "SplineSansMono-Medium.ttf"; path = "Resource_Fonts/SplineSansMono-Medium.ttf"; sourceTree = "<group>"; };
 		7C3450EB2FF6DB1F00148C83 /* Stillwater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Stillwater.swift; sourceTree = "<group>"; };
+		7C3450ED2FF6DDA700148C83 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
+		7C3450EF2FF6DF4A00148C83 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation1View.swift; sourceTree = "<group>"; };
 		7C3B094C2FED902E00AE9EC1 /* Beacon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Beacon.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C3B09592FED902F00AE9EC1 /* BeaconTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeaconTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CAEDF902FF16D660084A5C4 /* PhotoViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewer.swift; sourceTree = "<group>"; };
@@ -321,6 +327,9 @@
 		7CE0C88A2FEF4D2900151314 /* Screens */ = {
 			isa = PBXGroup;
 			children = (
+				7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */,
+				7C3450EF2FF6DF4A00148C83 /* HomeView.swift */,
+				7C3450ED2FF6DDA700148C83 /* PairingView.swift */,
 				7CE0C8862FEF461800151314 /* ChatsListView.swift */,
 				7CE0C8802FEF3B2000151314 /* MessageRow.swift */,
 				7CAEDF962FF173470084A5C4 /* VoicePlayer.swift */,
@@ -558,6 +567,8 @@
 				7CE0C87F2FEF3A2200151314 /* DeliveryChip.swift in Sources */,
 				7CE0C8892FEF4B0500151314 /* PeerSettingsView.swift in Sources */,
 				7C3450EC2FF6DB2500148C83 /* Stillwater.swift in Sources */,
+				7C3450F02FF6DF5200148C83 /* HomeView.swift in Sources */,
+				7C3450EE2FF6DDAB00148C83 /* PairingView.swift in Sources */,
 				7CE0C8762FEF2C3B00151314 /* Colors.swift in Sources */,
 				7CEC9F932FF0549300AA3D10 /* MessageInbox.swift in Sources */,
 				7CAEDF932FF1708A0084A5C4 /* VoiceRecorder.swift in Sources */,
@@ -571,6 +582,7 @@
 				7CE0C8772FEF2C4100151314 /* Typography.swift in Sources */,
 				7C27E3D12FF5763400D7CD0B /* PeerAvatar.swift in Sources */,
 				7CAEDF9E2FF177D10084A5C4 /* ReadableColumn.swift in Sources */,
+				7C3450F22FF6E1DD00148C83 /* Conversation1View.swift in Sources */,
 				7CE0C8852FEF45FF00151314 /* ChatRow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
