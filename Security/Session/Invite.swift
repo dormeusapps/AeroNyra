@@ -190,6 +190,22 @@ public struct PendingInvites: Equatable, Sendable {
     /// Number of currently-tracked (registered, unconsumed) ids.
     public var count: Int { pending.count }
 
+    // MARK: - At-rest codec seam (STEP 7c-2)
+    //
+    // `PendingInvitesStore` persists ONLY this {id → expiresAt} ledger — never the
+    // Invite or its PairingPayload (the initiator doesn't need the payload after
+    // minting; it only needs to recognize and burn an echoed id). These two
+    // members are the entire additive surface the codec needs: a read view for
+    // `encode` and a whole-map init for `decode`. `register`/`consume`/`isPending`/
+    // `prune` are untouched, so the single-use guarantee is preserved by
+    // construction.
+
+    /// Read-only view of the ledger, for `PendingInvitesCodec.encode`.
+    public var entries: [Data: Int64] { pending }
+
+    /// Reconstruct a ledger from a decoded entry map, for `PendingInvitesCodec.decode`.
+    public init(entries: [Data: Int64]) { self.pending = entries }
+
     /// Record a freshly-minted invite as pending.
     public mutating func register(id: Data, expiresAt: Int64) {
         pending[id] = expiresAt
