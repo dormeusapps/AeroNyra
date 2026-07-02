@@ -259,6 +259,16 @@ struct ContentView: View {
             dek: try SessionStoreKey.loadOrCreate(
                 service: ContactAllowlistStore.defaultKeychainService))
 
+        // STEP 7c-2 — persisted single-use invite ledger. Own DEK (a distinct
+        // Keychain service) seals a distinct file in the same store directory.
+        // Registered in EmergencyWipe below so the in-flight-pairing ledger is
+        // crypto-erased on wipe; the EnrollmentService adopts it in 7c-2b to own
+        // the mint/consume lifecycle (which is where load-time pruning lives).
+        let pendingInvitesStore = try PendingInvitesStore(
+            directory: directory,
+            dek: try SessionStoreKey.loadOrCreate(
+                service: PendingInvitesStore.defaultKeychainService))
+
         // Load the WHOLE allowlist once: `pairedIdentities` seeds reconnect below,
         // and the full `loadedAllowlist` (with verified-states intact) seeds the
         // EnrollmentService so it starts from the real persisted set, not empty.
@@ -278,6 +288,21 @@ struct ContentView: View {
             print("⚠️ contact allowlist load FAILED — booting with empty set: \(error)")
             loadedAllowlist = ContactAllowlist()
             pairedIdentities = []
+        }
+
+        // STEP 7c-2 — load the single-use invite ledger once to seed the
+        // EnrollmentService, which then OWNS it (mint/redeem, save-then-adopt) and
+        // prunes expired ids in RAM at construction. Same loud-degrade posture as
+        // the allowlist: the store throws rather than silently emptying, so a
+        // corrupt ledger is logged and we boot empty (in-flight remote pairings
+        // would just need a fresh invite — acceptable; single-use + SAS still hold).
+        let loadedPending: PendingInvites
+        do {
+            loadedPending = try pendingInvitesStore.load()
+            print("pending invite ledger loaded · \(loadedPending.count) in flight")
+        } catch {
+            print("⚠️ pending invite ledger load FAILED — booting empty: \(error)")
+            loadedPending = PendingInvites()
         }
 
         // Nostr identity (Phase 8a): load-or-create the persistent secp256k1
@@ -317,16 +342,20 @@ struct ContentView: View {
         router = mesh
         contactAllowlistStore = contactStore
 
-        // STEP 7c-1 — the enrollment seam: the single serializing owner of the live
-        // ContactAllowlist. Seeded with `loadedAllowlist` so it starts from the real
-        // persisted set (verified-states intact), sharing the same store instance so
-        // its saves land in the same sealed file, and the same coordinator so a new
-        // enroll reconnects immediately via `addReconnectContact`. `coord` conforms
-        // to `ReconnectEnrolling`. No caller yet — the pairing UI (7d) drives it.
-        enrollmentService = EnrollmentService(
+        // STEP 7c-1/7c-2 — the enrollment seam: the single serializing owner of the
+        // live ContactAllowlist AND the single-use invite ledger. Seeded with the
+        // real persisted allowlist (verified-states intact) and ledger, sharing the
+        // same store instances so its saves land in the same sealed files, and the
+        // same coordinator so a new enroll reconnects immediately via
+        // `addReconnectContact`. `coord` conforms to `ReconnectEnrolling`. No caller
+        // yet — the pairing UI (7d) and echo transport (7c-2 step 5) drive it.
+        let enroll = EnrollmentService(
             store: contactStore,
+            pendingStore: pendingInvitesStore,
             coordinator: coord,
-            initialAllowlist: loadedAllowlist)
+            initialAllowlist: loadedAllowlist,
+            initialPending: loadedPending)
+        enrollmentService = enroll
 
         // STEP 7b-3 — assemble the crypto-erase now that every secret-bearing
         // component exists. Service ids are the SAME `private var` constants used
@@ -334,9 +363,9 @@ struct ContentView: View {
         // Keychain item (the silent-failure trap in EMERGENCY_WIPE_7b3.md §3):
         //   • core: identity item (unconditional), shared Enclave key (safety net),
         //     session store file (via secure.deleteAllSessions → store.wipe()).
-        //   • additional: session DEK, Nostr secret, contact allowlist, SwiftData
-        //     message store. Order among additional steps is immaterial (each is
-        //     independent + idempotent).
+        //   • additional: session DEK, Nostr secret, contact allowlist, invite
+        //     ledger, SwiftData message store. Order among additional steps is
+        //     immaterial (each is independent + idempotent).
         // SwiftDataStoreWipe() resolves the default store directory the same way
         // makeModelContainer() does; it throws, so it is built inside this
         // throwing method. No trigger is wired — performEmergencyWipe() below is
@@ -349,6 +378,7 @@ struct ContentView: View {
                 SessionKeyWipe(service: sessionKeyService),
                 NostrIdentityWipe(service: nostrIdentityService),
                 contactStore,
+                pendingInvitesStore,
                 try SwiftDataStoreWipe(),
             ]
         )
@@ -363,6 +393,7 @@ struct ContentView: View {
             await mesh.setReceiver(coord)
             await coord.setRouter(mesh)
             await coord.setNostrPublicKey(ourNostrPubkey)   // Phase 8d npub-bootstrap
+            await coord.setInviteRedeemer(enroll)           // STEP 7c-2 invite-echo redeem (weak)
 
             // Closed-contact reconnect (5d). Warm the trial-decrypt cache from the
             // allowlist (Invariant #1) BEFORE any 0x03 frame can arrive, then

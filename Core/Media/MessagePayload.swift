@@ -39,6 +39,18 @@
 // pads it to the smallest bucket and it is byte-indistinguishable on the wire
 // from any short `.whisper` (e.g. a one-word text or an ack).
 //
+// STEP 7c-2 (Closed-Contact remote invite) adds a seventh kind — INVITE ECHO —
+// the sealed reply a redeemer sends the initiator after redeeming a remote
+// invite (INVITE_7c2.md §5). Remote pairing is the not-in-BLE-range case, so the
+// echo rides the RELAYABLE sealed path (not a link-local frame): the redeemer
+// establishes a session from the invite's prekey bundle and sends this as its
+// first sealed message, over Nostr. The body is the bare 16-byte invite id — and
+// ONLY that. The redeemer's identity is NOT in the body; the receiver takes it
+// from the X3DH-authenticated session, so it cannot be self-asserted. Opening it,
+// the initiator burns the invite single-use and enrolls the redeemer (unverified,
+// pending the SAS). It is a SMALL padded kind, so it is wire-indistinguishable
+// from a short text / ack / hello.
+//
 // SIZE NOTE: for a media chunk the body is already sized (via MediaChunker's
 // `reservedBytes`) so that tag + chunk together still fill one PayloadBucket
 // tier exactly — the tag costs no extra padding. For text, manifests, acks, and
@@ -46,15 +58,15 @@
 // free there too.
 //
 // PADDING (Phase 9b): `sealedPlaintext()` is the bytes that actually get sealed.
-// It pads the SMALL kinds (text / ack / nostrIdentity) up to a fixed
-// `PayloadBucket` size via `PayloadPadding`, so their ciphertext length no
-// longer leaks message length (THREAT_MODEL.md §7). MEDIA is exempt: a manifest
-// or chunk is already bucket-shaped by MediaChunker, so padding it would only
-// add a length header and spill it into the next tier. `decodeSealed(_:)` is the
-// exact inverse on the receive side. NOTE: this changes the sealed-plaintext
-// wire format — both peers must run a 9b-or-later build for text/ack/nostr to
-// decode (media is unaffected). Sessions are untouched (padding is inside the
-// seal, not the ratchet), so no re-handshake is needed.
+// It pads the SMALL kinds (text / ack / nostrIdentity / reconnectHello /
+// inviteEcho) up to a fixed `PayloadBucket` size via `PayloadPadding`, so their
+// ciphertext length no longer leaks message length (THREAT_MODEL.md §7). MEDIA is
+// exempt: a manifest or chunk is already bucket-shaped by MediaChunker, so padding
+// it would only add a length header and spill it into the next tier.
+// `decodeSealed(_:)` is the exact inverse on the receive side. NOTE: this changes
+// the sealed-plaintext wire format — both peers must run a 9b-or-later build for
+// text/ack/nostr to decode (media is unaffected). Sessions are untouched (padding
+// is inside the seal, not the ratchet), so no re-handshake is needed.
 //
 
 import Foundation
@@ -70,6 +82,7 @@ public enum WirePayloadKind: UInt8, Sendable, CaseIterable {
     case ack           = 4   // delivery receipt: 16-byte wireID ‖ 1-byte hops
     case nostrIdentity = 5   // npub bootstrap: 32-byte x-only secp256k1 pubkey
     case reconnectHello = 6  // closed-contact auth it's-me: 1-byte version tag
+    case inviteEcho    = 7   // remote-invite echo: 16-byte invite id
 }
 
 // MARK: - MessagePayload
@@ -84,6 +97,7 @@ public enum MessagePayload: Sendable, Equatable {
     case ack(Data)             // delivery receipt body: wireID(16) ‖ hops(1)
     case nostrIdentity(Data)   // npub bootstrap body: x-only pubkey (32 bytes)
     case reconnectHello(Data)  // closed-contact auth it's-me body: version(1)
+    case inviteEcho(Data)      // remote-invite echo body: invite id (16 bytes)
 
     public var kind: WirePayloadKind {
         switch self {
@@ -93,6 +107,7 @@ public enum MessagePayload: Sendable, Equatable {
         case .ack:           return .ack
         case .nostrIdentity: return .nostrIdentity
         case .reconnectHello: return .reconnectHello
+        case .inviteEcho:    return .inviteEcho
         }
     }
 
@@ -104,7 +119,8 @@ public enum MessagePayload: Sendable, Equatable {
              .mediaChunk(let d),
              .ack(let d),
              .nostrIdentity(let d),
-             .reconnectHello(let d):
+             .reconnectHello(let d),
+             .inviteEcho(let d):
             return d
         }
     }
@@ -118,17 +134,18 @@ public enum MessagePayload: Sendable, Equatable {
     }
 
     /// The exact bytes to hand to `session.seal` (Phase 9b). For the small kinds
-    /// (text / ack / nostrIdentity) this pads `encoded()` up to a fixed
-    /// `PayloadBucket` size so the sealed ciphertext length no longer leaks the
-    /// message length. MEDIA (`mediaManifest` / `mediaChunk`) is returned as
-    /// plain `encoded()`: MediaChunker already sizes each chunk to fill a bucket
-    /// tier exactly, so padding it here would add a length header and spill it
-    /// into the next (4×-larger) tier. The inverse is `decodeSealed(_:)`.
+    /// (text / ack / nostrIdentity / reconnectHello / inviteEcho) this pads
+    /// `encoded()` up to a fixed `PayloadBucket` size so the sealed ciphertext
+    /// length no longer leaks the message length. MEDIA (`mediaManifest` /
+    /// `mediaChunk`) is returned as plain `encoded()`: MediaChunker already sizes
+    /// each chunk to fill a bucket tier exactly, so padding it here would add a
+    /// length header and spill it into the next (4×-larger) tier. The inverse is
+    /// `decodeSealed(_:)`.
     public func sealedPlaintext() -> Data {
         switch self {
         case .mediaManifest, .mediaChunk:
             return encoded()                        // already bucket-shaped
-        case .text, .ack, .nostrIdentity, .reconnectHello:
+        case .text, .ack, .nostrIdentity, .reconnectHello, .inviteEcho:
             return PayloadPadding.pad(encoded())    // collapse length to a bucket
         }
     }
@@ -139,8 +156,9 @@ public enum MessagePayload: Sendable, Equatable {
     ///
     /// This is intentionally permissive about body LENGTH — it splits tag from
     /// body and nothing more. Per-kind body validation (e.g. the ack's fixed
-    /// 17 bytes, or the nostr-identity's 32 bytes) lives in the dedicated
-    /// parsers below, which run on the untrusted receive path.
+    /// 17 bytes, the nostr-identity's 32 bytes, or the invite-echo's 16 bytes)
+    /// lives in the dedicated parsers below, which run on the untrusted receive
+    /// path.
     public static func decode(_ data: Data) -> MessagePayload? {
         guard let tag = data.first, let kind = WirePayloadKind(rawValue: tag) else {
             return nil
@@ -153,6 +171,7 @@ public enum MessagePayload: Sendable, Equatable {
         case .ack:           return .ack(body)
         case .nostrIdentity: return .nostrIdentity(body)
         case .reconnectHello: return .reconnectHello(body)
+        case .inviteEcho:    return .inviteEcho(body)
         }
     }
 
@@ -267,5 +286,37 @@ public extension MessagePayload {
     static func parseReconnectHello(_ body: Data) -> UInt8? {
         guard body.count == 1 else { return nil }
         return body[body.startIndex]
+    }
+}
+
+// MARK: - Invite echo body  (STEP 7c-2 — Closed-Contact remote invite)
+
+public extension MessagePayload {
+
+    /// Byte length of an invite id — the entire body of an `.inviteEcho`. Matches
+    /// `Invite.idByteCount` (16).
+    static var inviteEchoIDByteCount: Int { 16 }
+
+    /// Build an invite-echo payload carrying the redeemed invite's 16-byte id.
+    ///
+    /// The body is the bare id — and ONLY the id. The redeemer's identity is
+    /// deliberately NOT carried here: on the receive side the initiator takes it
+    /// from the X3DH-authenticated session (INVITE_7c2.md §5), so it cannot be
+    /// self-asserted by the sender. Named distinctly from the `.inviteEcho` case
+    /// (cf. `deliveryAck` vs `.ack`) so call sites read intent.
+    ///
+    /// EMIT (7d): the redeemer builds this after establishing a session from the
+    /// invite's prekey bundle, and sends it as its first sealed message over the
+    /// relay — driven by the redeem action, which holds the invite id.
+    static func inviteEchoV1(inviteID: Data) -> MessagePayload {
+        .inviteEcho(inviteID)
+    }
+
+    /// Parse an `.inviteEcho` body back into the 16-byte invite id. Returns nil
+    /// unless the body is exactly 16 bytes — the strict, untrusted-input boundary,
+    /// like `parseNostrIdentity`; `decode` deliberately does not length-check.
+    static func parseInviteEcho(_ body: Data) -> Data? {
+        guard body.count == inviteEchoIDByteCount else { return nil }
+        return body
     }
 }

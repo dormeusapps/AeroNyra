@@ -70,24 +70,24 @@ import CryptoKit
 /// `Peer.publicKeyData` stores. No libsignal type leaks here, so this is freely
 /// `Sendable` and safe to hand across the actor → main-actor boundary.
 enum SessionEvent: Sendable {
-
+    
     /// We were the initiator and a session is now established with this peer.
     /// The persistence layer should create-or-fetch the Peer + a direct
     /// Conversation so it becomes a named, tappable row — even before any
     /// message is typed. (No message is attached; this is "you've met them".)
     case established(peerKey: Data)
-
+    
     /// A sealed message was opened from this peer. The persistence layer should
     /// create-or-fetch the Peer + Conversation and persist an inbound Message.
     /// `wireID` is the envelope id, for dedup against relayed duplicates.
     case received(peerKey: Data, plaintext: Data, wireID: MessageID)
-
+    
     /// A complete media transfer (photo / voice note) was reassembled and
     /// integrity-verified from this peer. `data` is the whole blob; `wireID` is
     /// derived from the 16-byte mediaID (stable across the transfer) so dedup
     /// works the same as for text. Partial transfers never surface here.
     case receivedMedia(peerKey: Data, data: Data, mime: MediaMimeType, wireID: MessageID)
-
+    
     /// This peer announced their raw 32-byte x-only secp256k1 Nostr public key
     /// over the established sealed channel (Phase 8d npub-bootstrap — never from
     /// the PrekeyBundle). The persistence layer should create-or-fetch the Peer
@@ -95,7 +95,7 @@ enum SessionEvent: Sendable {
     /// Nostr gift wrap to this peer when BLE is out of range. Identity metadata,
     /// not a message: no Message row, no unread dot.
     case learnedNostrIdentity(peerKey: Data, nostrPubkey: Data)
-
+    
     /// This peer completed the closed-contact reconnect handshake (5d admission).
     /// NOT a message — no Peer / Conversation / Message write is required — but the
     /// persistence layer uses it to open a PER-PEER reconnect GRACE (STEP 0b / A):
@@ -107,17 +107,17 @@ enum SessionEvent: Sendable {
 }
 
 actor FirstContactCoordinator: EnvelopeReceiver {
-
+    
     private let store: SignalSessionStore
     private let transport: BLEMeshTransport
-
+    
     /// The mesh router (Phase 7b.1): owns Envelope I/O — dedup, relay, and the
     /// transport-facing send. Injected after construction by the composition
     /// root (`setRouter`), which also registers this actor as the router's
     /// `EnvelopeReceiver`. Held strongly; the router holds us weakly, so there
     /// is no retain cycle. Outbound envelopes go through it; bundles do not.
     private var router: MessageRouter?
-
+    
     /// OUR raw 32-byte x-only secp256k1 Nostr public key, injected post-
     /// construction by the composition root (`setNostrPublicKey`, mirroring
     /// `setRouter`). Held so we can announce it to peers we converse with (the
@@ -125,21 +125,26 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// which case the announce path is a silent no-op and the BLE pillar is
     /// unaffected.
     private var ourNostrPublicKey: Data?
-
+    
+    /// The invite-echo redeemer (STEP 7c-2). Injected post-construction by the
+    /// composition root (`setInviteRedeemer`, mirroring `setRouter`). Held WEAKLY
+    /// so it does not retain the service, which retains us via ReconnectEnrolling.
+    private weak var inviteRedeemer: (any InviteRedeeming)?
+    
     /// Media chunking config. A chunk fills `mediaBucket` exactly once its
     /// 1-byte payload tag (`mediaReserved`) is accounted for — no wasted
     /// padding tier (see MediaChunker / MessagePayload).
     private static let mediaBucket = 4096
     private static let mediaReserved = 1
-
+    
     /// Collects inbound media chunks until a transfer is whole + verified.
     /// Actor-isolated, so its buffers are race-free. Initialized in `init`
     /// (4096/1 are known-valid, so the chunker can't fail — validated constant).
     private var reassembler: MediaReassembler
-
+    
     /// Links we've already greeted with our bundle (don't re-send each tick).
     private var greetedLinks: Set<UUID> = []
-
+    
     /// Peers (by RAW 32-byte key) we've already sent our Nostr-identity
     /// announcement to this session — so the npub-bootstrap fires at most once
     /// per peer. RAM-only by design: a relaunch clears it, so we re-announce on
@@ -155,20 +160,20 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// the number of distinct links seen this session; UUIDs are never reused
     /// for a different peer.
     private var linkPeers: [UUID: PublicIdentity] = [:]
-
+    
     /// The most recent set of reachable BLE links (ephemeral CoreBluetooth ids)
     /// from the transport. Remembered between ticks so `onBundle` can recompute
     /// presence when a link becomes identified, and so `emitReachablePeers`
     /// always intersects against the current live set.
     private var reachableLinks: Set<UUID> = []
-
+    
     // MARK: Reconnect (Closed-Contact 5d) — injected, no-op until enabled
     //
     // The reconnection auth handshake (RECONNECT_AUTH_WIRING_5d.md). Disabled by
     // default: every reconnect path below early-returns until `enableReconnect`
     // injects our agreement key + the paired identities, so a build that never
     // calls it behaves exactly as the pre-5d coordinator (coexistence-safe).
-
+    
     /// 15-minute epoch buckets; ±1 skew (BeaconRecognizer default) tolerates up
     /// to ~30 min of inter-device clock drift. Bumping this is a wire change.
     private static let reconnectEpochLength: UInt64 = 900
@@ -176,7 +181,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// (knob A — kept ABOVE the transport so it stays a dumb Ethertype).
     private static let reconnectBeaconSet: UInt8 = 0x00
     private static let reconnectItsMe: UInt8 = 0x01
-
+    
     private var reconnectEnabled = false
     /// Our X25519 identity-agreement private key (drives every S_AC). The store
     /// holds only the bridged libsignal identity, not this raw scalar, so it is
@@ -192,7 +197,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// epoch is applied at `recognize` time — so this is rebuilt only when the
     /// allowlist changes (or each emission, cheaply), not per epoch.
     private var reconnectRecognizerContacts: [BeaconRecognizer.Contact] = []
-
+    
     /// Events for the main-actor persistence layer (MessageInbox). `nonisolated`
     /// so the consumer can `for await` it without hopping into actor isolation;
     /// `AsyncStream` is `Sendable` and `SessionEvent` carries no actor state.
@@ -200,14 +205,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// starts are held, not dropped.
     nonisolated let events: AsyncStream<SessionEvent>
     private let eventsContinuation: AsyncStream<SessionEvent>.Continuation
-
+    
     /// Presence resolved to identity (Phase 7a): the set of RAW 32-byte peer
     /// keys currently reachable over BLE. A main-actor consumer mirrors this
     /// into MeshPresence so per-conversation reachability is real. `nonisolated`
     /// + unbounded-buffered for the same reasons as `events`.
     nonisolated let reachablePeers: AsyncStream<Set<Data>>
     private let reachablePeersContinuation: AsyncStream<Set<Data>>.Continuation
-
+    
     init(store: SignalSessionStore, transport: BLEMeshTransport) {
         self.store = store
         self.transport = transport
@@ -217,18 +222,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let (stream, continuation) = AsyncStream<SessionEvent>.makeStream()
         self.events = stream
         self.eventsContinuation = continuation
-
+        
         let (rStream, rContinuation) = AsyncStream<Set<Data>>.makeStream()
         self.reachablePeers = rStream
         self.reachablePeersContinuation = rContinuation
     }
-
+    
     /// Wire the mesh router in (Phase 7b.1). Called once by the composition root
     /// right after it registers this actor as the router's `EnvelopeReceiver`.
     func setRouter(_ router: MessageRouter) {
         self.router = router
     }
-
+    
+    /// Wire the invite-echo redeemer in (STEP 7c-2). Called once by the
+    /// composition root alongside `setRouter`. Weak — no retain cycle.
+    func setInviteRedeemer(_ redeemer: InviteRedeeming) {
+        self.inviteRedeemer = redeemer
+    }
+    
     /// Inject our Nostr public key (Phase 8d npub-bootstrap). Called once by the
     /// composition root after it load-or-creates the device's NostrIdentity,
     /// alongside `setRouter`. A nil key (no Nostr identity) leaves the announce
@@ -236,7 +247,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     func setNostrPublicKey(_ key: Data?) {
         self.ourNostrPublicKey = key
     }
-
+    
     /// Enable the closed-contact reconnection handshake (5d). Called once by the
     /// composition root at startup, AFTER `store.warmInboundSessions(for:)` has
     /// warmed the trial-decrypt cache from the same allowlist (Invariant #1), so
@@ -252,9 +263,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         self.reconnectEnabled = true
         refreshRecognizerCache()
     }
-
+    
     // MARK: Reachability → send our bundle to new links + publish presence
-
+    
     func onReachable(_ ids: [UUID]) async {
         let current = Set(ids)
         reachableLinks = current
@@ -266,7 +277,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
         emitReachablePeers()
     }
-
+    
     private func sendOurBundle(to link: UUID) async {
         do {
             let bundle = try store.localPrekeyBundle()
@@ -277,7 +288,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: bundle send to \(link) failed: \(error)")
         }
     }
-
+    
     /// Publish the set of RAW 32-byte keys currently reachable: every live link
     /// that we've resolved to an identity, mapped to its raw key and de-duped by
     /// the `Set`. The de-dup is what collapses the per-role double-count — both
@@ -292,9 +303,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         reachablePeersContinuation.yield(keys)
         print("first-contact: presence → \(keys.count) reachable peer(s)")
     }
-
+    
     // MARK: Inbound bundle → maybe initiate
-
+    
     func onBundle(link: UUID, data: Data) async {
         let bundle = PrekeyBundle(data: data)
         guard let peer = try? store.peerIdentity(from: bundle) else {
@@ -306,20 +317,20 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // A link just became identified — if it's currently reachable, this is
         // the moment its peer's presence flips on. Recompute + publish.
         emitReachablePeers()
-
+        
         // Deterministic initiator: the higher identity key initiates. Both
         // sides compute the same comparison, so exactly one initiates.
         let mine = Array(store.localIdentity.agreementKey)
         let theirs = Array(peer.agreementKey)
         let iInitiate = theirs.lexicographicallyPrecedes(mine)
-
+        
         if iInitiate {
             await initiate(with: bundle, peer: peer)
         } else {
             print("first-contact: responder role for \(peer.userIDHex.prefix(16))… — session forms on first message")
         }
     }
-
+    
     private func initiate(with bundle: PrekeyBundle, peer: PublicIdentity) async {
         do {
             // Establish the outgoing session from the peer's bundle. We do NOT
@@ -335,9 +346,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: initiate failed: \(error)")
         }
     }
-
+    
     // MARK: Reconnect handshake (Closed-Contact 5d)
-
+    
     /// TRANSITIONAL (5d coexistence). Until step-7 enrollment persists a real
     /// `ContactAllowlist`, a peer we exchange a bundle with IS our de-facto paired
     /// contact, so the reconnect layer learns it here (called from `onBundle`).
@@ -351,7 +362,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         refreshRecognizerCache()
         print("first-contact: reconnect contact noted (\(reconnectAllowlistIdentities.count) total)")
     }
-
+    
     /// PUBLIC enrollment entry (STEP 7c-1). The EnrollmentService calls this after
     /// a successful enroll + persist so a newly-paired contact reconnects immediately.
     /// Mirrors noteReconnectContact exactly; the two coexist until Step 6.
@@ -362,12 +373,12 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         refreshRecognizerCache()
         print("first-contact: reconnect contact added via enrollment (\(reconnectAllowlistIdentities.count) total)")
     }
-
+    
     /// Current epoch from the injected clock.
     private func currentEpoch() -> UInt64 {
         ReconnectBeacon.epoch(at: reconnectNow(), epochLength: Self.reconnectEpochLength)
     }
-
+    
     /// Rebuild the cached recognizer contacts (identity + S_AC) from the paired
     /// identities. Epoch-independent; a throwaway emission set is discarded. Best
     /// effort — a malformed contact key throws inside the builder and leaves the
@@ -385,7 +396,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             reconnectRecognizerContacts = plan.recognizerContacts
         }
     }
-
+    
     /// Phase 1: blast our decoy-padded emission set to a new link (0x00 frame).
     /// Reuses the `greetedLinks` once-per-link gate via `onReachable`. Also
     /// refreshes the recognizer cache for the current epoch.
@@ -406,7 +417,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: reconnect beacon send to \(link) failed: \(error)")
         }
     }
-
+    
     /// The single 0x03-frame entry point the composition root feeds from
     /// `transport.reconnects`. Owns the 1-byte inner discriminator (knob A): the
     /// transport stays a dumb Ethertype; beacon-vs-auth is resolved here.
@@ -423,7 +434,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: unknown reconnect discriminator \(discriminator) on link \(link)")
         }
     }
-
+    
     /// Phase 2 (recognize): which paired contact, if any, is in the observed set.
     /// A match is a HINT ONLY (Invariant #2) — we answer with a sealed it's-me
     /// but admit NOTHING here. Admission happens when the PEER opens our it's-me;
@@ -440,7 +451,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             await sendItsMe(toContact: identity, link: link)
         }
     }
-
+    
     /// Seal a `reconnectHello` under the recognized contact's existing session
     /// and send it link-local (0x01 frame). 9b pads it to the 256 bucket, so it
     /// is byte-indistinguishable from any short `.whisper`.
@@ -456,7 +467,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: it's-me seal/send failed on link \(link): \(error)")
         }
     }
-
+    
     /// Phase 2 (authenticate): open the peer's sealed it's-me. This is the ONLY
     /// place a reconnect flips presence (Invariant #2). `openInbound` trial-opens
     /// against the warmed session cache (Invariant #1); a stranger holds no
@@ -486,16 +497,16 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: reconnect it's-me did not open on link \(link): \(error)")
         }
     }
-
+    
     // MARK: Reconnect wire framing (coordinator-owned; transport carries opaque bytes)
-
+    
     /// `[discriminator] ‖ payload` — the inner framing inside the 0x03 frame.
     private static func reconnectFrame(_ discriminator: UInt8, _ payload: Data) -> Data {
         var d = Data([discriminator])
         d.append(payload)
         return d
     }
-
+    
     /// Concatenate the fixed-size emission set (64 × 16-byte tokens) into the
     /// beacon-set payload. No length prefixes: every token is exactly
     /// `ReconnectBeacon.tokenLength`, so the receiver splits on that boundary.
@@ -504,7 +515,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         for token in set { d.append(token) }
         return d
     }
-
+    
     /// Inverse of `encodeEmissionSet`: split into `tokenLength`-byte tokens.
     /// Returns nil if the payload is not a whole multiple of the token length
     /// (malformed) — the caller ignores it. Empty in → empty set (matches nothing).
@@ -521,9 +532,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
         return out
     }
-
+    
     // MARK: Outbound send (composer-driven)
-
+    
     /// Hand a sealed envelope to the mesh router and translate the immediate
     /// routing outcome into this layer's throw contract: a clean `.sent`
     /// succeeds; anything else (no reachable peer, or a transport rejection)
@@ -542,7 +553,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let state = await router.send(envelope, tracked: tracked, nostrRecipient: nostrRecipient)
         guard state == .sent else { throw TransportError.sendFailed }
     }
-
+    
     /// Seal `text` to an already-established peer (looked up by its RAW 32-byte
     /// key) and hand the resulting Envelope to the router. Returns the wire
     /// `MessageID` so the caller can persist it on the outbound Message (for
@@ -573,7 +584,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         try await routeOut(envelope, nostrRecipient: nostrRecipient)
         return envelope.id
     }
-
+    
     /// Seal + send a media blob as a manifest followed by N chunks, each its own
     /// framed, sealed Envelope. Returns a `MessageID` derived from the 16-byte
     /// mediaID, stable for the whole transfer (the caller persists it for dedup
@@ -600,7 +611,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
         // (once-per-peer, best-effort, before the transfer burst).
         await announceNostrIdentity(to: peer, rawKey: rawKey)
-
+        
         let chunker = try MediaChunker(targetBucket: Self.mediaBucket,
                                        reservedBytes: Self.mediaReserved)
         // Use a CSPRNG 16-byte id (a MessageID's bytes) as the mediaID, so the
@@ -611,11 +622,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let idBytes = (reuseID ?? .random()).bytes
         let mediaWireID = MessageID(bytes: idBytes)!
         let (manifest, chunks) = try chunker.split(blob, mime: mime, mediaID: idBytes)
-
+        
         // Register the transfer for delivery tracking up front, so an ack that
         // races back before the burst finishes still matches.
         await router?.beginTracking(of: mediaWireID)
-
+        
         // Manifest + chunks are UNTRACKED: flooded + seen-marked, but not
         // individually delivery-tracked (no per-chunk timeout, no outbox bloat).
         // Each still carries nostrRecipient so a transfer falls back to Nostr,
@@ -629,7 +640,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             try await routeOut(Envelope(ciphertext: sealed), tracked: false,
                                nostrRecipient: nostrRecipient)
         }
-
+        
         do {
             let manifestJSON = try JSONEncoder().encode(manifest)
             try await emit(.mediaManifest(manifestJSON))
@@ -642,14 +653,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             await router?.confirmFailure(of: mediaWireID)
             throw error
         }
-
+        
         // Whole burst is on the radio — now start the (longer) media timeout.
         await router?.startDeliveryTimeout(for: mediaWireID,
                                            after: MessageRouter.mediaDeliveryTimeout)
         print("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks → \(peer.userIDHex.prefix(16))…")
         return mediaWireID
     }
-
+    
     /// Seal a delivery receipt back to `peer` for a message we just opened,
     /// stamped with the hop count it travelled. The receipt rides the same
     /// sealed Envelope path but is sent UNTRACKED — it is itself never acked (no
@@ -667,7 +678,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: delivery-ack seal/send failed: \(error)")
         }
     }
-
+    
     /// Announce OUR Nostr public key to an established peer over the sealed
     /// channel (Phase 8d npub-bootstrap). Sent UNTRACKED + best-effort, exactly
     /// like a delivery ack: never acked, no delivery state, and a failure simply
@@ -690,15 +701,15 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: nostr-id announce to \(peer.userIDHex.prefix(16))… failed: \(error)")
         }
     }
-
+    
     /// Hop count an envelope travelled, read from its arrival ttl: 0 for a
     /// direct delivery, ≥1 if it was relayed (maxHops − ttl, floored at 0).
     private func hops(of envelope: Envelope) -> UInt8 {
         UInt8(max(0, Int(Envelope.maxHops) - Int(envelope.ttl)))
     }
-
+    
     // MARK: Relay split-horizon + inbound open  (EnvelopeReceiver)
-
+    
     /// The router asks, for each inbound envelope, which links a relay must NOT
     /// go back out — so a forwarded message never echoes to the peer it came
     /// from. We answer with EVERY link currently mapped to the source link's
@@ -716,7 +727,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
         return exclusions
     }
-
+    
     /// The router's `EnvelopeReceiver` entry point: an inbound envelope that
     /// survived dedup (and was relayed onward if it had hop budget) is handed
     /// here to be opened. Only this layer holds the keys.
@@ -724,19 +735,19 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         do {
             let (peer, plaintext) = try store.openInbound(envelope.ciphertext)
             let rawKey = store.rawPublicKey(of: peer)
-
+            
             // npub-bootstrap (responder side): opening this proves our session
             // with the peer is live, so make sure they've learned our Nostr id
             // even if we haven't sent them anything yet. Once-per-peer + best-
             // effort; a no-op for a peer we already announced to (e.g. as the
             // initiator via `send`). Never blocks inbound handling.
             await announceNostrIdentity(to: peer, rawKey: rawKey)
-
+            
             guard let payload = MessagePayload.decodeSealed(plaintext) else {
                 print("first-contact: opened but undecodable payload from \(peer.userIDHex.prefix(16))…")
                 return
             }
-
+            
             switch payload {
             case .text(let body):
                 eventsContinuation.yield(
@@ -745,7 +756,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 print("first-contact: OPENED text from \(peer.userIDHex.prefix(16))…")
                 // Acknowledge the text message by its envelope id, with hops.
                 await sendDeliveryAck(wireID: envelope.id, hops: hops(of: envelope), to: peer)
-
+                
             case .mediaManifest(let json):
                 guard let manifest = try? JSONDecoder().decode(MediaManifest.self, from: json) else {
                     print("first-contact: bad media manifest from \(peer.userIDHex.prefix(16))…")
@@ -757,7 +768,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     // media by its message-level id, stamped with this leg's hops.
                     await sendDeliveryAck(wireID: wireID, hops: hops(of: envelope), to: peer)
                 }
-
+                
             case .mediaChunk(let chunk):
                 if let done = reassembler.ingest(chunk: chunk),
                    let wireID = emitMedia(done, rawKey: rawKey) {
@@ -765,7 +776,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     // by its message-level id, stamped with this leg's hops.
                     await sendDeliveryAck(wireID: wireID, hops: hops(of: envelope), to: peer)
                 }
-
+                
             case .ack(let body):
                 // A delivery receipt for one of OUR sent messages. Match it to
                 // the router's outbox (text envelope id, or a media transfer's
@@ -778,7 +789,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 }
                 await router?.confirmDelivery(of: wireID, hops: Int(hops))
                 print("first-contact: ACK \(wireID) (\(hops) hop(s)) from \(peer.userIDHex.prefix(16))…")
-
+                
             case .nostrIdentity(let body):
                 // A peer announced their raw 32-byte x-only secp256k1 pubkey over
                 // the established sealed channel (the npub-bootstrap, LOCKED:
@@ -796,7 +807,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     .learnedNostrIdentity(peerKey: rawKey, nostrPubkey: nostrKey)
                 )
                 print("first-contact: NOSTR identity \(nostrKey.count)B from \(peer.userIDHex.prefix(16))…")
-
+                
             case .reconnectHello:
                 // A reconnect it's-me must NEVER arrive on the envelope /
                 // MessageRouter path. It is link-local (the 0x03 reconnect frame)
@@ -806,12 +817,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // Reaching here means a misroute or an adversary stuffing a
                 // reconnect kind into a 0x01 envelope: ignore it, admit nothing.
                 print("first-contact: ignoring reconnectHello on the envelope path (link-local only) from \(peer.userIDHex.prefix(16))…")
+            case .inviteEcho(let body):
+                guard let inviteID = MessagePayload.parseInviteEcho(body) else {
+                    print("first-contact: malformed invite-echo from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                do {
+                    let redeemed = try await inviteRedeemer?.redeemEcho(
+                        inviteID: inviteID, redeemerIdentity: rawKey) ?? false
+                    print("first-contact: invite-echo \(redeemed ? "REDEEMED" : "ignored") from \(peer.userIDHex.prefix(16))…")
+                } catch {
+                    print("first-contact: invite-echo redeem failed: \(error)")
+                }
             }
         } catch {
             print("first-contact: open failed: \(error)")
         }
     }
-
+    
     /// Emit a completed media transfer to the persistence layer and return the
     /// message-level `MessageID` (derived from the 16-byte mediaID hex) so the
     /// caller can ack the transfer by that id. Returns nil only if the mediaID
@@ -826,7 +849,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         print("first-contact: MEDIA complete \(done.data.count)B (\(done.mime.rawValue))")
         return wireID
     }
-
+    
     /// Decode a lowercase-hex string to bytes. nil on odd length or non-hex.
     private static func hexToBytes(_ hex: String) -> [UInt8]? {
         guard hex.count % 2 == 0 else { return nil }
