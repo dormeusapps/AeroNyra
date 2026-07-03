@@ -57,6 +57,9 @@ import Foundation
 /// testable with a spy. (Dependency inversion: the seam declares what it needs.)
 public protocol ReconnectEnrolling: Sendable {
     func addReconnectContact(rawIdentity: Data) async
+    /// STEP 7e: drop a revoked identity from the LIVE reconnect/admission set so
+    /// the gate stops admitting them immediately (not only after a relaunch).
+    func removeReconnectContact(rawIdentity: Data) async
 }
 
 /// The narrow contract the coordinator's receive-path needs to redeem an invite
@@ -245,7 +248,11 @@ public final class EnrollmentService {
         } catch {
             throw EnrollmentError.persistFailed(underlying: error)
         }
+        // Persisted — adopt as the live set, THEN drop from the live gate. Order
+        // matches enroll: durable first, live-effect second (STEP 7e). A revoked
+        // contact is no longer admitted or present immediately, not after relaunch.
         allowlist = updated
+        await coordinator.removeReconnectContact(rawIdentity: identity)
     }
 
     // MARK: - Mutations: invite ledger (save-then-adopt)

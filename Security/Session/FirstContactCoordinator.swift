@@ -297,7 +297,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         var keys = Set<Data>()
         for link in reachableLinks {
             if let peer = linkPeers[link] {
-                keys.insert(store.rawPublicKey(of: peer))
+                let raw = store.rawPublicKey(of: peer)
+                // STEP 7e — only ENROLLED contacts surface as "near". An
+                // un-paired peer in BLE range is not someone you can talk to,
+                // so it must never appear as present.
+                if reconnectAllowlistIdentities.contains(raw) {
+                    keys.insert(raw)
+                }
             }
         }
         reachablePeersContinuation.yield(keys)
@@ -312,8 +318,18 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: malformed bundle on link \(link)")
             return
         }
+        // STEP 7e — CLOSED-CONTACT GATE. Only an ENROLLED identity is admitted.
+        // A bundle from anyone we have not deliberately paired with is dropped
+        // before any session work or presence: strangers never get in over RF.
+        // (Enrollment happens via QR/invite — those paths enroll BEFORE this,
+        // and a freshly-enrolled contact is already in the live set.)
+        let rawKey = store.rawPublicKey(of: peer)
+        guard reconnectAllowlistIdentities.contains(rawKey) else {
+            print("first-contact: DROP unenrolled bundle from \(peer.userIDHex.prefix(16))…")
+            return
+        }
+
         linkPeers[link] = peer
-        noteReconnectContact(rawIdentity: store.rawPublicKey(of: peer))   // 5d transitional
         // A link just became identified — if it's currently reachable, this is
         // the moment its peer's presence flips on. Recompute + publish.
         emitReachablePeers()
@@ -368,7 +384,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
 
         // Always establish (no tie-break) — we hold their bundle from the invite.
         let session = try store.establishSession(from: bundle)
-        noteReconnectContact(rawIdentity: rawKey)   // 5d transitional, mirrors onBundle
+        // NOTE: we do NOT add to the reconnect/gate set here — the caller
+        // (PairingService.redeemInvite) enrolls right after, which calls
+        // addReconnectContact. That keeps enrollment the single source of truth
+        // for the 7e gate. Presence for this peer surfaces once enrolled.
         emitReachablePeers()
 
         // Seal the echo and route it (Nostr-capable) back to the initiator.
@@ -383,25 +402,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         return rawKey
     }
     
-    // MARK: Reconnect handshake (Closed-Contact 5d)
-    
-    /// TRANSITIONAL (5d coexistence). Until step-7 enrollment persists a real
-    /// `ContactAllowlist`, a peer we exchange a bundle with IS our de-facto paired
-    /// contact, so the reconnect layer learns it here (called from `onBundle`).
-    /// In-RAM only and cleared on relaunch — step 7 replaces this with the
-    /// persisted allowlist + the enrollment flow, at which point this hook (and
-    /// the bundle path itself) goes away. No-op until `enableReconnect`.
-    private func noteReconnectContact(rawIdentity: Data) {
-        guard reconnectEnabled, rawIdentity.count == 32 else { return }
-        guard !reconnectAllowlistIdentities.contains(rawIdentity) else { return }
-        reconnectAllowlistIdentities.append(rawIdentity)
-        refreshRecognizerCache()
-        print("first-contact: reconnect contact noted (\(reconnectAllowlistIdentities.count) total)")
-    }
-    
+    // MARK: Reconnect handshake (Closed-Contact)
+
     /// PUBLIC enrollment entry (STEP 7c-1). The EnrollmentService calls this after
-    /// a successful enroll + persist so a newly-paired contact reconnects immediately.
-    /// Mirrors noteReconnectContact exactly; the two coexist until Step 6.
+    /// a successful enroll + persist so a newly-paired contact reconnects — and is
+    /// ADMITTED by the 7e gate — immediately, without waiting for a relaunch.
     func addReconnectContact(rawIdentity: Data) {
         guard reconnectEnabled, rawIdentity.count == 32 else { return }
         guard !reconnectAllowlistIdentities.contains(rawIdentity) else { return }
@@ -409,7 +414,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         refreshRecognizerCache()
         print("first-contact: reconnect contact added via enrollment (\(reconnectAllowlistIdentities.count) total)")
     }
-    
+
+    /// PUBLIC revoke entry (STEP 7e). EnrollmentService.revoke calls this after it
+    /// persists the removal, so a revoked contact is dropped from the LIVE gate
+    /// immediately — no longer admitted, no longer present — rather than only
+    /// after a relaunch. Symmetric to `addReconnectContact`.
+    func removeReconnectContact(rawIdentity: Data) {
+        let before = reconnectAllowlistIdentities.count
+        reconnectAllowlistIdentities.removeAll { $0 == rawIdentity }
+        guard reconnectAllowlistIdentities.count != before else { return }
+        // Drop any live presence for the now-revoked identity, then republish.
+        for (link, peer) in linkPeers where store.rawPublicKey(of: peer) == rawIdentity {
+            linkPeers[link] = nil
+        }
+        refreshRecognizerCache()
+        emitReachablePeers()
+        print("first-contact: reconnect contact revoked (\(reconnectAllowlistIdentities.count) total)")
+    }
+
     /// Current epoch from the injected clock.
     private func currentEpoch() -> UInt64 {
         ReconnectBeacon.epoch(at: reconnectNow(), epochLength: Self.reconnectEpochLength)
@@ -512,6 +534,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     private func onReconnectItsMe(link: UUID, ciphertext: Data) async {
         do {
             let (peer, plaintext) = try store.openInbound(ciphertext)
+            // STEP 7e — explicit gate. openInbound already trial-opens only the
+            // warmed (enrolled) session cache, so a stranger throws out above;
+            // this makes admission belt-and-suspenders, not merely a crypto miss.
+            guard reconnectAllowlistIdentities.contains(store.rawPublicKey(of: peer)) else {
+                print("first-contact: DROP reconnect from unenrolled \(peer.userIDHex.prefix(16))…")
+                return
+            }
             guard let payload = MessagePayload.decodeSealed(plaintext),
                   case .reconnectHello = payload else {
                 print("first-contact: reconnect it's-me opened but not a hello on link \(link)")
