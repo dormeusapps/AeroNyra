@@ -19,6 +19,8 @@
 		7C3450EE2FF6DDAB00148C83 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450ED2FF6DDA700148C83 /* PairingView.swift */; };
 		7C3450F02FF6DF5200148C83 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450EF2FF6DF4A00148C83 /* HomeView.swift */; };
 		7C3450F22FF6E1DD00148C83 /* Conversation1View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */; };
+		7C3450F92FF7025E00148C83 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450F82FF7025A00148C83 /* QRScannerView.swift */; };
+		7C3450FB2FF71E4400148C83 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450FA2FF71E3F00148C83 /* SettingsView.swift */; };
 		7CAEDF912FF16D6A0084A5C4 /* PhotoViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF902FF16D660084A5C4 /* PhotoViewer.swift */; };
 		7CAEDF932FF1708A0084A5C4 /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF922FF170870084A5C4 /* VoiceRecorder.swift */; };
 		7CAEDF952FF1732C0084A5C4 /* VoiceNoteBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF942FF173280084A5C4 /* VoiceNoteBubble.swift */; };
@@ -76,6 +78,8 @@
 		7C3450ED2FF6DDA700148C83 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		7C3450EF2FF6DF4A00148C83 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation1View.swift; sourceTree = "<group>"; };
+		7C3450F82FF7025A00148C83 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
+		7C3450FA2FF71E3F00148C83 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7C3B094C2FED902E00AE9EC1 /* Beacon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Beacon.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C3B09592FED902F00AE9EC1 /* BeaconTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeaconTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CAEDF902FF16D660084A5C4 /* PhotoViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewer.swift; sourceTree = "<group>"; };
@@ -311,7 +315,6 @@
 				7C3450EB2FF6DB1F00148C83 /* Stillwater.swift */,
 				7C27E3D02FF5762D00D7CD0B /* PeerAvatar.swift */,
 				7CAEDF9D2FF177CC0084A5C4 /* ReadableColumn.swift */,
-				7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */,
 				7CE0C8842FEF45FC00151314 /* ChatRow.swift */,
 				7CE0C87E2FEF3A1D00151314 /* DeliveryChip.swift */,
 				7CE0C87C2FEF33AF00151314 /* LiveTransit.swift */,
@@ -327,6 +330,9 @@
 		7CE0C88A2FEF4D2900151314 /* Screens */ = {
 			isa = PBXGroup;
 			children = (
+				7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */,
+				7C3450FA2FF71E3F00148C83 /* SettingsView.swift */,
+				7C3450F82FF7025A00148C83 /* QRScannerView.swift */,
 				7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */,
 				7C3450EF2FF6DF4A00148C83 /* HomeView.swift */,
 				7C3450ED2FF6DDA700148C83 /* PairingView.swift */,
@@ -569,6 +575,7 @@
 				7C3450EC2FF6DB2500148C83 /* Stillwater.swift in Sources */,
 				7C3450F02FF6DF5200148C83 /* HomeView.swift in Sources */,
 				7C3450EE2FF6DDAB00148C83 /* PairingView.swift in Sources */,
+				7C3450FB2FF71E4400148C83 /* SettingsView.swift in Sources */,
 				7CE0C8762FEF2C3B00151314 /* Colors.swift in Sources */,
 				7CEC9F932FF0549300AA3D10 /* MessageInbox.swift in Sources */,
 				7CAEDF932FF1708A0084A5C4 /* VoiceRecorder.swift in Sources */,
@@ -576,6 +583,7 @@
 				7CE0C87D2FEF33B500151314 /* LiveTransit.swift in Sources */,
 				7CE0C87B2FEF2E4700151314 /* DeliveryReceipt.swift in Sources */,
 				7CE0C8812FEF3B2400151314 /* MessageRow.swift in Sources */,
+				7C3450F92FF7025E00148C83 /* QRScannerView.swift in Sources */,
 				7CE0C8872FEF462A00151314 /* ChatsListView.swift in Sources */,
 				7CAEDF912FF16D6A0084A5C4 /* PhotoViewer.swift in Sources */,
 				7CEC9F8E2FF0379000AA3D10 /* MeshPresence.swift in Sources */,
@@ -762,12 +770,13 @@
 				INFOPLIST_FILE = Beacon/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = AeroNyra;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and relay your messages directly between phones. No servers, no internet.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "AeroNyra uses the camera to scan a contact's pairing code.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = NSMicrophoneUsageDescription;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -825,12 +834,13 @@
 				INFOPLIST_FILE = Beacon/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = AeroNyra;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and relay your messages directly between phones. No servers, no internet.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "AeroNyra uses the camera to scan a contact's pairing code.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = NSMicrophoneUsageDescription;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

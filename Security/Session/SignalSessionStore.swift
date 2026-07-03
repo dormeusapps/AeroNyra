@@ -295,6 +295,24 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
         serialized.append(raw)
         return PublicIdentity(agreementKey: serialized, signingKey: serialized)
     }
+
+    /// The safety-number FINGERPRINT BYTES for a paired peer, keyed by their raw
+    /// 32-byte identity (`Peer.publicKeyData`). The SAS 4-word check maps over
+    /// exactly these bytes, so they MUST be identical on both peers.
+    ///
+    /// We use the DISPLAY safety number (the 60-digit string): libsignal builds it
+    /// by sorting the two identity fingerprints, so it is the SAME on both sides
+    /// regardless of who is local/remote. (The earlier `qrPayload` /
+    /// `scannable.encoding` preserves local→remote ORDER, so it differed per side
+    /// and produced mismatched SAS words — the exact bug this fixes.) Returns Data
+    /// so the libsignal `SafetyNumber` type never crosses the boundary.
+    public func safetyNumberPayload(withPeerRawKey raw: Data) throws -> Data {
+        let peer = peerIdentity(fromRawKey: raw)
+        guard let signal = try session(with: peer) as? SignalSession else {
+            throw SignalAdapterError.notEstablished
+        }
+        return Data(try signal.safetyNumber().displayString.utf8)
+    }
 }
 
 // MARK: - Helpers

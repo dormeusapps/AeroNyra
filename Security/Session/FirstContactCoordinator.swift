@@ -346,6 +346,42 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: initiate failed: \(error)")
         }
     }
+
+    // MARK: Remote invite redeem (STEP 7d-3)
+
+    /// Redeem a REMOTE invite: establish a session from the initiator's bundle and
+    /// seal the invite-echo back, so THEY burn the single-use id and enroll us.
+    ///
+    /// Unlike `onBundle` there is NO higher-key tie-break — the initiator is
+    /// remote/offline, so we are always the X3DH initiator, and the sealed echo
+    /// doubles as the first message that forms the initiator\'s responder session.
+    /// The echo carries `nostrRecipient` so it reaches a far initiator over Nostr
+    /// (BLE won\'t reach). The initiator\'s existing `.inviteEcho` receive path
+    /// (see `receive`) then consumes the id via `inviteRedeemer.redeemEcho` and
+    /// enrolls us. Emits `.established`; returns the peer\'s raw key so the caller
+    /// enrolls them UNVERIFIED (the 4-word SAS is the MITM defense, not this).
+    func redeemInvite(bundle: PrekeyBundle,
+                      inviteID: Data,
+                      nostrRecipient: Data?) async throws -> Data {
+        let peer = try store.peerIdentity(from: bundle)
+        let rawKey = store.rawPublicKey(of: peer)
+
+        // Always establish (no tie-break) — we hold their bundle from the invite.
+        let session = try store.establishSession(from: bundle)
+        noteReconnectContact(rawIdentity: rawKey)   // 5d transitional, mirrors onBundle
+        emitReachablePeers()
+
+        // Seal the echo and route it (Nostr-capable) back to the initiator.
+        let payload = MessagePayload.inviteEchoV1(inviteID: inviteID)
+        let sealed = try session.seal(payload.sealedPlaintext())
+        try await routeOut(Envelope(ciphertext: sealed),
+                           tracked: false,
+                           nostrRecipient: nostrRecipient)
+
+        eventsContinuation.yield(.established(peerKey: rawKey))
+        print("first-contact: REDEEMED invite → echo sent to \(peer.userIDHex.prefix(16))…")
+        return rawKey
+    }
     
     // MARK: Reconnect handshake (Closed-Contact 5d)
     
