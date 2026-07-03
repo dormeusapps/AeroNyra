@@ -32,12 +32,24 @@ final class EnrollmentServiceTests: XCTestCase {
 
     // MARK: Spy
 
-    /// Records every identity the seam told the reconnect layer about, in order.
+    /// Records every identity the seam told the reconnect layer about, in order,
+    /// across ALL four notifications — the enrolled add/remove and (STEP 7f) the
+    /// verified add/remove — so tests can assert the live-gate wiring, not just
+    /// the persisted allowlist.
     private actor ReconnectSpy: ReconnectEnrolling {
         private(set) var added: [Data] = []
+        private(set) var removed: [Data] = []
+        private(set) var verifiedAdded: [Data] = []
+        private(set) var verifiedRemoved: [Data] = []
         func addReconnectContact(rawIdentity: Data) async { added.append(rawIdentity) }
+        func removeReconnectContact(rawIdentity: Data) async { removed.append(rawIdentity) }
+        func addVerifiedContact(rawIdentity: Data) async { verifiedAdded.append(rawIdentity) }
+        func removeVerifiedContact(rawIdentity: Data) async { verifiedRemoved.append(rawIdentity) }
         func addedCount() -> Int { added.count }
         func contains(_ id: Data) -> Bool { added.contains(id) }
+        func verifiedAddedCount() -> Int { verifiedAdded.count }
+        func verifiedContains(_ id: Data) -> Bool { verifiedAdded.contains(id) }
+        func verifiedRemovedContains(_ id: Data) -> Bool { verifiedRemoved.contains(id) }
     }
 
     // MARK: Fixtures
@@ -102,6 +114,9 @@ final class EnrollmentServiceTests: XCTestCase {
         XCTAssertTrue(svc.contains(id))
         XCTAssertTrue(svc.isVerified(id))
         XCTAssertEqual(svc.count, 1)
+        // 7f: a QR (verified) enroll opens the live verified gate on the spot.
+        let vAdded = await spy.verifiedContains(id)
+        XCTAssertTrue(vAdded)
     }
 
     func testEnrollUnverifiedRecordsUnverified() async throws {
@@ -116,6 +131,9 @@ final class EnrollmentServiceTests: XCTestCase {
 
         XCTAssertTrue(svc.contains(id))
         XCTAssertFalse(svc.isVerified(id))
+        // 7f: an invite (unverified) enroll stays OUT of the verified gate until SAS.
+        let vAdded = await spy.verifiedContains(id)
+        XCTAssertFalse(vAdded)
     }
 
     // MARK: Enroll — persistence (save-then-adopt actually wrote)
@@ -180,9 +198,12 @@ final class EnrollmentServiceTests: XCTestCase {
         let store2 = try ContactAllowlistStore(directory: dir, dek: dek, keychainService: svcName)
         XCTAssertTrue(try store2.load().isVerified(identity: id))
 
-        // markVerified does NOT re-notify the reconnect layer (enroll already did).
+        // markVerified does NOT re-notify the RECONNECT layer (enroll already did),
+        // but 7f DOES open the verified gate live.
         let count = await spy.addedCount()
         XCTAssertEqual(count, 1)
+        let vAdded = await spy.verifiedContains(id)
+        XCTAssertTrue(vAdded)
     }
 
     func testMarkVerifiedOnUnpairedIsNoOp() async throws {
@@ -215,6 +236,9 @@ final class EnrollmentServiceTests: XCTestCase {
         try await svc.revoke(identity: id)
         XCTAssertFalse(svc.contains(id))
         XCTAssertEqual(svc.count, 0)
+        // 7f: revoke drops the identity from the live verified gate too.
+        let vRemoved = await spy.verifiedRemovedContains(id)
+        XCTAssertTrue(vRemoved)
 
         // Persisted: a fresh store no longer sees it.
         let store2 = try ContactAllowlistStore(directory: dir, dek: dek, keychainService: svcName)

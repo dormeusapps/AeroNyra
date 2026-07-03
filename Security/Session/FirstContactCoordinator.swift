@@ -190,6 +190,21 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// The paired raw 32-byte identities (`ContactAllowlist.identities`). Re-inject
     /// via `enableReconnect` if the allowlist changes (step-7 enrollment concern).
     private var reconnectAllowlistIdentities: [Data] = []
+    /// STEP 7f (STRICT-VERIFIED) — the subset of paired identities that are also
+    /// VERIFIED (the 4-word SAS confirmed, or a QR pair). This — NOT the enrolled
+    /// set above — is what the ADMISSION + PRESENCE gates test: an enrolled-but-
+    /// unverified contact is dropped from presence (`emitReachablePeers`), reconnect
+    /// admission (`onReconnectItsMe`), and inbound user content (`receive`) until
+    /// BOTH sides finish the SAS. Seeded at startup — before transports start — by
+    /// `enableReconnect`, and kept live by `addVerifiedContact`/`removeVerifiedContact`.
+    ///
+    /// A `Set` (not the `[Data]` the enrolled side uses) for O(1) `contains` on the
+    /// inbound hot path. The RECOGNIZER / BEACON math deliberately STAYS on the
+    /// enrolled set (`reconnectAllowlistIdentities`): flipping it would change wire
+    /// emission/recognition and break the reconnect KAT. An unverified peer's it's-me
+    /// is instead dropped at the `onReconnectItsMe` gate, so recognizing them costs
+    /// nothing and needs no KAT change.
+    private var verifiedIdentities: Set<Data> = []
     /// Injectable clock (seconds since Unix epoch) — wall-time in production, a
     /// fixed value in tests so epoch bucketing is deterministic.
     private var reconnectNow: @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) }
@@ -254,11 +269,20 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// an inbound it's-me can open. Injects our agreement private key, the paired
     /// identities, and a clock. Eagerly builds the recognizer cache so a beacon
     /// that arrives before our first `onReachable` emission can still be matched.
+    ///
+    /// STEP 7f (STRICT-VERIFIED): `verifiedIdentities` is the VERIFIED subset of
+    /// `allowlistIdentities` and MUST be seeded here — before transports start —
+    /// exactly like the enrolled set, or verified contacts are dropped from the
+    /// admission/presence gates on relaunch and the mesh darkens. No default: the
+    /// composition root is required to supply it, so an empty seed can't slip in
+    /// silently.
     func enableReconnect(agreementPrivate: Curve25519.KeyAgreement.PrivateKey,
                          allowlistIdentities: [Data],
+                         verifiedIdentities: [Data],
                          now: @escaping @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) }) {
         self.reconnectAgreementPrivate = agreementPrivate
         self.reconnectAllowlistIdentities = allowlistIdentities
+        self.verifiedIdentities = Set(verifiedIdentities)
         self.reconnectNow = now
         self.reconnectEnabled = true
         refreshRecognizerCache()
@@ -298,10 +322,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         for link in reachableLinks {
             if let peer = linkPeers[link] {
                 let raw = store.rawPublicKey(of: peer)
-                // STEP 7e — only ENROLLED contacts surface as "near". An
-                // un-paired peer in BLE range is not someone you can talk to,
-                // so it must never appear as present.
-                if reconnectAllowlistIdentities.contains(raw) {
+                // STEP 7f (STRICT-VERIFIED) — only VERIFIED contacts surface as
+                // "near". Enrolled-but-unverified is hidden from presence until BOTH
+                // sides finish the 4-word SAS (was `reconnectAllowlistIdentities` at
+                // 7e; tightened to the verified subset here).
+                if verifiedIdentities.contains(raw) {
                     keys.insert(raw)
                 }
             }
@@ -318,11 +343,20 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: malformed bundle on link \(link)")
             return
         }
-        // STEP 7e — CLOSED-CONTACT GATE. Only an ENROLLED identity is admitted.
-        // A bundle from anyone we have not deliberately paired with is dropped
-        // before any session work or presence: strangers never get in over RF.
-        // (Enrollment happens via QR/invite — those paths enroll BEFORE this,
-        // and a freshly-enrolled contact is already in the live set.)
+        // STEP 7e/7f — CLOSED-CONTACT GATE. This gate DELIBERATELY stays on the
+        // ENROLLED set (not the verified subset). A bundle from anyone we have not
+        // deliberately paired with is dropped before any session work or presence:
+        // strangers never get in over RF. (QR/invite enroll BEFORE this, so a
+        // freshly-paired contact is already in the live enrolled set.)
+        //
+        // 7f FLIP POINT: keeping #1 on ENROLLED is what keeps `linkPeers[link]` warm
+        // for an enrolled-but-unverified peer, so the moment they finish the SAS,
+        // `addVerifiedContact → emitReachablePeers` flips their presence LIVE. No
+        // leak: presence is verified-gated in `emitReachablePeers`, reconnect
+        // admission in `onReconnectItsMe`, inbound user content in `receive`, and
+        // outbound at the composer + inbox backstop. To make strict mode drop the
+        // bundle too (at the cost of a deferred presence flip on verify), change
+        // `reconnectAllowlistIdentities` → `verifiedIdentities` on the guard below.
         let rawKey = store.rawPublicKey(of: peer)
         guard reconnectAllowlistIdentities.contains(rawKey) else {
             print("first-contact: DROP unenrolled bundle from \(peer.userIDHex.prefix(16))…")
@@ -432,6 +466,31 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         print("first-contact: reconnect contact revoked (\(reconnectAllowlistIdentities.count) total)")
     }
 
+    /// PUBLIC verified-promotion entry (STEP 7f). `EnrollmentService.markVerified`
+    /// calls this after it persists + adopts the verified flag, so a just-verified
+    /// pair can message + appear present IMMEDIATELY, without a relaunch. Mirrors
+    /// `addReconnectContact`. Re-emits presence: because gate #1 (`onBundle`) stays
+    /// on the enrolled set, an enrolled-but-unverified peer is already mapped in
+    /// `linkPeers`, so promoting them here flips their presence on the spot.
+    func addVerifiedContact(rawIdentity: Data) {
+        guard reconnectEnabled, rawIdentity.count == 32 else { return }
+        guard !verifiedIdentities.contains(rawIdentity) else { return }
+        verifiedIdentities.insert(rawIdentity)
+        emitReachablePeers()
+        print("first-contact: verified contact added via enrollment (\(verifiedIdentities.count) verified)")
+    }
+
+    /// PUBLIC verified-revoke entry (STEP 7f). `EnrollmentService.revoke` calls this
+    /// alongside `removeReconnectContact`, so a revoked contact drops from the
+    /// admission/presence gates immediately. Symmetric to `addVerifiedContact`;
+    /// `removeReconnectContact` already tore down this identity's `linkPeers` +
+    /// presence, so here we only forget the verified flag and republish defensively.
+    func removeVerifiedContact(rawIdentity: Data) {
+        guard verifiedIdentities.remove(rawIdentity) != nil else { return }
+        emitReachablePeers()
+        print("first-contact: verified contact revoked (\(verifiedIdentities.count) verified)")
+    }
+
     /// Current epoch from the injected clock.
     private func currentEpoch() -> UInt64 {
         ReconnectBeacon.epoch(at: reconnectNow(), epochLength: Self.reconnectEpochLength)
@@ -534,11 +593,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     private func onReconnectItsMe(link: UUID, ciphertext: Data) async {
         do {
             let (peer, plaintext) = try store.openInbound(ciphertext)
-            // STEP 7e — explicit gate. openInbound already trial-opens only the
-            // warmed (enrolled) session cache, so a stranger throws out above;
-            // this makes admission belt-and-suspenders, not merely a crypto miss.
-            guard reconnectAllowlistIdentities.contains(store.rawPublicKey(of: peer)) else {
-                print("first-contact: DROP reconnect from unenrolled \(peer.userIDHex.prefix(16))…")
+            // STEP 7f (STRICT-VERIFIED) — admission gate. openInbound already trial-
+            // opens only the warmed (enrolled) session cache, so a stranger throws
+            // out above; here we further require the peer be VERIFIED, so an
+            // enrolled-but-unverified reconnect flips NO presence and is not admitted
+            // until the SAS is done (was `reconnectAllowlistIdentities` at 7e).
+            guard verifiedIdentities.contains(store.rawPublicKey(of: peer)) else {
+                print("first-contact: DROP reconnect from unverified \(peer.userIDHex.prefix(16))…")
                 return
             }
             guard let payload = MessagePayload.decodeSealed(plaintext),
@@ -815,6 +876,19 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             
             switch payload {
             case .text(let body):
+                // STEP 7f (STRICT-VERIFIED) — reject inbound USER CONTENT from an
+                // unverified contact ("reject at openInbound"). A compliant peer never
+                // sends here (their composer is gated + inbox backstop refuses), but a
+                // NON-compliant one holds the session from pairing and could seal text
+                // to us; drop it, and send NO ack. Housekeeping payloads below
+                // (.ack/.nostrIdentity/.inviteEcho/.reconnectHello) are intentionally
+                // NOT gated — .inviteEcho in particular MUST stay open, since at
+                // echo-open time the redeemer is not yet enrolled (redeemEcho enrolls
+                // them). Only .text/.mediaManifest/.mediaChunk are gated.
+                guard verifiedIdentities.contains(rawKey) else {
+                    print("first-contact: DROP text from unverified \(peer.userIDHex.prefix(16))…")
+                    return
+                }
                 eventsContinuation.yield(
                     .received(peerKey: rawKey, plaintext: body, wireID: envelope.id)
                 )
@@ -823,6 +897,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 await sendDeliveryAck(wireID: envelope.id, hops: hops(of: envelope), to: peer)
                 
             case .mediaManifest(let json):
+                // 7f: strict-verified inbound gate (see .text). Drop before reassembly.
+                guard verifiedIdentities.contains(rawKey) else {
+                    print("first-contact: DROP media manifest from unverified \(peer.userIDHex.prefix(16))…")
+                    return
+                }
                 guard let manifest = try? JSONDecoder().decode(MediaManifest.self, from: json) else {
                     print("first-contact: bad media manifest from \(peer.userIDHex.prefix(16))…")
                     return
@@ -835,6 +914,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 }
                 
             case .mediaChunk(let chunk):
+                // 7f: strict-verified inbound gate (see .text). Drop before reassembly.
+                guard verifiedIdentities.contains(rawKey) else {
+                    print("first-contact: DROP media chunk from unverified \(peer.userIDHex.prefix(16))…")
+                    return
+                }
                 if let done = reassembler.ingest(chunk: chunk),
                    let wireID = emitMedia(done, rawKey: rawKey) {
                     // The transfer completed on this chunk — ack the whole media

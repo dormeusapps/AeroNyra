@@ -296,6 +296,15 @@ struct ContentView: View {
             loadedAllowlist = ContactAllowlist()
             pairedIdentities = []
         }
+
+        // STEP 7f (STRICT-VERIFIED) — the VERIFIED subset seeds the coordinator's
+        // admission/presence gate ALONGSIDE the enrolled set below, and MUST be
+        // seeded before mesh.start() (same discipline as pairedIdentities) or
+        // verified contacts drop from the gate on relaunch and the mesh darkens.
+        let verifiedIdentities = pairedIdentities.filter {
+            loadedAllowlist.isVerified(identity: $0)
+        }
+        print("contact allowlist · \(verifiedIdentities.count) verified contact(s)")
         
         // STEP 7c-2 — load the single-use invite ledger once to seed the
         // EnrollmentService, which then OWNS it (mint/redeem, save-then-adopt) and
@@ -419,7 +428,8 @@ struct ContentView: View {
             // coexistence (it retires with the over-RF bundle path in a later step).
             secure.warmInboundSessions(for: pairedIdentities)
             await coord.enableReconnect(agreementPrivate: identity.agreement,
-                                        allowlistIdentities: pairedIdentities)
+                                        allowlistIdentities: pairedIdentities,
+                                        verifiedIdentities: verifiedIdentities)
             
             do {
                 try await mesh.start()   // starts BOTH transports: BLE radio + Nostr relay
@@ -592,7 +602,8 @@ private struct ReadyView: View {
             if inbox == nil {
                 let built = MessageInbox(modelContext: container.mainContext,
                                          coordinator: coordinator,
-                                         router: router)
+                                         router: router,
+                                         isVerified: { pairingService.isVerified($0) })
                 inbox = built
                 // Initial auto-retry: any peers already reachable at launch get
                 // their stuck `.notDelivered` messages re-sent now. No-op if the

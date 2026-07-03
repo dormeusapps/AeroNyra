@@ -60,6 +60,13 @@ public protocol ReconnectEnrolling: Sendable {
     /// STEP 7e: drop a revoked identity from the LIVE reconnect/admission set so
     /// the gate stops admitting them immediately (not only after a relaunch).
     func removeReconnectContact(rawIdentity: Data) async
+    /// STEP 7f (STRICT-VERIFIED): promote a just-verified identity into the live
+    /// VERIFIED gate set so messaging + presence open immediately (no relaunch).
+    /// Called by `markVerified` after its persist+adopt.
+    func addVerifiedContact(rawIdentity: Data) async
+    /// STEP 7f: drop a revoked identity from the live VERIFIED gate set. Called by
+    /// `revoke` alongside `removeReconnectContact`.
+    func removeVerifiedContact(rawIdentity: Data) async
 }
 
 /// The narrow contract the coordinator's receive-path needs to redeem an invite
@@ -164,6 +171,13 @@ public final class EnrollmentService {
         allowlist.identities
     }
 
+    /// STEP 7f — the current VERIFIED subset (a snapshot copy). Used to seed the
+    /// coordinator's strict-verified gate; the composition root can also read it,
+    /// though at startup it seeds directly from the freshly-loaded allowlist.
+    public var verifiedIdentities: Set<Data> {
+        allowlist.identities.filter { allowlist.isVerified(identity: $0) }
+    }
+
     /// The number of paired contacts.
     public var count: Int {
         allowlist.count
@@ -209,15 +223,29 @@ public final class EnrollmentService {
         // durably on disk.
         allowlist = updated
         await coordinator.addReconnectContact(rawIdentity: identity)
+        // STEP 7f — a QR pair is verified on the spot (proximity auth), so open the
+        // VERIFIED gate immediately too, or the person you just paired with can't be
+        // messaged until relaunch. An invite pair (verified:false) stays gated until
+        // its SAS confirm reaches markVerified.
+        if verified {
+            await coordinator.addVerifiedContact(rawIdentity: identity)
+        }
     }
 
     /// Promote an already-enrolled identity to verified (the SAS 4-word confirm
     /// landed). Short-circuits if not paired or already verified to avoid a
-    /// pointless whole-blob write. Save-then-adopt; does not call the coordinator
-    /// (verification adds no reconnect identity — enroll already did).
+    /// pointless whole-blob write. Save-then-adopt; then STEP 7f promotes the
+    /// identity into the coordinator's live VERIFIED gate so messaging + presence
+    /// open immediately, without a relaunch.
     public func markVerified(identity: Data) async throws {
-        guard allowlist.contains(identity: identity),
-              !allowlist.isVerified(identity: identity) else { return }
+        guard allowlist.contains(identity: identity) else {
+            print("enroll: markVerified NO-OP — identity NOT ENROLLED (\(identity.prefix(4).map { String(format: "%02x", $0) }.joined())…)")
+            return
+        }
+        guard !allowlist.isVerified(identity: identity) else {
+            print("enroll: markVerified NO-OP — already verified")
+            return
+        }
 
         var updated = allowlist
         updated.markVerified(identity: identity)
@@ -225,9 +253,14 @@ public final class EnrollmentService {
         do {
             try store.save(updated)
         } catch {
+            print("enroll: markVerified PERSIST FAILED: \(error)")
             throw EnrollmentError.persistFailed(underlying: error)
         }
+        // Persisted — adopt as the live set, THEN open the verified gate. Order
+        // matches enroll/revoke: durable first, live-effect second.
         allowlist = updated
+        await coordinator.addVerifiedContact(rawIdentity: identity)
+        print("enroll: markVerified OK — verified gate opened")
     }
 
     /// Remove a contact entirely — they can no longer be admitted. Save-then-adopt.
@@ -248,11 +281,12 @@ public final class EnrollmentService {
         } catch {
             throw EnrollmentError.persistFailed(underlying: error)
         }
-        // Persisted — adopt as the live set, THEN drop from the live gate. Order
-        // matches enroll: durable first, live-effect second (STEP 7e). A revoked
+        // Persisted — adopt as the live set, THEN drop from the live gates. Order
+        // matches enroll: durable first, live-effect second (STEP 7e/7f). A revoked
         // contact is no longer admitted or present immediately, not after relaunch.
         allowlist = updated
         await coordinator.removeReconnectContact(rawIdentity: identity)
+        await coordinator.removeVerifiedContact(rawIdentity: identity)
     }
 
     // MARK: - Mutations: invite ledger (save-then-adopt)
