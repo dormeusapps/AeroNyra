@@ -39,21 +39,33 @@ import CryptoKit
 /// user ID (there is no server, no account); everything else is local.
 @Model
 public final class Peer {
-
+    
     /// The X25519 public key — the canonical user ID. Unique across the store.
     @Attribute(.unique) public var publicKeyData: Data
-
+    
     /// Local, user-assigned (or first-contact) display name. Offline: names are
     /// never authoritative, only a local convenience.
     public var displayName: String?
-
+    
+    /// LOCAL contact customization (never transmitted). A photo the user picked
+    /// for this peer, stored as a small normalized JPEG; nil → fall back to the
+    /// key-derived gradient avatar. Optional so adding it is a lightweight
+    /// SwiftData migration (existing rows read nil). Wiped on crypto-erase with
+    /// the rest of the store.
+    public var customAvatarData: Data?
+    
+    /// LOCAL contact customization (never transmitted). A user-chosen accent hue
+    /// in 0...1 that overrides the deterministic `avatarHue`; nil → use the
+    /// key-derived hue. Optional for the same lightweight-migration reason.
+    public var customHue: Double?
+    
     public var firstSeen: Date
     public var lastSeen: Date
-
+    
     /// Whether the safety number has been confirmed out-of-band (§3.5).
     /// Trust-on-first-use defaults this to false until the user verifies.
     public var isVerified: Bool
-
+    
     /// This peer's raw 32-byte x-only secp256k1 Nostr public key, learned over
     /// the established sealed channel via the npub-bootstrap (Phase 8d-0, a
     /// `.nostrIdentity` MessagePayload — NEVER from the libsignal PrekeyBundle).
@@ -64,30 +76,34 @@ public final class Peer {
     /// the crypto layer (`Secp256k1.ecdh`, `NIP44.conversationKey`,
     /// `NostrGiftWrap.wrap`) consumes — no bech32 round-trip.
     public var nostrPubkey: Data?
-
+    
     @Relationship(deleteRule: .nullify, inverse: \Conversation.peer)
     public var conversations: [Conversation]
-
+    
     public init(publicKeyData: Data,
                 displayName: String? = nil,
+                customAvatarData: Data? = nil,
+                customHue: Double? = nil,
                 firstSeen: Date = .now,
                 lastSeen: Date = .now,
                 isVerified: Bool = false,
                 nostrPubkey: Data? = nil) {
         self.publicKeyData = publicKeyData
         self.displayName = displayName
+        self.customAvatarData = customAvatarData
+        self.customHue = customHue
         self.firstSeen = firstSeen
         self.lastSeen = lastSeen
         self.isVerified = isVerified
         self.nostrPubkey = nostrPubkey
         self.conversations = []
     }
-
+    
     /// Lowercase hex of the user ID — for display/debug, never a security boundary.
     public var userIDHex: String {
         publicKeyData.map { String(format: "%02x", $0) }.joined()
     }
-
+    
     /// Deterministic avatar hue in 0...1, derived from the public key
     /// (DESIGN_TOKENS §11). The DesignSystem maps this hue into the locked
     /// gradient treatment — one source of truth for identity color.
@@ -95,6 +111,14 @@ public final class Peer {
         let digest = Array(SHA256.hash(data: publicKeyData))
         let value = (UInt16(digest[0]) << 8) | UInt16(digest[1])
         return Double(value) / Double(UInt16.max)
+    }
+    
+    /// The hue the avatar should actually render in: the user's chosen
+    /// `customHue` if set, otherwise the deterministic key-derived `avatarHue`.
+    /// One accessor so every avatar surface resolves custom-over-default the
+    /// same way.
+    public var resolvedHue: Double {
+        customHue ?? avatarHue
     }
 }
 
@@ -109,18 +133,18 @@ public enum ConversationKind: String, Codable, Sendable {
 
 @Model
 public final class Conversation {
-
+    
     public var id: UUID
-
+    
     /// Stored raw; bridged by `kind`. (SwiftData stores the String.)
     public var kindRaw: String
-
+    
     /// Mesh-room name. Direct conversations derive their title from the peer.
     public var title: String?
-
+    
     /// Drives chats-list ordering.
     public var lastActivity: Date
-
+    
     /// Per-conversation read-receipt opt-in. OFF by default (the Private
     /// posture). When on, opening an inbound message emits a small encrypted
     /// ack over the radio — another envelope, another ratchet step, a presence
@@ -128,13 +152,13 @@ public final class Conversation {
     /// The PeerSettings toggle binds to this; the send path consults it before
     /// emitting an ack.
     public var readReceiptsEnabled: Bool
-
+    
     /// The other party for a DIRECT conversation; nil for the mesh room.
     public var peer: Peer?
-
+    
     @Relationship(deleteRule: .cascade, inverse: \Message.conversation)
     public var messages: [Message]
-
+    
     public init(kind: ConversationKind,
                 peer: Peer? = nil,
                 title: String? = nil,
@@ -149,12 +173,12 @@ public final class Conversation {
         self.readReceiptsEnabled = readReceiptsEnabled
         self.messages = []
     }
-
+    
     public var kind: ConversationKind {
         get { ConversationKind(rawValue: kindRaw) ?? .direct }
         set { kindRaw = newValue.rawValue }
     }
-
+    
     /// True for direct conversations (E2EE), false for the public mesh room.
     /// The UI uses this to show the PUBLIC badge and the not-encrypted treatment.
     public var isEncrypted: Bool { kind == .direct }
@@ -164,45 +188,50 @@ public final class Conversation {
 
 @Model
 public final class Message {
-
+    
     public var id: UUID
-
+    
     /// Plaintext content. At-rest protection is the store's Data Protection +
     /// vault, not per-row encryption (see file header).
     public var content: String
-
+    
     /// Sent by us (true) vs. received (false).
     public var isOutbound: Bool
-
+    
     /// Whether an INBOUND message has been seen by the user. Outbound messages
     /// leave this false (it's meaningless for them). The chats-list unread dot
     /// lights when a conversation holds any inbound message with `isRead`
     /// false; opening the conversation clears them.
     public var isRead: Bool
-
+    
     public var timestamp: Date
-
+    
+    /// EPHEMERAL VOICE NOTES: when the RECIPIENT finished listening to an inbound
+    /// voice note. nil until then. The audio self-destructs 2 min after this
+    /// instant — playability is gated on it and `mediaData` is wiped. Inbound m4a only.
+    public var listenedAt: Date?
+    
     /// The wire `MessageID` (16 bytes) this message was sent under, so router
     /// `DeliveryUpdate`s (keyed by MessageID) can be matched back to this row.
     /// Nil until an outbound message is sealed/sent.
     public var wireIDData: Data?
-
+    
     /// Decomposed delivery state (bridged by `deliveryState`). Stored so it's
     /// queryable; `relayHops` carries the associated value of `.relayed`.
     public var deliveryStateRaw: String
     public var relayHops: Int
-
+    
     /// Media payload, if this message is a photo or voice note rather than text.
     /// Nil for text messages. The blob is the reassembled, integrity-verified
     /// bytes (Phase 6b). At-rest protection is the store's Data Protection
     /// (Phase 5b), same as `content` — not per-row encryption.
     public var mediaData: Data?
-
+    
     /// Raw `MediaMimeType` ("jpeg"/"m4a") when `mediaData` is set; nil for text.
     public var mediaMimeRaw: String?
-
+    
     public var conversation: Conversation?
-
+    
     public init(content: String,
                 isOutbound: Bool,
                 deliveryState: MessageDeliveryState = .sent,
@@ -210,6 +239,7 @@ public final class Message {
                 wireID: MessageID? = nil,
                 mediaData: Data? = nil,
                 mediaMimeRaw: String? = nil,
+                listenedAt: Date? = nil,
                 timestamp: Date = .now,
                 id: UUID = UUID()) {
         self.id = id
@@ -220,27 +250,28 @@ public final class Message {
         self.wireIDData = wireID.map { Data($0.bytes) }
         self.mediaData = mediaData
         self.mediaMimeRaw = mediaMimeRaw
+        self.listenedAt = listenedAt
         // Initialize the decomposed fields, then route through the bridge.
         self.deliveryStateRaw = "sent"
         self.relayHops = 0
         self.deliveryState = deliveryState
     }
-
+    
     /// True when this message carries media (photo / voice note) rather than text.
     public var isMedia: Bool { mediaData != nil }
-
+    
     /// The media kind, bridged from `mediaMimeRaw`.
     public var mediaMime: MediaMimeType? {
         get { mediaMimeRaw.flatMap(MediaMimeType.init(rawValue:)) }
         set { mediaMimeRaw = newValue?.rawValue }
     }
-
+    
     /// The wire id as a `MessageID`, if this message has been sent.
     public var wireID: MessageID? {
         guard let wireIDData else { return nil }
         return MessageID(bytes: [UInt8](wireIDData))
     }
-
+    
     /// Bridge to the canonical six-state enum. The associated `hops` of
     /// `.relayed` lives in `relayHops`; all other states leave it 0.
     public var deliveryState: MessageDeliveryState {
