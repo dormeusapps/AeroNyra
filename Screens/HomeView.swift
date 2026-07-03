@@ -4,49 +4,99 @@
 //
 //  STILLWATER · Screen 01 — "The Water" (Home / root).
 //
-//  VISUAL-ONLY at this stage: pixel-faithful to the Stillwater mockup, built on
-//  the Stillwater token foundation, with STATIC placeholder peers and NO app or
-//  security wiring. The real screen binds MeshPresence (-> depth zones) and the
-//  conversation store later; nothing here imports either.
+//  WIRED to real data. The static placeholder peers are gone; the roster is now
+//  the SwiftData `Peer` store (@Query) and reachability is the live `MeshPresence`
+//  injected by ContentView. Depth = reachability, exactly as the design says.
 //
 //  "The root is not a list of conversations — it is a cross-section of the pool,
 //   and DEPTH IS REACHABILITY. You are the surface: one luminous line. People
 //   sort downward by how the mesh can actually reach them. Nothing is sorted by
 //   recency; the water sorts by physics."
 //
+//  GROUND-TRUTH NOTE — the tier surface MeshPresence actually exposes.
+//  MeshPresence is BINARY per identity: `reachablePeerKeys` (reachable over BLE
+//  right now) + `isReachable(key)`. It carries NO hop-depth and NO Nostr-far
+//  signal. So only two of Stillwater's four tiers have a real source today:
+//     • .near — key is in `reachablePeerKeys` (direct BLE, right now)
+//     • .gone — a known contact not currently reachable
+//  `.throughOthers` (multi-hop) and `.relay` (over Nostr, far) are left UNSOURCED
+//  rather than fabricated — their zones stay empty (and hidden) until the mesh
+//  exposes a real depth signal and Nostr reachability is surfaced. The four-zone
+//  scaffold is kept so lighting them up later is just supplying those peers.
+//  The unread "a stone waits" ripple comes from the message store and wires with
+//  the Stream pass; it is omitted here (seam kept in `peerRow`).
+//
 
 import SwiftUI
+import SwiftData
+import CryptoKit
 
 struct HomeView: View {
 
-    // Static stand-ins so the screen renders on its own. Real data arrives from
-    // MeshPresence + the store in the wiring pass.
-    private struct Peer: Identifiable {
-        let id = UUID()
-        let name: String
-        let sublabel: String
-        let presence: Stillwater.Presence
-        var note: String? = nil          // e.g. "a stone waits" (an unread ripple)
-        var breath: Double = 4.0         // desynced per person
-        var delay: Double = 0
+    /// The durable contact roster. Reachability is layered on top of it below;
+    /// this is every identity we know, named or not.
+    @Query private var peers: [Peer]
+
+    /// Live identity-resolved BLE reachability, mirrored here by ReadyView from
+    /// the coordinator's `reachablePeers` stream. Reading it in `body` (via the
+    /// tier partitions) is what makes the zones re-sort as peers come and go.
+    @Environment(MeshPresence.self) private var presence
+
+    /// Presents the pairing sheet from "let someone in".
+    @State private var showPairing = false
+
+    /// Your local display name (Settings) — greets you on the surface line.
+    @AppStorage("aeronyra.displayName") private var myName = ""
+    @State private var showSettings = false
+
+    /// Observe the app-wide accent so Home recolours the instant it changes.
+    @AppStorage("aeronyra.accentHex") private var accentHex = Int(Stillwater.Accent.defaultHex)
+
+    // ─────────────────────────────────────────────────────────────
+    // MARK: Roster → depth tiers (the honest two-tier mapping)
+    // ─────────────────────────────────────────────────────────────
+
+    /// Stable within-zone order. NOT recency — the water sorts by physics
+    /// (which zone), and inside a zone we sort by name so it doesn't jitter.
+    private var sortedPeers: [Peer] {
+        peers.sorted {
+            displayName(for: $0).localizedCaseInsensitiveCompare(displayName(for: $1)) == .orderedAscending
+        }
     }
 
-    private let near: [Peer] = [
-        .init(name: "Theo",  sublabel: "in the room · direct", presence: .near, breath: 4.0, delay: 0),
-        .init(name: "Priya", sublabel: "nearby · direct",      presence: .near, breath: 4.6, delay: 0.8),
-    ]
-    private let through: [Peer] = [
-        .init(name: "Maya", sublabel: "through theo · 2 hops", presence: .throughOthers,
-              note: "a stone waits", breath: 5.2, delay: 0.3),
-    ]
-    private let beyond: [Peer] = [
-        .init(name: "Jun", sublabel: "over the relay · far", presence: .relay, breath: 6.5, delay: 1.1),
-    ]
-    private let dark: [Peer] = [
-        .init(name: "Sana", sublabel: "last felt 3 h ago · your words wait", presence: .gone),
-    ]
+    private var nearPeers: [Peer] {
+        sortedPeers.filter { presence.isReachable($0.publicKeyData) }
+    }
+    private var gonePeers: [Peer] {
+        sortedPeers.filter { !presence.isReachable($0.publicKeyData) }
+    }
+    // No source in MeshPresence yet — never fabricated. Wire when the mesh
+    // exposes hop-depth (through) and Nostr far-reachability (relay).
+    private var throughPeers: [Peer] { [] }
+    private var relayPeers: [Peer] { [] }
+
+    private struct Zone {
+        let title: String
+        let accentLine: Double
+        let dim: Bool
+        let presence: Stillwater.Presence
+        let peers: [Peer]
+    }
+
+    private var zones: [Zone] {
+        [
+            Zone(title: "near",             accentLine: 0.10, dim: false, presence: .near,          peers: nearPeers),
+            Zone(title: "through others",   accentLine: 0.08, dim: false, presence: .throughOthers, peers: throughPeers),
+            Zone(title: "beyond the water", accentLine: 0.06, dim: false, presence: .relay,         peers: relayPeers),
+            Zone(title: "dark",             accentLine: 0.04, dim: true,  presence: .gone,          peers: gonePeers),
+        ]
+    }
+    /// Only zones that actually hold peers render — an empty pool shows just the
+    /// surface + "let someone in", which is the correct fresh-install state.
+    private var activeZones: [Zone] { zones.filter { !$0.peers.isEmpty } }
 
     var body: some View {
+        let _ = accentHex   // re-run body (recolour) when the accent changes
         ZStack {
             LinearGradient(
                 colors: [Stillwater.Palette.water, Stillwater.Palette.abyss, Stillwater.Palette.abyssDeep],
@@ -68,26 +118,21 @@ struct HomeView: View {
                         wordmark
                             .padding(.bottom, 18)
 
-                        (Text("the water is calm · ")
-                            .font(Stillwater.Serif.italic(19))
-                            .foregroundColor(Stillwater.Palette.mist)
-                         + Text("two near")
-                            .font(Stillwater.Serif.italic(19))
-                            .foregroundColor(Stillwater.Palette.foam))
+                        statusLine
 
                         surface
                             .padding(.top, 22)
                             .padding(.bottom, 26)
 
-                        zone("near", accentLine: 0.10, peers: near)
-                        zone("through others", accentLine: 0.08, peers: through)
-                        zone("beyond the water", accentLine: 0.06, peers: beyond)
-                        zone("dark", accentLine: 0.04, peers: dark, dim: true)
+                        ForEach(activeZones, id: \.title) { z in
+                            zone(z)
+                        }
                     }
                     .padding(.horizontal, 26)
                     .padding(.top, 12)
                     .padding(.bottom, 24)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .id(accentHex)
                 }
 
                 // Pinned to the bottom — the peer list scrolls above it, this stays put.
@@ -98,6 +143,24 @@ struct HomeView: View {
             }
         }
         .background(Stillwater.Palette.abyss)
+        .sheet(isPresented: $showPairing) {
+            PairingView()
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // MARK: The status line ("the water is calm · two near")
+    // ─────────────────────────────────────────────────────────────
+    private var statusLine: some View {
+        let n = nearPeers.count
+        let prefix = n == 0 ? "the water is still · " : "the water is calm · "
+        let tail   = n == 0 ? "no one near" : "\(spell(n)) near"
+        return (Text(prefix)
+                    .font(Stillwater.Serif.italic(19))
+                    .foregroundColor(Stillwater.Palette.mist)
+                + Text(tail)
+                    .font(Stillwater.Serif.italic(19))
+                    .foregroundColor(Stillwater.Palette.foam))
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -110,10 +173,20 @@ struct HomeView: View {
             Spacer()
             HStack(spacing: 7) {
                 BreathingDot(color: Stillwater.Palette.biolume, size: 5, glow: 8,
-                             duration: 4.0, delay: 0)
+                             duration: 4.0, delay: 0, accent: accentHex)
                 Text("key alive")
                     .stillwaterMono(8.5, trackingEm: 0.22, color: Stillwater.Palette.mistDim)
             }
+            Button { showSettings = true } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(Stillwater.Palette.mistDim)
+                    .padding(.leading, 12)
+            }
+            .buttonStyle(.plain)
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
         }
     }
 
@@ -122,72 +195,140 @@ struct HomeView: View {
     // ─────────────────────────────────────────────────────────────
     private var surface: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("you — the surface")
+            Text("\(myName.isEmpty ? "you" : myName) — the surface")
                 .stillwaterMono(8, trackingEm: 0.3, color: Stillwater.Palette.mistDim)
-            SurfaceLine()
+            SurfaceLine(accent: accentHex)
         }
     }
 
     // ─────────────────────────────────────────────────────────────
     // MARK: A depth zone (label + hairline + its peers)
     // ─────────────────────────────────────────────────────────────
-    private func zone(_ title: String, accentLine: Double, peers: [Peer], dim: Bool = false) -> some View {
+    private func zone(_ z: Zone) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Text(title)
+                Text(z.title)
                     .stillwaterMono(8.5, trackingEm: 0.3,
-                                    color: dim ? Stillwater.Palette.mistDimmest : Stillwater.Palette.mistDim)
+                                    color: z.dim ? Stillwater.Palette.mistDimmest : Stillwater.Palette.mistDim)
                 Rectangle()
-                    .fill(Stillwater.Palette.biolume.opacity(accentLine))
+                    .fill(Stillwater.Palette.biolume.opacity(z.accentLine))
                     .frame(height: 1)
             }
             .padding(.bottom, 10)
 
-            ForEach(peers) { peer in
-                peerRow(peer)
+            ForEach(z.peers, id: \.publicKeyData) { peer in
+                NavigationLink {
+                    StreamView(peer: peer)
+                } label: {
+                    peerRow(peer, presence: z.presence)
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.bottom, 14)
     }
 
-    private func peerRow(_ peer: Peer) -> some View {
+    private func peerRow(_ peer: Peer, presence tier: Stillwater.Presence) -> some View {
         HStack(spacing: 18) {
-            PresenceLight(presence: peer.presence, breath: peer.breath, delay: peer.delay)
+            PresenceLight(presence: tier, breath: breath(for: peer), delay: delay(for: peer), accent: accentHex)
                 .frame(width: 30, height: 30)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(peer.name)
-                    .stillwaterSerif(21, color: peer.presence.nameColor)
-                Text(peer.sublabel)
-                    .stillwaterMono(9, trackingEm: 0.18, color: peer.presence.labelColor)
+                Text(displayName(for: peer))
+                    .stillwaterSerif(21, color: tier.nameColor)
+                Text(sublabel(for: peer, tier: tier))
+                    .stillwaterMono(9, trackingEm: 0.18, color: tier.labelColor)
             }
 
             Spacer()
 
-            if let note = peer.note {
-                Text(note)
-                    .stillwaterSerif(13, italic: true, color: Stillwater.Palette.biolume)
-            }
+            // SEAM: the unread "a stone waits" ripple is an inbox concern —
+            // it wires with the Stream pass (a peer's unread inbound messages).
         }
         .padding(.vertical, 10)
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // MARK: Row content derived from the real Peer
+    // ─────────────────────────────────────────────────────────────
+
+    /// Name if the user (or first contact) set one; otherwise a short key stub
+    /// so an unnamed-but-known peer is still identifiable pre-pairing-UI.
+    private func displayName(for peer: Peer) -> String {
+        if let n = peer.displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
+            return n
+        }
+        return String(peer.userIDHex.prefix(6)).uppercased()
+    }
+
+    private func sublabel(for peer: Peer, tier: Stillwater.Presence) -> String {
+        switch tier {
+        case .near:          return "in the room · direct"
+        case .throughOthers: return "through the mesh · multi-hop"
+        case .relay:         return "over the relay · far"
+        case .gone:          return "last felt \(relativeAge(peer.lastSeen))"
+        }
+    }
+
+    /// Compact "3 h ago" style age from a Date, matching the mockup's whisper.
+    private func relativeAge(_ date: Date) -> String {
+        let seconds = max(0, Date.now.timeIntervalSince(date))
+        if seconds < 60 { return "moments ago" }
+        let minutes = Int(seconds / 60)
+        if minutes < 60 { return "\(minutes) m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours) h ago" }
+        let days = hours / 24
+        return "\(days) d ago"
+    }
+
+    /// A small integer spelled for the status line (falls back to digits).
+    private func spell(_ n: Int) -> String {
+        let words = ["zero", "one", "two", "three", "four", "five", "six",
+                     "seven", "eight", "nine", "ten", "eleven", "twelve"]
+        return (n >= 0 && n < words.count) ? words[n] : "\(n)"
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // MARK: Per-peer breath desync — derived, so it needs no data field
+    // ─────────────────────────────────────────────────────────────
+    //
+    // Same idea as Peer.avatarHue: a stable SHA-256 of the key gives every
+    // person a fixed-but-distinct breath tempo + phase, so the lights don't
+    // pulse in lockstep and stay consistent across launches.
+
+    private func breath(for peer: Peer) -> Double {
+        let b = Double(digestByte(peer.publicKeyData, 0)) / 255.0
+        return Stillwater.Motion.breathFast
+             + b * (Stillwater.Motion.breathSlow - Stillwater.Motion.breathFast)  // 4.0 … 6.5
+    }
+    private func delay(for peer: Peer) -> Double {
+        Double(digestByte(peer.publicKeyData, 1)) / 255.0 * 1.5                     // 0 … 1.5s
+    }
+    private func digestByte(_ data: Data, _ index: Int) -> UInt8 {
+        let digest = Array(SHA256.hash(data: data))
+        return index < digest.count ? digest[index] : 0
     }
 
     // ─────────────────────────────────────────────────────────────
     // MARK: Pairing entry ("let someone in")
     // ─────────────────────────────────────────────────────────────
     private var pairingEntry: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .strokeBorder(Stillwater.Palette.biolume.opacity(0.4), lineWidth: 1)
-                    .frame(width: 34, height: 34)
-                Text("+")
-                    .stillwaterSerif(20, color: Stillwater.Palette.biolume)
+        Button { showPairing = true } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .strokeBorder(Stillwater.Palette.biolume.opacity(0.4), lineWidth: 1)
+                        .frame(width: 34, height: 34)
+                    Text("+")
+                        .stillwaterSerif(20, color: Stillwater.Palette.biolume)
+                }
+                Text("let someone in")
+                    .stillwaterMono(9.5, trackingEm: 0.26)
             }
-            Text("let someone in")
-                .stillwaterMono(9.5, trackingEm: 0.26)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
     }
 }
 
@@ -198,20 +339,22 @@ private struct PresenceLight: View {
     let presence: Stillwater.Presence
     let breath: Double
     let delay: Double
+    var accent: Int = 0
 
     var body: some View {
+        let _ = accent
         ZStack {
             switch presence {
             case .near:
                 BreathingDot(color: presence.light, size: 13, glow: 20,
-                             duration: breath, delay: delay)
+                             duration: breath, delay: delay, accent: accent)
             case .throughOthers:
-                RippleRing(color: Stillwater.Palette.biolume, duration: 3.4)
+                RippleRing(color: Stillwater.Palette.biolume, duration: 3.4, accent: accent)
                 BreathingDot(color: presence.light, size: 11, glow: 14,
-                             duration: breath, delay: delay)
+                             duration: breath, delay: delay, accent: accent)
             case .relay:
                 BreathingDot(color: presence.light, size: 10, glow: 0,
-                             duration: breath, delay: delay, dim: true)
+                             duration: breath, delay: delay, dim: true, accent: accent)
             case .gone:
                 Circle()
                     .strokeBorder(Stillwater.Palette.goneRing, lineWidth: 1)
@@ -229,10 +372,12 @@ private struct BreathingDot: View {
     let duration: Double
     var delay: Double = 0
     var dim: Bool = false
+    var accent: Int = 0
 
     @State private var on = false
 
     var body: some View {
+        let _ = accent
         Circle()
             .fill(color)
             .frame(width: size, height: size)
@@ -248,9 +393,11 @@ private struct BreathingDot: View {
 private struct RippleRing: View {
     let color: Color
     let duration: Double
+    var accent: Int = 0
     @State private var expanded = false
 
     var body: some View {
+        let _ = accent
         Circle()
             .strokeBorder(color.opacity(0.55), lineWidth: 1)
             .frame(width: 30, height: 30)
@@ -263,9 +410,11 @@ private struct RippleRing: View {
 
 // You — the surface: one luminous line that pulses slowly.
 private struct SurfaceLine: View {
+    var accent: Int = 0
     @State private var alive = false
 
     var body: some View {
+        let _ = accent
         LinearGradient(
             colors: [.clear,
                      Stillwater.Palette.biolume, Stillwater.Palette.biolume,
@@ -281,8 +430,26 @@ private struct SurfaceLine: View {
 }
 
 // ─────────────────────────────────────────────────────────────
-// MARK: - Preview
+// MARK: - Preview (in-memory store so @Query renders on the canvas)
 // ─────────────────────────────────────────────────────────────
 #Preview("Stillwater — Home") {
-    HomeView()
+    let container = try! ModelContainer(
+        for: Peer.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    let ctx = container.mainContext
+
+    let theo = Peer(publicKeyData: Data((0..<32).map { _ in UInt8.random(in: 0...255) }),
+                    displayName: "Theo", lastSeen: .now)
+    let priya = Peer(publicKeyData: Data((0..<32).map { _ in UInt8.random(in: 0...255) }),
+                     displayName: "Priya", lastSeen: .now)
+    let sana = Peer(publicKeyData: Data((0..<32).map { _ in UInt8.random(in: 0...255) }),
+                    displayName: "Sana", lastSeen: .now.addingTimeInterval(-3 * 3600))
+    ctx.insert(theo); ctx.insert(priya); ctx.insert(sana)
+
+    let presence = MeshPresence()
+    presence.reachablePeerKeys = [theo.publicKeyData, priya.publicKeyData]  // two near, Sana dark
+
+    return HomeView()
+        .modelContainer(container)
+        .environment(presence)
 }

@@ -53,78 +53,84 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-
+    
     private enum Phase {
         case launching
         case onboarding(IdentityStore)
         case ready(IdentityKeypair, ModelContainer, IdentityStore)
     }
-
+    
     @State private var phase: Phase = .launching
-
+    
     /// The single long-lived BLE transport, started at launch.
     @State private var transport = BLEMeshTransport()
-
+    
     /// Live radio presence, fed from the transport and read by the Chats list
     /// and conversation headers (identity-resolved reachability).
     @State private var presence = MeshPresence()
-
+    
     /// The single secure-session store, built from the real loaded identity
     /// once we reach .ready. nil until then.
     @State private var sessionStore: SignalSessionStore?
-
+    
     /// Drives carrier-neutral first contact (bundle exchange + establishment).
     @State private var coordinator: FirstContactCoordinator?
-
+    
     /// The mesh router (Phase 7b.1): dedup + multi-hop relay + Envelope I/O.
     /// Built alongside the coordinator once we reach .ready; nil until then.
     @State private var router: MessageRouter?
-
+    
     /// The persisted closed-contact allowlist store (STEP 7a). Loaded at launch to
     /// seed reconnect (warmInboundSessions + enableReconnect) and held so later
     /// enrollment can save to it and EmergencyWipe can crypto-erase it. nil until
     /// .ready.
     @State private var contactAllowlistStore: ContactAllowlistStore?
-
+    
     /// The device's Nostr identity (Phase 8a): a persistent secp256k1 secret,
     /// load-or-created at launch alongside the session store. Held so the
     /// internet pillar (Phase 8) has its identity ready; its npub lights up once
     /// the public key is derived (Phase 8b). nil until .ready.
     @State private var nostrIdentity: NostrIdentity?
-
+    
     /// The assembled crypto-erase (STEP 7b-3). Constructed in `makeSessionStack`
     /// with every live secret-bearing component and invoked by
     /// `performEmergencyWipe()`. nil until .ready. No trigger is wired yet — the
     /// triple-tap gesture is 7d; this only makes the wipe callable.
     @State private var emergencyWipe: EmergencyWipe?
-
+    
     /// The enrollment seam (STEP 7c-1): the single serializing owner of the live
     /// ContactAllowlist. Constructed in `makeSessionStack` from the same allowlist
     /// store + coordinator, seeded with the loaded paired set. nil until .ready. No
     /// caller yet — the pairing UI (7d) drives enroll/markVerified/revoke.
     @State private var enrollmentService: EnrollmentService?
-
+    
+    /// The pairing façade (STEP 7d): builds our QR/invite payload on demand and
+    /// mints single-use invites via the enrollment seam. Constructed in
+    /// `makeSessionStack`; injected by ReadyView; driven by PairingView. nil until .ready.
+    @State private var pairingService: PairingService?
+    
     var body: some View {
         Group {
             switch phase {
             case .launching:
                 launchScreen
                     .task { bootstrap() }
-
+                
             case .onboarding(let store):
                 OnboardingView { identity in
                     completeOnboarding(identity: identity, store: store)
                 }
-
+                
             case .ready(_, let container, _):
                 // ReadyView owns the main-actor MessageInbox for this phase.
                 // coordinator + router are set together in makeSessionStack, so
                 // unwrapping both here is safe — whenever one is non-nil, so is
                 // the other.
-                if let coordinator, let router {
+                if let coordinator, let router, let pairingService {
                     ReadyView(container: container,
                               coordinator: coordinator,
-                              router: router)
+                              router: router,
+                              pairingService: pairingService)
                 } else {
                     launchScreen   // unreachable: both are set before .ready
                 }
@@ -132,6 +138,7 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .environment(presence)
+        .environment(\.eraseEverything) { eraseEverything() }
         .task {
             // Start the radio, then keep presence in sync AND feed the
             // coordinator newly-reachable links. Main-actor isolated, so
@@ -163,13 +170,13 @@ struct ContentView: View {
             }
         }
     }
-
+    
     private var launchScreen: some View {
         Color.bgApp.ignoresSafeArea()
     }
-
+    
     // MARK: - Bootstrap
-
+    
     /// Try to load an existing identity. If found, build the persistent
     /// ModelContainer + secure-session store + coordinator and enter .ready.
     /// If not, route to Onboarding.
@@ -180,7 +187,7 @@ struct ContentView: View {
             protection: .deviceUnlockOnly,
             wrapper: wrapper
         )
-
+        
         do {
             let identity = try store.load()
             let container = try makeModelContainer()
@@ -197,7 +204,7 @@ struct ContentView: View {
             phase = .onboarding(store)
         }
     }
-
+    
     /// Called once OnboardingView has handed us a fresh IdentityKeypair.
     /// Persist it, build the container + session stack, enter .ready.
     private func completeOnboarding(identity: IdentityKeypair,
@@ -219,9 +226,9 @@ struct ContentView: View {
             print("Bootstrap save failed: \(error)")
         }
     }
-
+    
     // MARK: - Construction
-
+    
     /// Build the secure-session store (from the loaded identity, so the session
     /// layer uses the SAME Enclave-bound identity as the rest of the app), the
     /// first-contact coordinator, and the mesh router that carries Envelopes.
@@ -249,7 +256,7 @@ struct ContentView: View {
         let secure = try SignalSessionStore(appIdentity: identity,
                                             directory: directory, dek: dek)
         let coord = FirstContactCoordinator(store: secure, transport: transport)
-
+        
         // STEP 7a — persisted closed-contact allowlist. Its own DEK (a distinct
         // Keychain service) seals a distinct file in the same store directory.
         // Loaded now so the paired set seeds reconnect below; held on the view so
@@ -258,7 +265,7 @@ struct ContentView: View {
             directory: directory,
             dek: try SessionStoreKey.loadOrCreate(
                 service: ContactAllowlistStore.defaultKeychainService))
-
+        
         // STEP 7c-2 — persisted single-use invite ledger. Own DEK (a distinct
         // Keychain service) seals a distinct file in the same store directory.
         // Registered in EmergencyWipe below so the in-flight-pairing ledger is
@@ -268,7 +275,7 @@ struct ContentView: View {
             directory: directory,
             dek: try SessionStoreKey.loadOrCreate(
                 service: PendingInvitesStore.defaultKeychainService))
-
+        
         // Load the WHOLE allowlist once: `pairedIdentities` seeds reconnect below,
         // and the full `loadedAllowlist` (with verified-states intact) seeds the
         // EnrollmentService so it starts from the real persisted set, not empty.
@@ -289,7 +296,7 @@ struct ContentView: View {
             loadedAllowlist = ContactAllowlist()
             pairedIdentities = []
         }
-
+        
         // STEP 7c-2 — load the single-use invite ledger once to seed the
         // EnrollmentService, which then OWNS it (mint/redeem, save-then-adopt) and
         // prunes expired ids in RAM at construction. Same loud-degrade posture as
@@ -304,7 +311,7 @@ struct ContentView: View {
             print("⚠️ pending invite ledger load FAILED — booting empty: \(error)")
             loadedPending = PendingInvites()
         }
-
+        
         // Nostr identity (Phase 8a): load-or-create the persistent secp256k1
         // secret so the internet pillar has an identity from launch. Best-effort
         // — a failure here must not block the BLE pillar, which is fully
@@ -329,19 +336,19 @@ struct ContentView: View {
         } catch {
             print("nostr identity load/create failed (BLE unaffected): \(error)")
         }
-
+        
         // PILLAR 1 (BLE) is always present; PILLAR 2 (Nostr) joins when an
         // identity exists. The router consumes BOTH transports' `incoming`; the
         // relay/TTL bypass for Nostr arrivals lives in the router (Phase 8d-2).
         var transports: [MeshTransport] = [transport]
         if let nostrTransport { transports.append(nostrTransport) }
         let mesh = MessageRouter(transports: transports)
-
+        
         sessionStore = secure
         coordinator = coord
         router = mesh
         contactAllowlistStore = contactStore
-
+        
         // STEP 7c-1/7c-2 — the enrollment seam: the single serializing owner of the
         // live ContactAllowlist AND the single-use invite ledger. Seeded with the
         // real persisted allowlist (verified-states intact) and ledger, sharing the
@@ -356,7 +363,15 @@ struct ContentView: View {
             initialAllowlist: loadedAllowlist,
             initialPending: loadedPending)
         enrollmentService = enroll
-
+        
+        // STEP 7d — the pairing façade. Wraps the session store (a FRESH local
+        // prekey bundle per QR/invite), our Nostr public key, and the enrollment
+        // seam (mint). Injected by ReadyView; driven by the pairing UI.
+        pairingService = PairingService(sessionStore: secure,
+                                                coordinator: coord,
+                                                enrollment: enroll,
+                                                ourNostrPublicKey: ourNostrPubkey)
+        
         // STEP 7b-3 — assemble the crypto-erase now that every secret-bearing
         // component exists. Service ids are the SAME `private var` constants used
         // above to PROVISION each secret, so the wipe cannot target the wrong
@@ -382,9 +397,9 @@ struct ContentView: View {
                 try SwiftDataStoreWipe(),
             ]
         )
-
+        
         print("session store ready (persistent) · identity \(secure.localIdentity.userIDHex.prefix(16))… · transports=\(transports.count)")
-
+        
         // Register the receiver + router and start consuming `incoming`, then
         // catch up on any links that already formed before the coordinator
         // existed (e.g. a peer already in range at launch).
@@ -394,7 +409,7 @@ struct ContentView: View {
             await coord.setRouter(mesh)
             await coord.setNostrPublicKey(ourNostrPubkey)   // Phase 8d npub-bootstrap
             await coord.setInviteRedeemer(enroll)           // STEP 7c-2 invite-echo redeem (weak)
-
+            
             // Closed-contact reconnect (5d). Warm the trial-decrypt cache from the
             // allowlist (Invariant #1) BEFORE any 0x03 frame can arrive, then
             // enable the handshake with our X25519 agreement key. STEP 7a: the set
@@ -405,7 +420,7 @@ struct ContentView: View {
             secure.warmInboundSessions(for: pairedIdentities)
             await coord.enableReconnect(agreementPrivate: identity.agreement,
                                         allowlistIdentities: pairedIdentities)
-
+            
             do {
                 try await mesh.start()   // starts BOTH transports: BLE radio + Nostr relay
             } catch {
@@ -414,9 +429,9 @@ struct ContentView: View {
             await coord.onReachable(ids)
         }
     }
-
+    
     // MARK: - Emergency crypto-erase (STEP 7b-3)
-
+    
     /// Run the assembled crypto-erase, best-effort. Destroys every secret-bearing
     /// component (identity, Enclave key, session store + its DEK, Nostr secret,
     /// contact allowlist, SwiftData message store) and returns the errors from any
@@ -434,34 +449,49 @@ struct ContentView: View {
         return await emergencyWipe.perform()
     }
 
+    /// Erase everything, then route back to a clean onboarding — there is no
+    /// identity left to operate with. Called by SettingsView's erase action (the
+    /// `\.eraseEverything` environment action injected on the body). Matches
+    /// `bootstrap()`'s store construction; the wiped identity means onboarding
+    /// regenerates a fresh one, and leaving `.ready` tears down the stale stack.
+    private func eraseEverything() {
+        Task { @MainActor in
+            _ = await performEmergencyWipe()
+            let wrapper = try? SecureEnclaveWrapper(service: enclaveService)
+            phase = .onboarding(IdentityStore(service: identityService,
+                                              protection: .deviceUnlockOnly,
+                                              wrapper: wrapper))
+        }
+    }
+    
     /// Stable bundle-scoped identifier for the Keychain item holding the
     /// long-term identity. Must not change across launches.
     private var identityService: String { "com.aeronyra.identity.v1" }
-
+    
     /// Stable bundle-scoped identifier for the Secure Enclave key
     /// reference. Must not change across launches.
     private var enclaveService: String { "com.aeronyra.enclave.v1" }
-
+    
     /// Stable bundle-scoped identifier for the persistent session store's DEK.
     /// Must not change across launches, or the session store reads as wiped.
     private var sessionKeyService: String { "com.aeronyra.sessionkey.v1" }
-
+    
     /// Stable bundle-scoped identifier for the Nostr identity secret (Phase 8a).
     /// Must not change across launches, or the internet identity reads as absent
     /// and is regenerated. The emergency wipe targets this same id.
     private var nostrIdentityService: String { "com.aeronyra.nostr.v1" }
-
+    
     /// The single Nostr relay PILLAR 2 connects to (Phase 8d). One relay for now;
     /// multi-relay redundancy is a later substep. A widely-used public relay.
     private var nostrRelayURL: String { "wss://relay.damus.io" }
-
+    
     private func makeModelContainer() throws -> ModelContainer {
         let schema = Schema([
             Peer.self,
             Conversation.self,
             Message.self,
         ])
-
+        
         // Force-create Application Support. On a fresh install it may not exist
         // yet and the sandbox blocks creating through a missing parent — the
         // same condition behind the CoreData "Failed to create file; code = 2"
@@ -477,14 +507,14 @@ struct ContentView: View {
         // -wal/-shm sidecars); the explicit per-file pass below covers a store
         // that already exists from a prior build. Ledger item 6 (at-rest).
         applyDataProtection(toPath: appSupport.path)
-
+        
         let config = ModelConfiguration(
             schema: schema,
             isStoredInMemoryOnly: false,
             cloudKitDatabase: .none
         )
         let container = try ModelContainer(for: schema, configurations: config)
-
+        
         // Tag the actual store files (the default SwiftData store lives at
         // Application Support/default.store, confirmed by the CoreData logs).
         for name in ["default.store", "default.store-wal", "default.store-shm"] {
@@ -492,7 +522,7 @@ struct ContentView: View {
         }
         return container
     }
-
+    
     /// Best-effort Data Protection tag. `try?` because it's a no-op/unsupported
     /// on some platforms (e.g. the Mac host) and a sidecar may not exist yet.
     private func applyDataProtection(toPath path: String) {
@@ -531,20 +561,28 @@ private struct ReadyView: View {
     let container: ModelContainer
     let coordinator: FirstContactCoordinator
     let router: MessageRouter
-
+    let pairingService: PairingService
+    
     @State private var inbox: MessageInbox?
-
+    
     /// The shared presence object injected by ContentView. We write its
     /// identity-resolved set from the coordinator's `reachablePeers` stream.
     @Environment(MeshPresence.self) private var presence
-
+    
     var body: some View {
         Group {
             if let inbox {
                 ChatsRootView()
                     .environment(inbox)
+                    .environment(pairingService)
                     .task { await inbox.run() }
                     .task { await inbox.runDeliveryUpdates(router.deliveryUpdates) }   // 7b.2a
+                    .onOpenURL { url in
+                        // STEP 7d-3: a tapped aeronyra://invite/… link. The
+                        // pairing service decodes, establishes, echoes, and
+                        // enrolls (unverified). Ignored if it isn't an invite.
+                        Task { try? await pairingService.redeemInvite(url.absoluteString) }
+                    }
             } else {
                 Color.bgApp.ignoresSafeArea()
             }
@@ -595,7 +633,7 @@ private struct ReadyView: View {
 private struct ChatsRootView: View {
     var body: some View {
         NavigationStack {
-            ChatsListView()
+            HomeView()
         }
         .tint(Color.brand)
     }

@@ -45,7 +45,10 @@ enum Stillwater {
         static let shallow = c(0x12211E)  // RAISED — cards, the SAS word tiles
         static let foam   = c(0xE9F5EF)   // HUMAN TEXT — names, messages
         static let mist   = c(0x8FA8A0)   // WHISPERS — the mesh's mono labels
-        static let biolume = c(0x7FF3C8)  // BIOLUMINESCENCE — the one accent
+        /// BIOLUMINESCENCE — the one accent. Themeable in Settings (defaults to the
+        /// canonical teal). Read each access so a change recolours the app on the
+        /// next render and fully on relaunch. Brightness-as-state is unchanged.
+        static var biolume: Color { hex(Accent.currentHex) }
 
         // Derived tones (depth grading + surfaces the mockup actually renders)
         static let foamDim     = c(0xB9CAC3) // a name reached only over the relay
@@ -55,6 +58,9 @@ enum Stillwater {
         static let goneRing    = c(0x2A3A36) // the hollow ring of a dark peer
         static let abyssDeep   = c(0x030706) // deepest gradient stop
 
+        /// Internal hex→Color for the accent presets and the themed `biolume`.
+        static func hex(_ h: UInt) -> Color { c(h) }
+
         /// Hex -> Color without a `Color(hex:)` extension, so nothing in the
         /// project's existing DesignSystem can collide with it. sRGB, opaque.
         private static func c(_ hex: UInt) -> Color {
@@ -63,6 +69,37 @@ enum Stillwater {
                   green: Double((hex >>  8) & 0xFF) / 255.0,
                   blue:  Double( hex        & 0xFF) / 255.0,
                   opacity: 1.0)
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // MARK: Accent — the one light, themeable (Settings)
+    // ─────────────────────────────────────────────────────────────
+    //
+    // The single accent (`Palette.biolume`) reads `currentHex` from UserDefaults,
+    // so picking a preset in Settings recolours the whole app. All presets are
+    // BRIGHT bioluminescent tones, so `onAccent` (deep) always contrasts and the
+    // "brightness IS state" rule is untouched — only the base hue shifts.
+    enum Accent {
+        static let key = "aeronyra.accentHex"
+        static let defaultHex: UInt = 0x7FF3C8
+
+        /// (name, hex) presets shown as swatches in Settings.
+        static let presets: [(name: String, hex: UInt)] = [
+            ("teal",   0x7FF3C8),   // the default
+            ("aqua",   0x7FD8F3),
+            ("violet", 0xB69BF3),
+            ("rose",   0xF39BB5),
+            ("amber",  0xF3CE7F),
+            ("lime",   0xB6F37F),
+        ]
+
+        /// The chosen accent hex (defaults to the canonical teal).
+        static var currentHex: UInt {
+            if let v = UserDefaults.standard.object(forKey: key) as? Int, v > 0 {
+                return UInt(v)
+            }
+            return defaultHex
         }
     }
 
