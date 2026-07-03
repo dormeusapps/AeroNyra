@@ -237,20 +237,27 @@ struct PeerSettingsView: View {
         return SettingsGroup(
             header: "Verification",
             footer: verified
-                ? "You've confirmed the four words with this contact — their key is who you think it is."
+                ? "You've confirmed the four words with this contact — their key is who you think it is. Tap to read the words again if they still need to verify you."
                 : "Read four words aloud together. If they match, no one swapped keys during pairing."
         ) {
             if verified {
-                SettingsRow {
-                    HStack(spacing: 10) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 15))
-                            .foregroundStyle(Stillwater.Palette.biolume)
-                        Text("Verified")
-                            .font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
-                        Spacer()
+                Button { showVerify = true } label: {
+                    SettingsRow {
+                        HStack(spacing: 10) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Stillwater.Palette.biolume)
+                            Text("Verified")
+                                .font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                            Spacer(minLength: 12)
+                            Text("view words")
+                                .stillwaterMono(8, trackingEm: 0.18, color: Stillwater.Palette.mistDim)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Stillwater.Palette.mistDim)
+                        }
                     }
                 }
+                .buttonStyle(.plain)
             } else {
                 Button { showVerify = true } label: {
                     SettingsRow {
@@ -389,93 +396,6 @@ struct PeerSettingsView: View {
 }
 
 // MARK: - Accent picker sheet
-// MARK: - SAS verify sheet (4-word confirm → markVerified)
-
-private struct SASVerifySheet: View {
-    let peerName: String
-    let rawKey: Data
-    let pairing: PairingService?
-
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var words: [String] = []
-    @State private var failed = false
-    @State private var confirming = false
-
-    var body: some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 8) {
-                Text("verify \(peerName.lowercased())")
-                    .stillwaterMono(9, trackingEm: 0.3, color: Stillwater.Palette.mistDim)
-                    .padding(.top, 22)
-                Text("Read these four words aloud together.")
-                    .font(Stillwater.Serif.italic(16))
-                    .foregroundStyle(Stillwater.Palette.mist)
-                    .multilineTextAlignment(.center)
-            }
-
-            if failed {
-                Text("Couldn't build the words yet — try again after your first message with them.")
-                    .font(Stillwater.Serif.italic(15))
-                    .foregroundStyle(Stillwater.Palette.mistDim)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(Array(words.enumerated()), id: \.offset) { _, word in
-                        Text(word)
-                            .stillwaterSerif(26, color: Stillwater.Palette.biolume)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-            }
-
-            Spacer(minLength: 0)
-
-            if !failed {
-                Button { confirm() } label: {
-                    Text(confirming ? "…" : "These match")
-                        .stillwaterSerif(17, weight: .medium, color: Stillwater.Palette.onAccent)
-                        .frame(maxWidth: .infinity).frame(height: 52)
-                        .background(RoundedRectangle(cornerRadius: 26).fill(Stillwater.Palette.biolume))
-                }
-                .buttonStyle(.plain)
-                .disabled(words.isEmpty || confirming)
-                .opacity(words.isEmpty ? 0.4 : 1.0)
-            }
-
-            Button { dismiss() } label: {
-                Text("not now")
-                    .stillwaterMono(8.5, trackingEm: 0.24, color: Stillwater.Palette.mistDim)
-            }
-            .buttonStyle(.plain)
-            .padding(.bottom, 24)
-        }
-        .padding(.horizontal, 28)
-        .frame(maxWidth: .infinity)
-        .background(Stillwater.Palette.abyss.ignoresSafeArea())
-        .task { load() }
-    }
-
-    private func load() {
-        guard words.isEmpty, !failed else { return }
-        if let computed = try? pairing?.sasWords(forPeerRawKey: rawKey), !computed.isEmpty {
-            words = computed
-        } else {
-            failed = true
-        }
-    }
-
-    private func confirm() {
-        guard let pairing else { return }
-        confirming = true
-        Task {
-            try? await pairing.markVerified(rawKey)
-            dismiss()
-        }
-    }
-}
 
 private struct AccentPickerSheet: View {
     let current: Double?

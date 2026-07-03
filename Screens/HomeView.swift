@@ -41,6 +41,8 @@ struct HomeView: View {
     /// the coordinator's `reachablePeers` stream. Reading it in `body` (via the
     /// tier partitions) is what makes the zones re-sort as peers come and go.
     @Environment(MeshPresence.self) private var presence
+    /// STEP 7f — read verified state so unverified contacts never read as "near".
+    @Environment(PairingService.self) private var pairing: PairingService?
 
     /// Presents the pairing sheet from "let someone in".
     @State private var showPairing = false
@@ -64,16 +66,18 @@ struct HomeView: View {
         }
     }
 
+    /// STEP 7f — "near" means VERIFIED + reachable. An unverified contact (even one
+    /// physically in BLE range) never reads as near: presence is hidden until BOTH
+    /// sides finish the SAS, matching the coordinator's presence gate.
     private var nearPeers: [Peer] {
-        sortedPeers.filter { presence.isReachable($0.publicKeyData) }
+        sortedPeers.filter { isVerified($0) && presence.isReachable($0.publicKeyData) }
     }
+    /// Everyone else: verified-but-out-of-range AND all unverified contacts. Both
+    /// stay listed + tappable (an unverified row is the path to its SAS sheet); the
+    /// sublabel distinguishes "last felt…" from "unverified · verify to connect".
     private var gonePeers: [Peer] {
-        sortedPeers.filter { !presence.isReachable($0.publicKeyData) }
+        sortedPeers.filter { !(isVerified($0) && presence.isReachable($0.publicKeyData)) }
     }
-    // No source in MeshPresence yet — never fabricated. Wire when the mesh
-    // exposes hop-depth (through) and Nostr far-reachability (relay).
-    private var throughPeers: [Peer] { [] }
-    private var relayPeers: [Peer] { [] }
 
     private struct Zone {
         let title: String
@@ -83,12 +87,13 @@ struct HomeView: View {
         let peers: [Peer]
     }
 
+    /// STEP 7f — two honest zones only: reachable (verified + in range) vs not.
+    /// The through-others / beyond-the-water mesh-relay tiers are gone (this model
+    /// never relays through non-contacts, and Nostr-far presence isn't surfaced).
     private var zones: [Zone] {
         [
-            Zone(title: "near",             accentLine: 0.10, dim: false, presence: .near,          peers: nearPeers),
-            Zone(title: "through others",   accentLine: 0.08, dim: false, presence: .throughOthers, peers: throughPeers),
-            Zone(title: "beyond the water", accentLine: 0.06, dim: false, presence: .relay,         peers: relayPeers),
-            Zone(title: "dark",             accentLine: 0.04, dim: true,  presence: .gone,          peers: gonePeers),
+            Zone(title: "near", accentLine: 0.10, dim: false, presence: .near, peers: nearPeers),
+            Zone(title: "dark", accentLine: 0.04, dim: true,  presence: .gone, peers: gonePeers),
         ]
     }
     /// Only zones that actually hold peers render — an empty pool shows just the
@@ -266,8 +271,18 @@ struct HomeView: View {
         case .near:          return "in the room · direct"
         case .throughOthers: return "through the mesh · multi-hop"
         case .relay:         return "over the relay · far"
-        case .gone:          return "last felt \(relativeAge(peer.lastSeen))"
+        case .gone:
+            // 7f — an out-of-range VERIFIED contact shows its last-seen; an
+            // unverified one shows the call to action that opens its SAS sheet.
+            return isVerified(peer)
+                ? "last felt \(relativeAge(peer.lastSeen))"
+                : "unverified · verify to connect"
         }
+    }
+
+    /// STEP 7f — verified state for a peer (nil env → unverified, e.g. previews).
+    private func isVerified(_ peer: Peer) -> Bool {
+        pairing?.isVerified(peer.publicKeyData) ?? false
     }
 
     /// Compact "3 h ago" style age from a Date, matching the mockup's whisper.

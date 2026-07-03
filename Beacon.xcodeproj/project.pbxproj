@@ -21,6 +21,7 @@
 		7C3450F22FF6E1DD00148C83 /* Conversation1View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */; };
 		7C3450F92FF7025E00148C83 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450F82FF7025A00148C83 /* QRScannerView.swift */; };
 		7C3450FB2FF71E4400148C83 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450FA2FF71E3F00148C83 /* SettingsView.swift */; };
+		7C7A84042FF82B90004CACFC /* SASVerifySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C7A84032FF82B8C004CACFC /* SASVerifySheet.swift */; };
 		7CAEDF912FF16D6A0084A5C4 /* PhotoViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF902FF16D660084A5C4 /* PhotoViewer.swift */; };
 		7CAEDF932FF1708A0084A5C4 /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF922FF170870084A5C4 /* VoiceRecorder.swift */; };
 		7CAEDF952FF1732C0084A5C4 /* VoiceNoteBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF942FF173280084A5C4 /* VoiceNoteBubble.swift */; };
@@ -82,6 +83,7 @@
 		7C3450FA2FF71E3F00148C83 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7C3B094C2FED902E00AE9EC1 /* Beacon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Beacon.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C3B09592FED902F00AE9EC1 /* BeaconTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeaconTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		7C7A84032FF82B8C004CACFC /* SASVerifySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SASVerifySheet.swift; sourceTree = "<group>"; };
 		7CAEDF902FF16D660084A5C4 /* PhotoViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewer.swift; sourceTree = "<group>"; };
 		7CAEDF922FF170870084A5C4 /* VoiceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecorder.swift; sourceTree = "<group>"; };
 		7CAEDF942FF173280084A5C4 /* VoiceNoteBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceNoteBubble.swift; sourceTree = "<group>"; };
@@ -330,6 +332,7 @@
 		7CE0C88A2FEF4D2900151314 /* Screens */ = {
 			isa = PBXGroup;
 			children = (
+				7C7A84032FF82B8C004CACFC /* SASVerifySheet.swift */,
 				7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */,
 				7C3450FA2FF71E3F00148C83 /* SettingsView.swift */,
 				7C3450F82FF7025A00148C83 /* QRScannerView.swift */,
@@ -587,6 +590,7 @@
 				7CE0C8872FEF462A00151314 /* ChatsListView.swift in Sources */,
 				7CAEDF912FF16D6A0084A5C4 /* PhotoViewer.swift in Sources */,
 				7CEC9F8E2FF0379000AA3D10 /* MeshPresence.swift in Sources */,
+				7C7A84042FF82B90004CACFC /* SASVerifySheet.swift in Sources */,
 				7CE0C8772FEF2C4100151314 /* Typography.swift in Sources */,
 				7C27E3D12FF5763400D7CD0B /* PeerAvatar.swift in Sources */,
 				7CAEDF9E2FF177D10084A5C4 /* ReadableColumn.swift in Sources */,

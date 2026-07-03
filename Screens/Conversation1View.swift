@@ -25,12 +25,15 @@ struct StreamView: View {
 
     @Environment(MessageInbox.self) private var inbox: MessageInbox?
     @Environment(MeshPresence.self) private var presence
+    @Environment(PairingService.self) private var pairing: PairingService?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var draft: String = ""
     @FocusState private var composerFocused: Bool
     @State private var showSettings = false
+    /// STEP 7f — presents the 4-word SAS sheet from the verify-gate composer.
+    @State private var showVerify = false
 
     /// Media send (mirrors the old composer's proven pattern).
     @State private var recorder = VoiceRecorder()
@@ -53,6 +56,12 @@ struct StreamView: View {
     }
     private var tier: Stillwater.Presence {
         presence.isReachable(peer.publicKeyData) ? .near : .gone
+    }
+    /// STEP 7f — whether this contact has completed the 4-word SAS (or was QR-paired).
+    /// Drives the composer: unverified shows the verify-gate instead. Reads through
+    /// the PairingService façade; nil (no env, e.g. previews) reads as unverified.
+    private var isVerified: Bool {
+        pairing?.isVerified(peer.publicKeyData) ?? false
     }
     private var peerName: String {
         if let n = peer.displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
@@ -90,6 +99,13 @@ struct StreamView: View {
         .onChange(of: sortedMessages.count) { markInboundRead() }
         .sheet(isPresented: $showSettings) {
             PeerSettingsView(conversation: currentConversation())
+        }
+        .sheet(isPresented: $showVerify) {
+            SASVerifySheet(peerName: peerName,
+                           rawKey: peer.publicKeyData,
+                           pairing: pairing)
+                .presentationDetents([.medium])
+                .preferredColorScheme(.dark)
         }
         .alert("Microphone access needed", isPresented: $showMicDenied) {
             Button("OK", role: .cancel) {}
@@ -181,7 +197,9 @@ struct StreamView: View {
     // MARK: Composer
     private var composer: some View {
         Group {
-            if recorder.isRecording {
+            if !isVerified {
+                verifyGate
+            } else if recorder.isRecording {
                 recordingBar
             } else {
                 normalComposer
@@ -192,6 +210,34 @@ struct StreamView: View {
             Rectangle().fill(Stillwater.Palette.biolume.opacity(0.09)).frame(height: 1)
         }
         .animation(.easeOut(duration: 0.18), value: recorder.isRecording)
+    }
+
+    /// STEP 7f — shown INSTEAD of the composer until this contact is verified. No
+    /// text field, no mic, no photo: there is no way to even attempt a send to an
+    /// unverified peer (the inbox backstop is the second line). Tapping opens the
+    /// 4-word SAS sheet; once confirmed, `pairing.markVerified` flips `isVerified`
+    /// and the real composer replaces this when the sheet dismisses.
+    private var verifyGate: some View {
+        Button { showVerify = true } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .strokeBorder(Stillwater.Palette.biolume.opacity(0.4), lineWidth: 1)
+                        .frame(width: 34, height: 34)
+                    Image(systemName: "checkmark.shield")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(Stillwater.Palette.biolume)
+                }
+                Text("verify \(peerName.lowercased()) with four words to message")
+                    .font(Stillwater.Serif.italic(15))
+                    .foregroundColor(Stillwater.Palette.mist)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
     }
 
     private var normalComposer: some View {

@@ -50,12 +50,22 @@ final class MessageInbox {
     /// a genuinely-failed message's resend for long. Tune against real traffic.
     private static let reconnectGraceSeconds: TimeInterval = 10
 
+    /// STEP 7f (STRICT-VERIFIED) backstop: answers whether a raw 32-byte peer key is
+    /// VERIFIED. Injected as a closure (it reads PairingService/EnrollmentService) so
+    /// the inbox stays decoupled from the enrollment stack. The composer is the
+    /// PRIMARY gate — an unverified thread shows no composer — and this is the belt-
+    /// and-suspenders that refuses to transmit even if a send path is somehow reached
+    /// (e.g. a stale auto-retry). `@ObservationIgnored`: not view state.
+    @ObservationIgnored private let isVerified: (Data) -> Bool
+
     init(modelContext: ModelContext,
          coordinator: FirstContactCoordinator,
-         router: MessageRouter) {
+         router: MessageRouter,
+         isVerified: @escaping (Data) -> Bool) {
         self.modelContext = modelContext
         self.coordinator = coordinator
         self.router = router
+        self.isVerified = isVerified
     }
 
     // MARK: - Inbound event loop
@@ -216,6 +226,17 @@ final class MessageInbox {
         conversation.lastActivity = .now
         save()
 
+        // 7f backstop: never transmit to an unverified contact. The UI removes the
+        // composer for unverified threads (primary gate); this refuses even if a send
+        // is somehow driven here. Persist-then-mark keeps the optimistic row so
+        // nothing typed is lost — it flushes once the contact verifies + is reachable.
+        guard isVerified(rawKey) else {
+            message.deliveryState = .notDelivered
+            save()
+            print("inbox: BLOCKED send to unverified peer")
+            return
+        }
+
         do {
             let wireID = try await coordinator.send(trimmed, toRawKey: rawKey,
                                                     nostrRecipient: nostrRecipient)
@@ -249,6 +270,14 @@ final class MessageInbox {
         message.conversation = conversation
         conversation.lastActivity = .now
         save()
+
+        // 7f backstop: never transmit media to an unverified contact (see `send`).
+        guard isVerified(rawKey) else {
+            message.deliveryState = .notDelivered
+            save()
+            print("inbox: BLOCKED media send to unverified peer")
+            return
+        }
 
         do {
             let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
@@ -291,6 +320,15 @@ final class MessageInbox {
         }
         let rawKey = peer.publicKeyData
         let nostrRecipient = peer.nostrPubkey   // Tier-2 fallback target (nil until bootstrapped)
+
+        // 7f backstop: never re-transmit to an unverified contact. Placed BEFORE the
+        // `.sent` flip below, so a blocked resend stays `.notDelivered` rather than
+        // sticking at `.sent`. (An unverified peer is never in a reachable set, so a
+        // flush wouldn't pick this up anyway — this is defense in depth.)
+        guard isVerified(rawKey) else {
+            print("inbox: BLOCKED resend to unverified peer")
+            return
+        }
 
         // Flip to .sent up front: the chip stops saying "tap to resend" and a
         // concurrent flush won't re-pick this row (the fetch is .notDelivered
