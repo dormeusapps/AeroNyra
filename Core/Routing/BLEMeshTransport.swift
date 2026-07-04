@@ -97,6 +97,21 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     /// Reassembly buffers for inbound notifications (peripheral → us), keyed by
     /// the remote peripheral's id.
     private var notifyReassembly: [UUID: ReassemblyState] = [:]
+    /// Consecutive write-with-response FAILURES per peripheral, keyed by its id.
+    /// A media transfer is thousands of chunked writes; a single transient ATT
+    /// error mid-burst must NOT tear the link down (that aborts the transfer and
+    /// leaves the receiver's reassembler stuck on a half-delivered payload). But
+    /// a peer that powered its radio OFF fails EVERY write while CoreBluetooth
+    /// stays silent (no didDisconnectPeripheral) — a zombie link. This counter
+    /// tells the two apart: it climbs on consecutive failures and is reset to 0
+    /// by any successful write. Crossing `writeErrorTeardownThreshold` means the
+    /// link is genuinely dead even if the CBError code wasn't conclusive.
+    private var writeErrorCounts: [UUID: Int] = [:]
+    /// Consecutive transient write failures before we conclude the link is dead
+    /// and tear it down. Low enough to surface a real zombie link within a few
+    /// writes (→ noReachablePeers → Nostr fallback); high enough that a single
+    /// backpressure glitch in a media burst is ridden through, as HEAD did.
+    private static let writeErrorTeardownThreshold = 3
 
     // MARK: - Peripheral (advertiser) side
     private var peripheral: CBPeripheralManager?
@@ -161,6 +176,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             self.notifyReassembly.removeAll()
             self.writeReassembly.removeAll()
             self.pendingNotifications.removeAll()
+            self.writeErrorCounts.removeAll()
             self.started = false
             self.emitReachable()
             self.log.info("stop(): radios torn down")
@@ -419,6 +435,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
             peers.removeAll()
             writeTargets.removeAll()
             notifyReassembly.removeAll()
+            writeErrorCounts.removeAll()
             emitReachable()
             return
         }
@@ -459,6 +476,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
         peers[peripheral.identifier] = nil
         writeTargets[peripheral.identifier] = nil
         notifyReassembly[peripheral.identifier] = nil
+        writeErrorCounts[peripheral.identifier] = nil
         emitReachable()
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
     }
@@ -516,8 +534,68 @@ extension BLEMeshTransport: CBPeripheralDelegate {
     public func peripheral(_ peripheral: CBPeripheral,
                            didWriteValueFor characteristic: CBCharacteristic,
                            error: Error?) {
-        if let error {
-            log.error("write failed to \(peripheral.identifier): \(error.localizedDescription)")
+        let id = peripheral.identifier
+
+        // SUCCESS: the link is demonstrably alive. Clear any accumulated failure
+        // streak so a later transient glitch starts counting from zero again.
+        // (HEAD had NO success branch — the if-let-error had no else — so the
+        // counter needs this to be a true "consecutive" measure.)
+        guard let error else {
+            if writeErrorCounts[id] != nil { writeErrorCounts[id] = 0 }
+            return
+        }
+
+        // FAILURE. A write-with-response error is either a genuinely dead link
+        // (peer turned Bluetooth OFF — CoreBluetooth invalidates the connection
+        // WITHOUT delivering didDisconnectPeripheral, the same gap the power-off
+        // handlers guard against, so the link goes ZOMBIE and the router never
+        // gets noReachablePeers → never falls back to the relay) OR a transient
+        // ATT/backpressure hiccup mid-burst. A media transfer is thousands of
+        // chunked writes; tearing the link down on the FIRST transient error
+        // aborts the transfer and strands the receiver's reassembler on a
+        // half-delivered payload. So we DISCRIMINATE:
+        //
+        //   • conclusive link-dead CBError code  → tear down now
+        //   • OR consecutive failures ≥ threshold → tear down (catches the
+        //     silent power-off, whose code isn't guaranteed to be conclusive:
+        //     every write fails, so the streak crosses threshold within a few)
+        //   • otherwise (transient) → log and CONTINUE, as HEAD did, so the
+        //     burst survives the hiccup.
+        let count = (writeErrorCounts[id] ?? 0) + 1
+        writeErrorCounts[id] = count
+
+        let linkDead: Bool
+        if let cb = error as? CBError {
+            switch cb.code {
+            case .peripheralDisconnected, .connectionTimeout,
+                 .notConnected, .connectionFailed:
+                linkDead = true
+            default:
+                linkDead = false
+            }
+        } else {
+            linkDead = false
+        }
+
+        guard linkDead || count >= Self.writeErrorTeardownThreshold else {
+            // Transient, below threshold: keep the link — don't abort the burst.
+            log.error("write failed to \(id): \(error.localizedDescription) (transient \(count)/\(Self.writeErrorTeardownThreshold)) → keeping link")
+            return
+        }
+
+        // Genuinely dead. Tear the link down (mirroring didDisconnectPeripheral)
+        // so reachability drops immediately and the next send routes over Nostr;
+        // cancel + rescan so we rediscover the peer if its radio returns.
+        let reason = linkDead ? "link-dead code" : "\(count) consecutive failures"
+        log.error("write failed to \(id): \(error.localizedDescription) (\(reason)) → dropping dead link")
+        peers[id] = nil
+        writeTargets[id] = nil
+        notifyReassembly[id] = nil
+        writeErrorCounts[id] = nil
+        central?.cancelPeripheralConnection(peripheral)
+        emitReachable()
+        if central?.state == .poweredOn {
+            central?.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
         }
     }
 }

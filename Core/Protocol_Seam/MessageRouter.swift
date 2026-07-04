@@ -144,6 +144,16 @@ public actor MessageRouter {
         /// (no single envelope represents the message).
         let envelope: Envelope?
         var state: MessageDeliveryState
+        /// Raw 32-byte MESH identity of the recipient. Lets a BLE-departure event
+        /// (`rerouteToNostr`) find this peer's in-flight sends. Nil for sends with
+        /// no single tracked peer.
+        let peerKey: Data?
+        /// The recipient's Nostr pubkey, retained so a drop-triggered reroute can
+        /// publish over the relay without re-sealing. Nil if unknown at send time.
+        let nostrRecipient: Data?
+        /// Set once this entry has been handed to Nostr by `rerouteToNostr`, so a
+        /// second departure event never republishes it.
+        var reroutedOverNostr = false
     }
 
     public init(transports: [MeshTransport],
@@ -217,9 +227,13 @@ public actor MessageRouter {
     @discardableResult
     public func send(_ envelope: Envelope,
                      tracked: Bool = true,
+                     peerKey: Data? = nil,
                      nostrRecipient: Data? = nil) async -> MessageDeliveryState {
         if tracked {
-            outbox[envelope.id] = OutboxEntry(envelope: envelope, state: .sent)
+            outbox[envelope.id] = OutboxEntry(envelope: envelope,
+                                              state: .sent,
+                                              peerKey: peerKey,
+                                              nostrRecipient: nostrRecipient)
         }
         _ = seen.containsOrInsert(envelope.id)
 
@@ -262,6 +276,45 @@ public actor MessageRouter {
         }
     }
 
+    /// INSTANT BLE→internet handoff. When one or more peers drop out of BLE
+    /// reachability (link lost, or Bluetooth switched off), re-route every
+    /// in-flight, still-unconfirmed TEXT message we sent to them over the Nostr
+    /// relay RIGHT NOW — no waiting for the 45s stuck-send timeout. The
+    /// coordinator calls this the instant presence drops (the same event that
+    /// clears the reachable set), so it behaves like a Wi-Fi→cellular handoff:
+    /// the moment BLE is gone, in-flight sends continue over the internet.
+    ///
+    /// Idempotent + safe: each entry is rerouted at most once (`reroutedOverNostr`),
+    /// and the recipient dedups by wire id, so a message whose final BLE write
+    /// actually landed a moment before the drop collapses to a single delivery.
+    /// A successful reroute leaves the row `.sent` (still awaiting its ack); the
+    /// stuck-send timeout remains the last-resort backstop and stays the only
+    /// place that surfaces a resend. Media (envelope == nil) is not handled here
+    /// — its multi-envelope re-send is inbox-driven.
+    ///
+    /// Returns the number of messages actually handed to the relay, for logging.
+    @discardableResult
+    public func rerouteToNostr(departed peerKeys: Set<Data>) async -> Int {
+        guard !peerKeys.isEmpty, addressedTransport != nil else { return 0 }
+        var rerouted = 0
+        for (id, entry) in outbox {
+            guard !entry.state.isTerminal,
+                  !entry.reroutedOverNostr,
+                  let peer = entry.peerKey, peerKeys.contains(peer),
+                  let envelope = entry.envelope,
+                  let recipient = entry.nostrRecipient
+            else { continue }
+
+            outbox[id]?.reroutedOverNostr = true
+            // Best-effort. Leave the row .sent regardless: on success the ack
+            // machinery resolves it; on a relay miss the stuck-send timeout still
+            // backstops. We deliberately do NOT flip to .notDelivered here.
+            _ = await publishViaNostr(envelope, to: recipient)
+            rerouted += 1
+        }
+        return rerouted
+    }
+
     /// Register a message-level id for delivery tracking WITHOUT a backing
     /// envelope — used for a multi-envelope media transfer, whose row wireID is
     /// the mediaID-derived id rather than any single chunk's envelope id.
@@ -272,7 +325,10 @@ public actor MessageRouter {
     /// radio.
     public func beginTracking(of id: MessageID) {
         if outbox[id] == nil {
-            outbox[id] = OutboxEntry(envelope: nil, state: .sent)
+            // Media transfer: no single envelope, and its multi-envelope re-send is
+            // inbox-driven, so it carries no peerKey/nostrRecipient for reroute.
+            outbox[id] = OutboxEntry(envelope: nil, state: .sent,
+                                     peerKey: nil, nostrRecipient: nil)
         }
     }
 

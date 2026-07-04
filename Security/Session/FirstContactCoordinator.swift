@@ -166,6 +166,12 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// presence when a link becomes identified, and so `emitReachablePeers`
     /// always intersects against the current live set.
     private var reachableLinks: Set<UUID> = []
+
+    /// The last set of reachable VERIFIED peer keys we emitted. Diffed on each
+    /// BLE reachability change (`onReachable`) to detect peers that just DROPPED,
+    /// so their in-flight sends can be handed to Nostr immediately (the BLE→
+    /// internet handoff). Updated by `emitReachablePeers`.
+    private var lastReachableKeys: Set<Data> = []
     
     // MARK: Reconnect (Closed-Contact 5d) — injected, no-op until enabled
     //
@@ -299,7 +305,19 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             await sendOurBundle(to: link)
             await sendReconnectBeacons(to: link)   // 5d: both run; bundle leaves at step 6
         }
-        emitReachablePeers()
+        // BLE→internet handoff. Capture who was reachable BEFORE we recompute, so
+        // a peer that just dropped out of range (or whose Bluetooth went off — the
+        // BLE transport tears the dead link down on a failed write) can have its
+        // in-flight text handed to Nostr IMMEDIATELY, not after a 45s timeout.
+        let before = lastReachableKeys
+        let now = emitReachablePeers()
+        let departed = before.subtracting(now)
+        if !departed.isEmpty, let router {
+            let n = await router.rerouteToNostr(departed: departed)
+            if n > 0 {
+                print("first-contact: BLE dropped — rerouted \(n) in-flight msg(s) → Nostr")
+            }
+        }
     }
     
     private func sendOurBundle(to link: UUID) async {
@@ -317,7 +335,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// that we've resolved to an identity, mapped to its raw key and de-duped by
     /// the `Set`. The de-dup is what collapses the per-role double-count — both
     /// GATT directions of one peer map to the same identity, hence one key.
-    private func emitReachablePeers() {
+    @discardableResult
+    private func emitReachablePeers() -> Set<Data> {
         var keys = Set<Data>()
         for link in reachableLinks {
             if let peer = linkPeers[link] {
@@ -331,8 +350,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 }
             }
         }
+        lastReachableKeys = keys
         reachablePeersContinuation.yield(keys)
         print("first-contact: presence → \(keys.count) reachable peer(s)")
+        return keys
     }
     
     // MARK: Inbound bundle → maybe initiate
@@ -674,9 +695,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// registered around the burst in `sendMedia`).
     private func routeOut(_ envelope: Envelope,
                           tracked: Bool = true,
+                          peerKey: Data? = nil,
                           nostrRecipient: Data? = nil) async throws {
         guard let router else { throw TransportError.notStarted }
-        let state = await router.send(envelope, tracked: tracked, nostrRecipient: nostrRecipient)
+        let state = await router.send(envelope, tracked: tracked,
+                                      peerKey: peerKey, nostrRecipient: nostrRecipient)
         guard state == .sent else { throw TransportError.sendFailed }
     }
     
@@ -706,8 +729,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // is nil → a fresh random id, exactly as before.
         let envelope = Envelope(id: reuseID ?? .random(), ciphertext: sealed)
         // tracked: a real message earns a receipt. nostrRecipient enables the
-        // router's Tier-2 fallback (BLE → Nostr) when BLE is out of range.
-        try await routeOut(envelope, nostrRecipient: nostrRecipient)
+        // router's Tier-2 fallback (BLE → Nostr) when BLE is out of range;
+        // peerKey lets a BLE-drop reroute find this message and hand it to Nostr
+        // instantly (rather than after the stuck-send timeout).
+        try await routeOut(envelope, peerKey: rawKey, nostrRecipient: nostrRecipient)
         return envelope.id
     }
     

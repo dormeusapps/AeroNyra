@@ -336,12 +336,20 @@ struct ContentView: View {
             let nostr = try NostrIdentity.loadOrCreate(service: nostrIdentityService)
             nostrIdentity = nostr
             ourNostrPubkey = nostr.publicKeyBytes
-            if let pub = nostr.publicKeyBytes, let url = URL(string: nostrRelayURL) {
-                nostrTransport = NostrTransport(relayURL: url,
-                                                ourSecretKey: nostr.secretKeyBytes,
-                                                ourPublicKey: pub)
+            if let pub = nostr.publicKeyBytes {
+                let relayURLs = nostrRelayURLs.compactMap { URL(string: $0) }
+                if !relayURLs.isEmpty {
+                    nostrTransport = NostrTransport(relayURLs: relayURLs,
+                                                    ourSecretKey: nostr.secretKeyBytes,
+                                                    ourPublicKey: pub)
+                }
             }
-            print("nostr identity ready · \(nostr.nsec?.prefix(12) ?? "nsec?")…")
+            // Breadcrumb only. NEVER log any part of nsec/secretKeyBytes — that
+            // is private-key material and lands unredacted in the device console
+            // and sysdiagnose. The public key is safe as a launch marker; use the
+            // already-hoisted `ourNostrPubkey` (== nostr.publicKeyBytes) in hex.
+            let npubHex = ourNostrPubkey?.prefix(6).map { String(format: "%02x", $0) }.joined()
+            print("nostr identity ready · npub \(npubHex ?? "?")…")
         } catch {
             print("nostr identity load/create failed (BLE unaffected): \(error)")
         }
@@ -491,9 +499,20 @@ struct ContentView: View {
     /// and is regenerated. The emergency wipe targets this same id.
     private var nostrIdentityService: String { "com.aeronyra.nostr.v1" }
     
-    /// The single Nostr relay PILLAR 2 connects to (Phase 8d). One relay for now;
-    /// multi-relay redundancy is a later substep. A widely-used public relay.
-    private var nostrRelayURL: String { "wss://relay.damus.io" }
+    /// The Nostr relays PILLAR 2 connects to (Phase 8d). Multi-relay for
+    /// availability: each relay is an independent websocket, publish fans out to
+    /// all, and inbound from all is merged (the router dedups by envelope id), so
+    /// one relay having a bad day (e.g. a 503) can't kill the internet pillar.
+    /// Widely-used, independently-operated public relays. Both devices sharing the
+    /// same list is what makes their subscriptions overlap. A future settings
+    /// screen swaps this array — the transport already takes a list.
+    private var nostrRelayURLs: [String] {
+        [
+            "wss://relay.primal.net",
+            "wss://nos.lol",
+            "wss://relay.damus.io",
+        ]
+    }
     
     private func makeModelContainer() throws -> ModelContainer {
         let schema = Schema([
