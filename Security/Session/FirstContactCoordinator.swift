@@ -136,6 +136,23 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// padding tier (see MediaChunker / MessagePayload).
     private static let mediaBucket = 4096
     private static let mediaReserved = 1
+    /// Media chunk bucket for the Nostr (out-of-BLE-range) path. The LARGEST
+    /// PayloadBucket tier: ~4x fewer gift wraps than the 4096 BLE bucket (a
+    /// 460 KB photo goes 114 -> 29), which both dodges relay rate-limiting on a
+    /// burst and shrinks the same-#p wrap cluster a relay observer sees
+    /// (THREAT_MODEL §7). Still Nostr-safe: a 16384-byte chunk wraps to ~22 KB
+    /// base64, well under NIP-44's 65535-byte plaintext limit across seal + wrap.
+    /// The receiver reassembles from the manifest's chunkCount, so a different
+    /// bucket than its own local chunker is fine (MediaReassembler is bucket-
+    /// agnostic on the receive side).
+    private static let mediaBucketNostr = 16384
+    /// Open-loop pacing between successive gift-wrap publishes on the Nostr media
+    /// path. `NostrTransport.publish` is fire-and-forget (the relay's OK is async
+    /// and only logged), so this can't close the loop on acceptance — it just
+    /// spaces the burst so a relay's rate limiter (damus rejected a 100+ wrap
+    /// unpaced burst) isn't tripped. ~120 ms ≈ 8 wraps/s → a 29-wrap photo ≈ 3.5 s.
+    /// Tune against real relays.
+    private static let nostrMediaPacingMillis = 120
     
     /// Collects inbound media chunks until a transfer is whole + verified.
     /// Actor-isolated, so its buffers are race-free. Initialized in `init`
@@ -763,7 +780,28 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // (once-per-peer, best-effort, before the transfer burst).
         await announceNostrIdentity(to: peer, rawKey: rawKey)
         
-        let chunker = try MediaChunker(targetBucket: Self.mediaBucket,
+        // TRANSPORT COMMIT (ISSUE-3): pick ONE transport for the WHOLE transfer up
+        // front, rather than relying on the per-envelope BLE-first fallback. Two
+        // reasons this must be a per-transfer commit keyed on THIS peer:
+        //   • BLE is broadcast-flood, so "BLE has someone in range" is NOT "this
+        //     peer is in range". If the intended peer is absent but another contact
+        //     is nearby, a per-chunk BLE send SUCCEEDS (floods to the other contact,
+        //     who can't open it) and never falls back to Nostr — the transfer
+        //     strands. Committing on this peer's verified-reachable state avoids it.
+        //   • A transfer that straddles BLE→Nostr per chunk loses the chunks already
+        //     handed to CoreBluetooth when a link tears down mid-burst (they return
+        //     .sent, the loop moves on), leaving an unfillable index gap. One
+        //     transport for the whole burst can't straddle.
+        // `lastReachableKeys` is the VERIFIED reachable set (7f) — the same signal
+        // the drop-reroute trusts; sendMedia is only reached for a verified peer.
+        // (Read, not recompute: emitReachablePeers() would also yield a presence
+        // tick as a side effect.)
+        let bleReachable = lastReachableKeys.contains(rawKey)
+
+        // Nostr commits to the largest bucket (fewer, larger wraps); BLE keeps 4096
+        // (its notify path is tuned there — larger GATT notifies stress the queue).
+        let bucket = bleReachable ? Self.mediaBucket : Self.mediaBucketNostr
+        let chunker = try MediaChunker(targetBucket: bucket,
                                        reservedBytes: Self.mediaReserved)
         // Use a CSPRNG 16-byte id (a MessageID's bytes) as the mediaID, so the
         // same value is both the transfer key and the dedup / tracking MessageID.
@@ -778,11 +816,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // races back before the burst finishes still matches.
         await router?.beginTracking(of: mediaWireID)
         
-        // Manifest + chunks are UNTRACKED: flooded + seen-marked, but not
-        // individually delivery-tracked (no per-chunk timeout, no outbox bloat).
-        // Each still carries nostrRecipient so a transfer falls back to Nostr,
-        // envelope-by-envelope, when BLE is out of range (Tier-2).
-        func emit(_ payload: MessagePayload) async throws {
+        // BLE branch: today's path — flood each sealed manifest/chunk over the
+        // mesh, still carrying nostrRecipient so the router's per-envelope fallback
+        // can catch a single chunk that finds no write target. UNTRACKED (the
+        // transfer's message-level id is tracked separately, above/below).
+        func emitOverBLE(_ payload: MessagePayload) async throws {
             // 9b: media kinds are returned unpadded by sealedPlaintext() (already
             // bucket-shaped by MediaChunker), so this is byte-identical to
             // encoded() for manifests/chunks — routed through the same method so
@@ -792,11 +830,36 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                                nostrRecipient: nostrRecipient)
         }
         
+        // Nostr branch: publish each sealed manifest/chunk DIRECTLY over the relay,
+        // bypassing the BLE-first path (no straddle, no flood-to-wrong-peer), PACED
+        // so the burst doesn't trip a relay's rate limiter. `recipient` is the
+        // committed non-nil nostrRecipient. UNTRACKED, same as the BLE branch.
+        func emitOverNostr(_ payload: MessagePayload, to recipient: Data) async throws {
+            let sealed = try session.seal(payload.sealedPlaintext())
+            let state = await router?.publishOverNostr(Envelope(ciphertext: sealed),
+                                                       to: recipient)
+            guard state == .sent else { throw TransportError.sendFailed }
+            try? await Task.sleep(for: .milliseconds(Self.nostrMediaPacingMillis))
+        }
+        
         do {
             let manifestJSON = try JSONEncoder().encode(manifest)
-            try await emit(.mediaManifest(manifestJSON))
-            for chunk in chunks {
-                try await emit(.mediaChunk(chunk))
+            if bleReachable {
+                try await emitOverBLE(.mediaManifest(manifestJSON))
+                for chunk in chunks {
+                    try await emitOverBLE(.mediaChunk(chunk))
+                }
+            } else if let recipient = nostrRecipient {
+                try await emitOverNostr(.mediaManifest(manifestJSON), to: recipient)
+                for chunk in chunks {
+                    try await emitOverNostr(.mediaChunk(chunk), to: recipient)
+                }
+            } else {
+                // Peer unreachable over BLE and no Nostr address bootstrapped for
+                // them — nothing can carry this transfer. Fail it so the inbox marks
+                // the row .notDelivered; it flushes once the peer is reachable again
+                // or a nostr identity is learned.
+                throw TransportError.noReachablePeers
             }
         } catch {
             // The burst broke before completing; fail the tracked transfer so
@@ -805,10 +868,12 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             throw error
         }
         
-        // Whole burst is on the radio — now start the (longer) media timeout.
+        // Whole burst is on the radio (BLE) or handed to the relays (Nostr) — now
+        // start the (longer) media timeout.
         await router?.startDeliveryTimeout(for: mediaWireID,
                                            after: MessageRouter.mediaDeliveryTimeout)
-        print("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks → \(peer.userIDHex.prefix(16))…")
+        let via = bleReachable ? "BLE" : "Nostr"
+        print("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks over \(via) → \(peer.userIDHex.prefix(16))…")
         return mediaWireID
     }
     

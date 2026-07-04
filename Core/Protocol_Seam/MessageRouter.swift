@@ -276,6 +276,31 @@ public actor MessageRouter {
         }
     }
 
+    /// Publish a single already-sealed envelope DIRECTLY over the addressed
+    /// (Nostr) transport, BYPASSING the BLE-first path in `send`. This is the
+    /// committed media-over-Nostr path (ISSUE-3): when the layer above has
+    /// determined the recipient is out of BLE range, the WHOLE transfer goes over
+    /// one transport instead of straddling BLE/Nostr per chunk. Straddling is
+    /// wrong for media two ways — a per-chunk BLE send floods to whatever peer is
+    /// in range (BLE is broadcast, not addressed), so a chunk meant for an absent
+    /// peer "succeeds" to the wrong one and never falls back; and chunks handed to
+    /// CoreBluetooth just before a mid-burst teardown return `.sent` and are lost,
+    /// leaving an unfillable index gap. Committing the transport up front avoids
+    /// both.
+    ///
+    /// UNTRACKED, exactly like the manifest/chunk envelopes on the BLE path: the
+    /// transfer's message-level id is tracked separately via `beginTracking` /
+    /// `startDeliveryTimeout`. Our own id is marked seen up front (mirroring
+    /// `send`) so the belt-and-suspenders dedup holds if the same id is ever also
+    /// seen inbound. Returns `.sent` once the wrap is handed to >= 1 live relay,
+    /// else `.waitingForRange` (no recipient, no addressed transport, or every
+    /// relay down) so the caller can fail the transfer and let the row queue.
+    @discardableResult
+    public func publishOverNostr(_ envelope: Envelope, to recipient: Data) async -> MessageDeliveryState {
+        _ = seen.containsOrInsert(envelope.id)
+        return await publishViaNostr(envelope, to: recipient)
+    }
+
     /// INSTANT BLE→internet handoff. When one or more peers drop out of BLE
     /// reachability (link lost, or Bluetooth switched off), re-route every
     /// in-flight, still-unconfirmed TEXT message we sent to them over the Nostr
