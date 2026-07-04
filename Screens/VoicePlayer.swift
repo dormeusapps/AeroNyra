@@ -41,7 +41,7 @@ final class VoicePlayer {
 
     func play() {
         guard let player else { return }
-        configureSession()
+        activateSession()
         if progress >= 1 || player.currentTime >= player.duration {
             player.currentTime = 0
             progress = 0
@@ -55,6 +55,9 @@ final class VoicePlayer {
         player?.pause()
         isPlaying = false
         stopTicking()
+        // Hand the audio session back so any music we took over resumes. The
+        // note re-takes it on the next play().
+        deactivateSession()
     }
 
     /// Seek to a fraction (0...1) of the clip.
@@ -67,10 +70,24 @@ final class VoicePlayer {
 
     // MARK: - Internals
 
-    private func configureSession() {
+    /// Take over audio output for the note. `.playback` (no `.mixWithOthers`)
+    /// is deliberate: a voice note is meant to be heard, so it pauses the user's
+    /// music — the "take over" behaviour. It's handed back in `deactivateSession`
+    /// the moment the note ends or is paused, which is what lets the music resume.
+    /// Called ONLY from `play()`, never at construction, so merely opening a
+    /// conversation full of voice notes never touches the session.
+    private func activateSession() {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default)
         try? session.setActive(true)
+    }
+
+    /// Release the audio session and, crucially, notify other apps so their audio
+    /// resumes. `.notifyOthersOnDeactivation` is the signal Music/Spotify use to
+    /// pick their playback back up after we took over for the note.
+    private func deactivateSession() {
+        try? AVAudioSession.sharedInstance()
+            .setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
     private func startTicking() {
@@ -90,6 +107,8 @@ final class VoicePlayer {
             isPlaying = false
             progress = 1
             stopTicking()
+            // Clip finished — release the session so the user's music resumes.
+            deactivateSession()
             return
         }
         if player.duration > 0 {
