@@ -390,6 +390,82 @@ final class MessageInbox {
         }
     }
 
+    // MARK: - Media re-drive on mid-burst BLE drop (ISSUE-3b)
+
+    /// A media transfer that COMMITTED to BLE (the peer was verified-reachable when
+    /// the composer fired → `sendMedia` chose the 4096 BLE burst) then lost the link
+    /// mid-burst cannot finish over BLE: the chunks already handed to CoreBluetooth
+    /// at teardown returned `.sent` and are gone, the coordinator's linear loop has
+    /// moved past them, and the router's `rerouteToNostr` skips media (its outbox
+    /// entry has no backing envelope). Crucially the row still reads `.sent` (the
+    /// coordinator never threw — a broadcast-flood chunk "succeeds" even into the
+    /// void), so `flushUndelivered` (which fetches `.notDelivered`) never sees it.
+    ///
+    /// So when a peer DEPARTS the reachable set, re-drive its still-in-flight media
+    /// rows WHOLE over Nostr. This is the media analogue of the router's text
+    /// `rerouteToNostr`, but inbox-driven because only the persisted row owns the
+    /// full media blob. `sendMedia(redrive: true)` re-chunks at the ORIGINAL 4096
+    /// BLE bucket and REUSES the mediaID (via `reuseID:`), so every re-driven chunk
+    /// is byte-identical to the partial the receiver already buffered — and to any
+    /// straggler a flapping BLE link later delivers. They dedup by (mediaID, index)
+    /// into exactly ONE transfer that completes once and persists once.
+    ///
+    /// Called from the composition root when the reachable set LOSES a peer (the
+    /// same diff that feeds `flushUndelivered` on a gain). A no-op when nothing
+    /// departed. Terminal rows (delivered / relayed / notDelivered) and rows for a
+    /// peer with no learned Nostr address are skipped — the latter simply wait for
+    /// the peer to return to BLE range (or for the stuck-send timeout to fail them,
+    /// after which the ordinary Tier-3 flush applies).
+    func redriveInFlightMedia(toDepartedKeys departed: Set<Data>) async {
+        guard !departed.isEmpty else { return }
+
+        // Coarse fetch (mirrors `inFlightWireIDs`): outbound rows that already hold
+        // a wireID, filtered in Swift — `#Predicate` can't traverse the peer
+        // relationship, read the computed `deliveryState`, or test media-ness.
+        let descriptor = FetchDescriptor<Message>(
+            predicate: #Predicate { $0.isOutbound && $0.wireIDData != nil }
+        )
+        guard let rows = try? modelContext.fetch(descriptor), !rows.isEmpty else { return }
+
+        for message in rows {
+            guard message.isMedia,
+                  !message.deliveryState.isTerminal,            // still in flight (unacked)
+                  let peer = message.conversation?.peer,
+                  departed.contains(peer.publicKeyData),
+                  let nostrRecipient = peer.nostrPubkey,         // must have an internet address
+                  let data = message.mediaData,
+                  let mime = message.mediaMime,
+                  let reuse = message.wireID                     // the mediaID to preserve
+            else { continue }
+
+            let rawKey = peer.publicKeyData
+            // 7f backstop: never transmit to an unverified contact (belt-and-
+            // suspenders; an unverified peer is never in a reachable set to depart
+            // from, but the re-drive path is defended like every other send path).
+            guard isVerified(rawKey) else { continue }
+
+            do {
+                let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
+                                                             nostrRecipient: nostrRecipient,
+                                                             reuseID: reuse, redrive: true)
+                // Same mediaID (reuse), so the row's wireID is unchanged; re-stamp
+                // it anyway for parity with the other send paths. Row stays `.sent`
+                // (re-driven, awaiting its ack over Nostr) — the ack path flips it
+                // terminal, after which a repeat departure won't re-drive it.
+                message.wireIDData = Data(wireID.bytes)
+                message.conversation?.lastActivity = .now
+                save()
+                print("inbox: media re-driven over Nostr → \(wireID)")
+            } catch {
+                // Nostr re-drive itself failed (e.g. every relay down): mark
+                // `.notDelivered` so the ordinary return-to-range flush retries it.
+                message.deliveryState = .notDelivered
+                save()
+                print("inbox: media re-drive failed, marked .notDelivered: \(error)")
+            }
+        }
+    }
+
     // MARK: - Reconnect grace (STEP 0b / A)
 
     /// A peer completed the closed-contact reconnect handshake. Open (or extend) a

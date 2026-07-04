@@ -771,9 +771,26 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// burst fails mid-way we mark the transfer failed and rethrow, so the
     /// inbox's optimistic row becomes `.notDelivered` — nothing the user picked
     /// is lost.
+    ///
+    /// RE-DRIVE (ISSUE-3b): pass `redrive: true` to re-send a transfer that
+    /// STARTED on BLE (peer was verified-reachable at first send → committed to
+    /// the 4096 BLE burst) but lost the link mid-burst. A re-drive (a) FORCES the
+    /// internet path — BLE already failed us, so we don't retry it — and (b) keeps
+    /// the ORIGINAL 4096 BLE chunking rather than the 16384 Nostr cold-send bucket.
+    /// (b) is the correctness crux: the receiver already holds a PARTIAL 4096
+    /// buffer for this mediaID (manifest + the chunks that landed before teardown),
+    /// and the flapping link may yet deliver more 4096 chunks. Re-chunking the same
+    /// mediaID at 16384 would mix chunk sizes under one manifest → wrong-length
+    /// reassembly → SHA-256 fail → a transfer that never completes. Re-driving at
+    /// the SAME 4096 bucket makes every re-driven chunk BYTE-IDENTICAL to the
+    /// partial (and to any late BLE flap chunk), so they all dedup by
+    /// (mediaID, index) into exactly ONE transfer that completes once and persists
+    /// once (handleReceivedMedia dedups on the mediaID-derived wireID). Pair with
+    /// `reuseID:` = the row's existing wireID so the mediaID is preserved.
     func sendMedia(_ blob: Data, mime: MediaMimeType, toRawKey rawKey: Data,
                    nostrRecipient: Data? = nil,
-                   reuseID: MessageID? = nil) async throws -> MessageID {
+                   reuseID: MessageID? = nil,
+                   redrive: Bool = false) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
@@ -796,11 +813,20 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // the drop-reroute trusts; sendMedia is only reached for a verified peer.
         // (Read, not recompute: emitReachablePeers() would also yield a presence
         // tick as a side effect.)
-        let bleReachable = lastReachableKeys.contains(rawKey)
+        //
+        // ISSUE-3b: a re-drive ALWAYS goes over the internet (BLE just failed the
+        // transfer), so it never takes the BLE branch regardless of live presence.
+        let goingOverBLE = redrive ? false : lastReachableKeys.contains(rawKey)
 
-        // Nostr commits to the largest bucket (fewer, larger wraps); BLE keeps 4096
-        // (its notify path is tuned there — larger GATT notifies stress the queue).
-        let bucket = bleReachable ? Self.mediaBucket : Self.mediaBucketNostr
+        // Bucket choice:
+        //   • BLE branch  → 4096 (its notify path is tuned there; larger GATT
+        //                   notifies stress the queue).
+        //   • Nostr COLD send → 16384 (largest tier: ~4x fewer, larger wraps).
+        //   • Nostr RE-DRIVE  → 4096, to MATCH the BLE-started transfer's chunking
+        //                   so the receiver's partial buffer dedups by index (see
+        //                   the redrive note above). NOT 16384 — that would mix
+        //                   chunk sizes under one mediaID and never reassemble.
+        let bucket = (goingOverBLE || redrive) ? Self.mediaBucket : Self.mediaBucketNostr
         let chunker = try MediaChunker(targetBucket: bucket,
                                        reservedBytes: Self.mediaReserved)
         // Use a CSPRNG 16-byte id (a MessageID's bytes) as the mediaID, so the
@@ -844,7 +870,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         
         do {
             let manifestJSON = try JSONEncoder().encode(manifest)
-            if bleReachable {
+            if goingOverBLE {
                 try await emitOverBLE(.mediaManifest(manifestJSON))
                 for chunk in chunks {
                     try await emitOverBLE(.mediaChunk(chunk))
@@ -872,7 +898,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // start the (longer) media timeout.
         await router?.startDeliveryTimeout(for: mediaWireID,
                                            after: MessageRouter.mediaDeliveryTimeout)
-        let via = bleReachable ? "BLE" : "Nostr"
+        let via = goingOverBLE ? "BLE" : (redrive ? "Nostr (re-drive)" : "Nostr")
         print("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks over \(via) → \(peer.userIDHex.prefix(16))…")
         return mediaWireID
     }

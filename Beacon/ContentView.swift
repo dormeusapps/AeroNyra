@@ -669,13 +669,24 @@ private struct ReadyView: View {
             // (a transition, not every tick), flush any `.notDelivered` messages
             // bound for now-reachable peers. We diff against the previous set so
             // a steady stream of identical presence updates doesn't re-flush.
+            //
+            // MEDIA RE-DRIVE (ISSUE-3b): the SAME diff, on the LOSS side. When the
+            // set drops a peer, re-drive that peer's still-in-flight media rows over
+            // Nostr (a transfer that committed to BLE then lost the link mid-burst
+            // is stuck at `.sent`, so the gain-side flush never reaches it). This is
+            // the media analogue of the coordinator's text `rerouteToNostr`, which
+            // fires off the same departure event.
             var previous = Set<Data>()
             for await keys in coordinator.reachablePeers {
                 presence.reachablePeerKeys = keys
                 let newlyReachable = keys.subtracting(previous)
+                let departed = previous.subtracting(keys)
                 previous = keys
                 if !newlyReachable.isEmpty {
                     await inbox?.flushUndelivered(toReachableKeys: keys)
+                }
+                if !departed.isEmpty {
+                    await inbox?.redriveInFlightMedia(toDepartedKeys: departed)
                 }
             }
         }
