@@ -247,10 +247,32 @@ struct HomeView: View {
 
             Spacer()
 
-            // SEAM: the unread "a stone waits" ripple is an inbox concern —
-            // it wires with the Stream pass (a peer's unread inbound messages).
+            // STEP A1 — "a stone waits": an unread ripple on the trailing edge.
+            // A stone was cast into your water and hasn't been answered; a still
+            // biolume point with a slow ripple spreading from it. Shows in BOTH
+            // zones (a verified-but-dark peer can carry unread too). Cleared when
+            // you open the Stream (StreamView.markInboundRead flips the same
+            // `!isOutbound && !isRead` rows this counts, and the @Model read here
+            // re-renders the row on that flip / on a fresh inbound arrival).
+            let unread = unreadCount(for: peer)
+            if unread > 0 {
+                UnreadStone(count: unread, accent: accentHex)
+            }
         }
         .padding(.vertical, 10)
+    }
+
+    /// STEP A1 — unread inbound count for a peer's direct conversation. Mirrors
+    /// the EXACT predicate `StreamView.markInboundRead` clears (`!isOutbound &&
+    /// !isRead`), so casting into the Stream zeroes this on return. Inbound text
+    /// AND media both persist `isRead: false`, so both count until viewed.
+    /// Traverses the @Model relationship graph inside `body`, which registers
+    /// SwiftData observation on the exact Message rows — a new arrival or a
+    /// read-flip re-evaluates this row without any explicit trigger.
+    private func unreadCount(for peer: Peer) -> Int {
+        guard let convo = peer.conversations.first(where: { $0.kind == .direct })
+        else { return 0 }
+        return convo.messages.reduce(0) { $0 + ((!$1.isOutbound && !$1.isRead) ? 1 : 0) }
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -423,6 +445,35 @@ private struct RippleRing: View {
     }
 }
 
+// A stone waits on the water: the Home-row unread-inbound marker (STEP A1).
+// A still biolume point with a slow ripple spreading from it — cast, unanswered.
+// A hairline mono count rides alongside only when MORE THAN ONE waits, so a
+// single unread stays quiet and a burst stays legible. Resolves to this file's
+// private `RippleRing` (color/duration/accent), matching the accent-rebuild
+// pattern of every other animated light on this screen.
+private struct UnreadStone: View {
+    let count: Int
+    var accent: Int = 0
+
+    var body: some View {
+        let _ = accent
+        HStack(spacing: 8) {
+            if count > 1 {
+                Text("\(count)")
+                    .stillwaterMono(9, trackingEm: 0.14, color: Stillwater.Palette.foam)
+            }
+            ZStack {
+                RippleRing(color: Stillwater.Palette.biolume, duration: 3.0, accent: accent)
+                Circle()
+                    .fill(Stillwater.Palette.biolume)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: Stillwater.Palette.biolume.opacity(0.5), radius: 6)
+            }
+            .frame(width: 22, height: 22)
+        }
+    }
+}
+
 // You — the surface: one luminous line that pulses slowly.
 private struct SurfaceLine: View {
     var accent: Int = 0
@@ -460,6 +511,15 @@ private struct SurfaceLine: View {
     let sana = Peer(publicKeyData: Data((0..<32).map { _ in UInt8.random(in: 0...255) }),
                     displayName: "Sana", lastSeen: .now.addingTimeInterval(-3 * 3600))
     ctx.insert(theo); ctx.insert(priya); ctx.insert(sana)
+
+    // Give Theo an unread inbound message so the "a stone waits" indicator
+    // renders on canvas (two unread → the hairline count also shows).
+    let convo = Conversation(kind: .direct, peer: theo)
+    ctx.insert(convo)
+    for text in ["are you seeing this too", "the whole block just went dark"] {
+        let m = Message(content: text, isOutbound: false, deliveryState: .delivered, isRead: false)
+        ctx.insert(m); m.conversation = convo
+    }
 
     let presence = MeshPresence()
     presence.reachablePeerKeys = [theo.publicKeyData, priya.publicKeyData]  // two near, Sana dark
