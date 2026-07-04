@@ -275,6 +275,26 @@ struct ContentView: View {
             directory: directory,
             dek: try SessionStoreKey.loadOrCreate(
                 service: PendingInvitesStore.defaultKeychainService))
+
+        // ISSUE-5 — persisted Nostr backlog-replay ledger. Own DEK (a distinct
+        // Keychain service) seals a distinct file in the same store directory.
+        // Seeds NostrTransport's replay guard below and is registered in
+        // EmergencyWipe so it is crypto-erased on wipe. Loaded now; UNLIKE the
+        // allowlist a corrupt/failed load is NOT security-critical (a dedup cache
+        // — worst case one replay storm), so we boot empty with a warning rather
+        // than degrade the mesh.
+        let nostrEventLedgerStore = try ProcessedEventLedgerStore(
+            directory: directory,
+            dek: try SessionStoreKey.loadOrCreate(
+                service: ProcessedEventLedgerStore.defaultKeychainService))
+        let loadedNostrLedger: ProcessedEventLedger
+        do {
+            loadedNostrLedger = try nostrEventLedgerStore.load()
+            print("nostr replay ledger loaded \u{00B7} \(loadedNostrLedger.count) id(s)")
+        } catch {
+            print("\u{26A0}\u{FE0F} nostr replay ledger load FAILED \u{2014} booting empty: \(error)")
+            loadedNostrLedger = ProcessedEventLedger()
+        }
         
         // Load the WHOLE allowlist once: `pairedIdentities` seeds reconnect below,
         // and the full `loadedAllowlist` (with verified-states intact) seeds the
@@ -339,9 +359,17 @@ struct ContentView: View {
             if let pub = nostr.publicKeyBytes {
                 let relayURLs = nostrRelayURLs.compactMap { URL(string: $0) }
                 if !relayURLs.isEmpty {
-                    nostrTransport = NostrTransport(relayURLs: relayURLs,
-                                                    ourSecretKey: nostr.secretKeyBytes,
-                                                    ourPublicKey: pub)
+                    // Seed the ISSUE-5 replay guard from the sealed store and give
+                    // the transport a save hook (it debounces + dispatches the seal
+                    // off its serial queue, so the write never blocks inbound).
+                    nostrTransport = NostrTransport(
+                        relayURLs: relayURLs,
+                        ourSecretKey: nostr.secretKeyBytes,
+                        ourPublicKey: pub,
+                        initialLedger: loadedNostrLedger,
+                        persistLedger: { [nostrEventLedgerStore] snapshot in
+                            try? nostrEventLedgerStore.save(snapshot)
+                        })
                 }
             }
             // Breadcrumb only. NEVER log any part of nsec/secretKeyBytes — that
@@ -411,6 +439,7 @@ struct ContentView: View {
                 NostrIdentityWipe(service: nostrIdentityService),
                 contactStore,
                 pendingInvitesStore,
+                nostrEventLedgerStore,
                 try SwiftDataStoreWipe(),
             ]
         )

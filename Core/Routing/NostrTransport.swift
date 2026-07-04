@@ -88,6 +88,27 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     private var conns: [RelayConn] = []
     private var started = false
 
+    /// ISSUE-5 backlog-replay guard: OUTER 1059 event ids already processed, so a
+    /// relay replay (or the same wrap fanned in from several relays) is skipped
+    /// BEFORE the schnorr verify + unwrap — killing the `open failed: openFailed`
+    /// storm on subscribe. Queue-confined like all mutable state here. SEEDED at
+    /// init from the sealed store (survives relaunch) and PERSISTED via
+    /// `persistLedger` on a debounce, so a burst coalesces into one sealed write.
+    private var processedLedger: ProcessedEventLedger
+
+    /// Persist hook for the ledger (injected; nil = in-memory only, e.g. tests).
+    /// Called with a value-type snapshot, DISPATCHED OFF `queue` onto a utility
+    /// queue so the sealed file write never blocks the inbound receive loop.
+    private let persistLedger: (@Sendable (ProcessedEventLedger) -> Void)?
+    /// Debounce bookkeeping (queue-confined). `dirty` = new ids since last save;
+    /// `saveScheduled` = a coalescing save is already pending.
+    private var ledgerDirty = false
+    private var ledgerSaveScheduled = false
+    /// Coalescing window: a storm of first-sight inserts becomes ONE sealed write
+    /// this many seconds after the first. A crash inside the window re-processes
+    /// at most that window's ids once (bounded, self-healing). Tune vs. traffic.
+    private static let ledgerSaveDebounce: Double = 3
+
     /// Per-relay connection state. A reference type so a socket callback can hold
     /// the exact relay it fired for. `@unchecked Sendable` on the same terms as
     /// the transport: every field is read/written ONLY on `queue`.
@@ -122,10 +143,21 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     ///     inbound NIP-44). From `NostrIdentity.secretKeyBytes`.
     ///   - ourPublicKey: our 32-byte x-only pubkey, used to build the inbound
     ///     subscription filter. From `NostrIdentity.publicKeyBytes`.
-    public init(relayURLs: [URL], ourSecretKey: Data, ourPublicKey: Data) {
+    ///   - initialLedger: the ISSUE-5 replay guard seeded from the sealed store at
+    ///     launch (empty on first run / a corrupt-load degrade). Defaults empty so
+    ///     single-relay callers and tests need not supply it.
+    ///   - persistLedger: sealed-store save hook, called with a value snapshot off
+    ///     `queue`. nil (default) = in-memory only.
+    public init(relayURLs: [URL],
+                ourSecretKey: Data,
+                ourPublicKey: Data,
+                initialLedger: ProcessedEventLedger = ProcessedEventLedger(),
+                persistLedger: (@Sendable (ProcessedEventLedger) -> Void)? = nil) {
         self.relayURLs = relayURLs
         self.ourSecretKey = ourSecretKey
         self.ourPubkeyHex = ourPublicKey.map { String(format: "%02x", $0) }.joined()
+        self.processedLedger = initialLedger
+        self.persistLedger = persistLedger
 
         var cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
         self.incoming = AsyncStream<(link: UUID, envelope: Envelope)> { cont = $0 }
@@ -159,6 +191,13 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                 conn.session = nil
             }
             self.conns.removeAll()
+            // Flush any pending ledger changes so a clean stop doesn't drop up to
+            // the debounce window of processed ids.
+            if self.ledgerDirty, let persist = self.persistLedger {
+                self.ledgerDirty = false
+                let snapshot = self.processedLedger
+                DispatchQueue.global(qos: .utility).async { persist(snapshot) }
+            }
             self.log.info("nostr: stopped (\(self.relayURLs.count) relay(s))")
         }
     }
@@ -314,6 +353,17 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     private func handleInboundEventLocked(_ event: NostrEvent, from conn: RelayConn) {
         let host = conn.url.host ?? "relay"
         guard event.kind == NostrGiftWrap.wrapKind else { return }   // only 1059s
+        // ISSUE-5: skip a wrap whose OUTER id we've already processed — a relay
+        // replay of a stored event, or the same wrap fanned in from several
+        // relays. Recorded on FIRST sight (the id is a content hash, so
+        // re-processing can only repeat the same outcome), BEFORE the expensive
+        // isValid() + unwrap. Quiet .debug so it doesn't re-introduce the noise
+        // this guard exists to remove.
+        if processedLedger.containsOrInsert(event.id) {
+            log.debug("nostr: skip already-processed 1059 \(String(event.id.prefix(12)), privacy: .public) @ \(host, privacy: .public)")
+            return
+        }
+        scheduleLedgerSaveLocked()   // a new id was recorded — persist (debounced)
         guard event.isValid() else {
             log.error("nostr: inbound 1059 failed event validation @ \(host, privacy: .public)")
             return
@@ -325,6 +375,27 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             log.info("nostr: unwrapped inbound envelope id=\(envelope.id) @ \(host, privacy: .public) → incoming")
         } catch {
             log.error("nostr: unwrap failed @ \(host, privacy: .public): \(error.localizedDescription)")
+        }
+    }
+
+    /// Coalesce a ledger save (queue-confined). Marks the ledger dirty and, if no
+    /// save is already pending, schedules one `ledgerSaveDebounce` seconds out. The
+    /// scheduled block snapshots the value-type ledger ON `queue`, then dispatches
+    /// the injected `persistLedger` OFF `queue` (utility) so the sealed write never
+    /// stalls the receive loop. A no-op when no persist hook is wired.
+    private func scheduleLedgerSaveLocked() {
+        guard persistLedger != nil else { return }
+        ledgerDirty = true
+        guard !ledgerSaveScheduled else { return }
+        ledgerSaveScheduled = true
+        queue.asyncAfter(deadline: .now() + Self.ledgerSaveDebounce) { [weak self] in
+            guard let self else { return }
+            self.ledgerSaveScheduled = false
+            guard self.ledgerDirty else { return }
+            self.ledgerDirty = false
+            let snapshot = self.processedLedger
+            let persist = self.persistLedger
+            DispatchQueue.global(qos: .utility).async { persist?(snapshot) }
         }
     }
 
