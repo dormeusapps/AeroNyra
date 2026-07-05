@@ -171,4 +171,119 @@ final class MediaChunkerTests: XCTestCase {
             XCTAssertEqual(error as? MediaChunkerError, .emptyBlob)
         }
     }
+
+    // MARK: - Manifest bounds (SEC-10b)
+    //
+    // A manifest arrives from a verified peer but is still untrusted data: its
+    // chunkCount drives an O(chunkCount) sweep on EVERY subsequent ingest and
+    // sizes the reassembly slot array; totalBytes sizes the blob allocation.
+    // These pins hold the defensive bounds in place and — via the consistency
+    // pin — stop a future window/bucket change from silently making legitimate
+    // media rejectable.
+
+    /// A copy of a manifest with doctored geometry (id/mime/hash preserved).
+    private func doctored(_ m: MediaManifest,
+                          chunkCount: Int? = nil,
+                          totalBytes: Int? = nil) -> MediaManifest {
+        MediaManifest(mediaID: m.mediaID,
+                      mime: m.mime,
+                      totalBytes: totalBytes ?? m.totalBytes,
+                      chunkCount: chunkCount ?? m.chunkCount,
+                      sha256: m.sha256)
+    }
+
+    func testManifestBoundsTruthTable() {
+        let ok = MediaManifest(mediaID: "00ff", mime: .jpeg,
+                               totalBytes: 1_000, chunkCount: 2, sha256: "irrelevant")
+        XCTAssertTrue(MediaChunker.manifestWithinBounds(ok))
+
+        // chunkCount: zero rejected, 1 and the max accepted (boundary inclusive),
+        // max+1 rejected.
+        XCTAssertFalse(MediaChunker.manifestWithinBounds(doctored(ok, chunkCount: 0)))
+        XCTAssertTrue(MediaChunker.manifestWithinBounds(doctored(ok, chunkCount: 1)))
+        XCTAssertTrue(MediaChunker.manifestWithinBounds(
+            doctored(ok, chunkCount: MediaChunker.maxChunkCount,
+                     totalBytes: MediaChunker.maxTotalBytes)))
+        XCTAssertFalse(MediaChunker.manifestWithinBounds(
+            doctored(ok, chunkCount: MediaChunker.maxChunkCount + 1,
+                     totalBytes: MediaChunker.maxTotalBytes)))
+
+        // totalBytes: zero rejected, the max accepted (boundary inclusive),
+        // max+1 rejected.
+        XCTAssertFalse(MediaChunker.manifestWithinBounds(
+            doctored(ok, chunkCount: 1, totalBytes: 0)))
+        XCTAssertTrue(MediaChunker.manifestWithinBounds(
+            doctored(ok, chunkCount: 1, totalBytes: MediaChunker.maxTotalBytes)))
+        XCTAssertFalse(MediaChunker.manifestWithinBounds(
+            doctored(ok, chunkCount: 1, totalBytes: MediaChunker.maxTotalBytes + 1)))
+
+        // Consistency: more chunks than bytes is impossible (every chunk
+        // carries at least one media byte).
+        XCTAssertFalse(MediaChunker.manifestWithinBounds(
+            doctored(ok, chunkCount: 10, totalBytes: 5)))
+    }
+
+    func testReassembleRejectsOutOfBoundsManifest() throws {
+        let chunker = try MediaChunker(targetBucket: 4096)
+        let (manifest, chunks) = try chunker.split(blob(20_000), mime: .jpeg, mediaID: fixedID)
+        let evil = doctored(manifest,
+                            chunkCount: MediaChunker.maxChunkCount + 1,
+                            totalBytes: MediaChunker.maxTotalBytes + 1)
+        XCTAssertThrowsError(try chunker.reassemble(chunks, manifest: evil)) { error in
+            XCTAssertEqual(error as? MediaChunkerError,
+                           .manifestOutOfBounds(chunkCount: MediaChunker.maxChunkCount + 1,
+                                                totalBytes: MediaChunker.maxTotalBytes + 1))
+        }
+    }
+
+    func testMissingIndicesGuardsOutOfBoundsManifest() throws {
+        // Without the guard, an Int.max chunkCount would materialize the range
+        // 0..<Int.max — this test hanging IS the failure signature.
+        let chunker = try MediaChunker(targetBucket: 4096)
+        let (manifest, chunks) = try chunker.split(blob(20_000), mime: .jpeg, mediaID: fixedID)
+        let evil = doctored(manifest, chunkCount: Int.max, totalBytes: Int.max)
+        XCTAssertEqual(chunker.missingIndices(have: chunks, manifest: evil), [],
+                       "out-of-bounds manifest must not materialize an attacker-sized range")
+    }
+
+    func testReassemblerIgnoresOutOfBoundsManifest() throws {
+        let chunker = try MediaChunker(targetBucket: 4096)
+        var reassembler = MediaReassembler(chunker: chunker)
+        let original = blob(20_000)
+        let (manifest, chunks) = try chunker.split(original, mime: .jpeg, mediaID: fixedID)
+
+        // The oversized manifest is ignored like an unparseable chunk: nil
+        // result AND stored nowhere.
+        let evil = doctored(manifest, chunkCount: MediaChunker.maxChunkCount + 1)
+        XCTAssertNil(reassembler.ingest(manifest: evil))
+        XCTAssertFalse(reassembler.isInFlight(mediaID: evil.mediaID),
+                       "a rejected manifest must be stored NOWHERE")
+
+        // The legitimate transfer — SAME mediaID — still completes end-to-end,
+        // proving the rejection left no residue behind.
+        for chunk in chunks {
+            XCTAssertNil(reassembler.ingest(chunk: chunk))   // buffered, awaiting manifest
+        }
+        let done = reassembler.ingest(manifest: manifest)
+        XCTAssertEqual(done?.data, original)
+    }
+
+    func testBoundsAdmitLargestLegitimateTransfer() throws {
+        // Mutual-consistency pin: a maxTotalBytes blob chunked at every
+        // media-realistic bucket (with the coordinator's 1 reserved tag byte)
+        // must need <= maxChunkCount chunks, and such a manifest must pass the
+        // gate — so a future bound/bucket change can't strand legitimate media.
+        for bucket in [1024, 4096, 16384] {
+            let chunker = try MediaChunker(targetBucket: bucket, reservedBytes: 1)
+            let count = Int((Double(MediaChunker.maxTotalBytes)
+                             / Double(chunker.payloadPerChunk)).rounded(.up))
+            XCTAssertLessThanOrEqual(
+                count, MediaChunker.maxChunkCount,
+                "a \(MediaChunker.maxTotalBytes)B transfer at bucket \(bucket) needs \(count) chunks — exceeds maxChunkCount")
+            let manifest = MediaManifest(mediaID: "00", mime: .jpeg,
+                                         totalBytes: MediaChunker.maxTotalBytes,
+                                         chunkCount: count, sha256: "x")
+            XCTAssertTrue(MediaChunker.manifestWithinBounds(manifest))
+        }
+    }
 }

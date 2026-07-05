@@ -663,6 +663,13 @@ private struct ReadyView: View {
                 // render-time wipes only cover rows that get drawn, so a
                 // never-opened conversation is this pass's whole point.
                 built.reapExpiredMedia()
+                // Boot reconcile (P4): rows a relaunch stranded non-terminal
+                // (the router's outbox/timers are in-memory) become
+                // .notDelivered so the flush below — and the user's resend
+                // affordance — can see them. Persisted .cast rows are left
+                // alone (relay-committed; "will surface" stays true).
+                // Classify-only: transports may still be starting, no sends.
+                built.reconcileBootOrphans()
                 // Initial auto-retry: any peers already reachable at launch get
                 // their stuck `.notDelivered` messages re-sent now. No-op if the
                 // set is empty (presence not resolved yet — the stream trigger

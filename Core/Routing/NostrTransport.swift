@@ -100,6 +100,33 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// Called with a value-type snapshot, DISPATCHED OFF `queue` onto a utility
     /// queue so the sealed file write never blocks the inbound receive loop.
     private let persistLedger: (@Sendable (ProcessedEventLedger) -> Void)?
+
+    /// ACCEPTANCE LEDGER (observability ONLY — behavior unchanged). `publish`
+    /// resumes once the frame is handed to >= 1 live socket, but a relay's real
+    /// verdict is its later async `OK <eventID> <accepted>` — a rate-limit
+    /// rejection (`accepted=false`) or a half-open socket that never answers is
+    /// today invisible except as one uncorrelated log line. This registry keys
+    /// each published event's id to its envelope and counts the per-relay
+    /// verdicts, then logs ONE summary — loudly (`error`) when NO relay accepted,
+    /// which is exactly the silent-strand signature the stranded-run log hunt
+    /// needs (P0/P1). It does NOT gate `publish`, `.cast`, or the re-drive cap —
+    /// that (the acceptance-blocking half) is deliberately deferred pending that
+    /// log. Queue-confined like all mutable state here; entries self-expire at
+    /// `acceptanceSummaryDeadline`, so the map is bounded by publish rate.
+    private var pendingAcceptance: [String: PendingAcceptance] = [:]
+
+    private struct PendingAcceptance {
+        let envelopeID: MessageID
+        let relayCount: Int          // live relays the frame was handed to
+        var accepted = 0
+        var rejected = 0
+    }
+
+    /// How long after a publish we wait for relay OKs before summarizing. OKs
+    /// normally land well under a second; anything still silent by now is
+    /// counted as such in the summary. Long enough to never truncate a slow
+    /// relay's honest verdict, short enough to bound the registry.
+    private static let acceptanceSummaryDeadline: Double = 10
     /// Debounce bookkeeping (queue-confined). `dirty` = new ids since last save;
     /// `saveScheduled` = a coalescing save is already pending.
     private var ledgerDirty = false
@@ -191,6 +218,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                 conn.session = nil
             }
             self.conns.removeAll()
+            self.pendingAcceptance.removeAll()   // summaries are meaningless across a stop
             // Flush any pending ledger changes so a clean stop doesn't drop up to
             // the debounce window of processed ids.
             if self.ledgerDirty, let persist = self.persistLedger {
@@ -263,6 +291,10 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                     }
                 }
                 self.log.info("nostr: published gift wrap id=\(envID) → \(live.count) relay(s)")
+                // Acceptance ledger: watch this event's OKs and summarize once
+                // (observability only — the resume below is unchanged).
+                self.recordPublishLocked(eventID: event.id, envelopeID: envID,
+                                         relayCount: live.count)
                 cont.resume()
             }
         }
@@ -341,6 +373,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             log.info("nostr: EOSE \(sub, privacy: .public) @ \(host, privacy: .public)")
         case .ok(let id, let accepted, let msg):
             log.info("nostr: OK \(id, privacy: .public) accepted=\(accepted) \(msg, privacy: .public) @ \(host, privacy: .public)")
+            noteAcceptanceLocked(eventID: id, accepted: accepted)
         case .notice(let msg):
             log.info("nostr: NOTICE \(msg, privacy: .public) @ \(host, privacy: .public)")
         case .closed(let sub, let msg):
@@ -375,6 +408,49 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             log.info("nostr: unwrapped inbound envelope id=\(envelope.id) @ \(host, privacy: .public) → incoming")
         } catch {
             log.error("nostr: unwrap failed @ \(host, privacy: .public): \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Acceptance ledger (queue-confined; observability only)
+
+    /// Register a just-published event for OK-tracking and schedule its one-time
+    /// summary. The deadline closure runs on `queue` (same confinement as every
+    /// mutation here); a finalize triggered earlier by all relays answering
+    /// removes the entry, making the deadline pass a silent no-op.
+    private func recordPublishLocked(eventID: String, envelopeID: MessageID, relayCount: Int) {
+        pendingAcceptance[eventID] = PendingAcceptance(envelopeID: envelopeID,
+                                                       relayCount: relayCount)
+        queue.asyncAfter(deadline: .now() + Self.acceptanceSummaryDeadline) { [weak self] in
+            self?.finalizeAcceptanceLocked(eventID: eventID, trigger: "deadline")
+        }
+    }
+
+    /// Fold one relay's OK verdict into the pending entry. An id we aren't
+    /// tracking (already summarized, or not our publish) is ignored. Once every
+    /// live relay has answered, summarize early rather than waiting out the
+    /// deadline.
+    private func noteAcceptanceLocked(eventID: String, accepted: Bool) {
+        guard var pending = pendingAcceptance[eventID] else { return }
+        if accepted { pending.accepted += 1 } else { pending.rejected += 1 }
+        pendingAcceptance[eventID] = pending
+        if pending.accepted + pending.rejected >= pending.relayCount {
+            finalizeAcceptanceLocked(eventID: eventID, trigger: "all answered")
+        }
+    }
+
+    /// Emit the one-time acceptance summary and drop the entry. ZERO accepts is
+    /// the silent-strand signature (a wrap `publish` reported as handed off that
+    /// no relay actually took) — logged at `error` so it stands out in the
+    /// stranded-run log this exists to feed. Idempotent: the entry is removed
+    /// first, so the deadline and the all-answered path can't both fire.
+    private func finalizeAcceptanceLocked(eventID: String, trigger: String) {
+        guard let pending = pendingAcceptance.removeValue(forKey: eventID) else { return }
+        let silent = max(0, pending.relayCount - pending.accepted - pending.rejected)
+        let idPrefix = String(eventID.prefix(12))
+        if pending.accepted == 0 {
+            log.error("nostr: NO relay accepted event \(idPrefix, privacy: .public) (envelope \(pending.envelopeID)) — rejected=\(pending.rejected) silent=\(silent) of \(pending.relayCount) [\(trigger, privacy: .public)]")
+        } else {
+            log.info("nostr: acceptance \(idPrefix, privacy: .public) (envelope \(pending.envelopeID)) — accepted=\(pending.accepted) rejected=\(pending.rejected) silent=\(silent) of \(pending.relayCount) [\(trigger, privacy: .public)]")
         }
     }
 

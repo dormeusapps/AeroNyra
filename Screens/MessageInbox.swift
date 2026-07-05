@@ -548,6 +548,52 @@ final class MessageInbox {
         }
     }
 
+    // MARK: - Boot reconcile (Phase 2 / P4)
+
+    /// Reclassify outbound rows a relaunch stranded NON-TERMINAL. The router's
+    /// outbox and timers are in-memory, so after a restart nothing can ever
+    /// resolve a row left at `.sent` / `.waitingForRange` / `.findingPath` —
+    /// `flushUndelivered` fetches only `.notDelivered`, and the ack that might
+    /// have settled it can no longer match (the outbox entry is gone). Stamp
+    /// them `.notDelivered`, the one state the recovery machinery (and the
+    /// user's resend affordance) can see. Honest-but-pessimistic is safe here:
+    /// the B2 reuseID dedup means a later resend lands ZERO duplicates even if
+    /// the orphan was actually delivered before the relaunch.
+    ///
+    /// `.cast` rows are deliberately LEFT ALONE: `.cast` is only ever stamped
+    /// from `router.state(of:)` after a real relay commit, so a persisted
+    /// `.cast` is a wrap waiting at a relay — "will surface" stays true across
+    /// a relaunch, and demoting it would recreate the P0 false-failure.
+    ///
+    /// CLASSIFY-ONLY, NO SENDS: this runs from ReadyView's boot task,
+    /// concurrent with transport startup — a send here could race
+    /// `mesh.start()` and throw `TransportError.notStarted`. Rows are written
+    /// directly (not via a `DeliveryUpdate` through `apply`), so nothing
+    /// downstream can trigger off the transition. Synchronous on the main
+    /// actor, so the flush that follows in the same task sees the fresh states.
+    func reconcileBootOrphans() {
+        // The full set of non-terminal raws EXCEPT "cast" (see above). A future
+        // non-terminal state must be enumerated here too — noted at the
+        // `deliveryState` bridge in PersistentModels.
+        let sent = "sent"
+        let waiting = "waitingForRange"
+        let finding = "findingPath"
+        let descriptor = FetchDescriptor<Message>(
+            predicate: #Predicate {
+                $0.isOutbound == true &&
+                ($0.deliveryStateRaw == sent
+                 || $0.deliveryStateRaw == waiting
+                 || $0.deliveryStateRaw == finding)
+            }
+        )
+        guard let orphans = try? modelContext.fetch(descriptor), !orphans.isEmpty else { return }
+        for message in orphans {
+            message.deliveryState = .notDelivered
+        }
+        save()
+        print("inbox: boot reconcile — \(orphans.count) orphaned outbound row(s) → .notDelivered")
+    }
+
     // MARK: - Reconnect grace (STEP 0b / A)
 
     /// A peer completed the closed-contact reconnect handshake. Open (or extend) a

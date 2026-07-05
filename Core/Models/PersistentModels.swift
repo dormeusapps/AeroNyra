@@ -284,6 +284,12 @@ public final class Message {
     
     /// Bridge to the canonical six-state enum. The associated `hops` of
     /// `.relayed` lives in `relayHops`; all other states leave it 0.
+    ///
+    /// NOTE: `MessageInbox.reconcileBootOrphans()` enumerates the NON-TERMINAL
+    /// raw strings ("sent" / "waitingForRange" / "findingPath") in a store-side
+    /// `#Predicate` — a new non-terminal state added to this bridge must be
+    /// added to that predicate too, or its orphans become invisible after a
+    /// relaunch ("cast" is excluded there deliberately; see that method).
     public var deliveryState: MessageDeliveryState {
         get {
             switch deliveryStateRaw {

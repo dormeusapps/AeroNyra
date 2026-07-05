@@ -100,4 +100,83 @@ final class ReconnectTimeoutExtensionTests: XCTestCase {
         XCTAssertEqual(state, .sent,
                        "extend must cancel the original short timer; the message must not time out")
     }
+
+    // MARK: - .cast is never timed (P0 pin)
+    //
+    // A relay-committed (`.cast`) message has NO bounded ack deadline — the wrap
+    // waits at the relay until the peer next connects. `commitToRelay` cancels
+    // any timer on purpose; before the guard, the reconnect-grace path's
+    // `extendTimeout` silently re-armed one, and ~10s after walking back into
+    // BLE range the timer fired and flipped "cast · will surface" to a false
+    // "tap to resend". These pins hold the invariant "no timer is ever armed
+    // for a cast commit" at both arm sites, prove we did NOT over-guard (a
+    // `.sent` entry still times out), and prove the ack path was untouched.
+
+    func testExtendDoesNotArmTimerOnCastEntry() async throws {
+        let router = makeRouter()
+        let id = MessageID.random()
+        await router.beginTracking(of: id)
+        await router.commitToRelay(id)                          // → .cast, timer cancelled
+        await router.extendTimeout(for: id, by: .milliseconds(200))
+
+        try await Task.sleep(for: .milliseconds(600))   // the .sent control fires by here
+
+        let state = await router.state(of: id)
+        XCTAssertEqual(state, .cast,
+                       "extendTimeout must be a no-op on .cast — no timer may ever demote a relay commit")
+    }
+
+    func testStartDeliveryTimeoutIsNoOpOnCastEntry() async throws {
+        let router = makeRouter()
+        let id = MessageID.random()
+        await router.beginTracking(of: id)
+        await router.commitToRelay(id)                          // → .cast
+        await router.startDeliveryTimeout(for: id, after: .milliseconds(200))
+
+        try await Task.sleep(for: .milliseconds(600))
+
+        let state = await router.state(of: id)
+        XCTAssertEqual(state, .cast,
+                       "startDeliveryTimeout must be a no-op on .cast")
+    }
+
+    /// Negative control (no over-guarding): a `.sent` entry given a SHORT
+    /// extension still times out — the guard removed `.cast` from timing, not
+    /// timers from `.sent`.
+    func testExtendStillArmsTimerForSentEntry() async throws {
+        let router = makeRouter()
+        let id = MessageID.random()
+        await router.beginTracking(of: id)                      // .sent
+        await router.extendTimeout(for: id, by: .milliseconds(200))
+
+        try await Task.sleep(for: .milliseconds(600))
+
+        let state = await router.state(of: id)
+        XCTAssertEqual(state, .notDelivered,
+                       "a .sent entry's extended timer must still fire — the guard is .cast-only")
+    }
+
+    /// The ack path is untouched: a real delivery ack still surfaces `.cast`.
+    func testAckStillSurfacesCastEntry() async {
+        let router = makeRouter()
+        let id = MessageID.random()
+        await router.beginTracking(of: id)
+        await router.commitToRelay(id)
+        await router.confirmDelivery(of: id, hops: 0)
+        let state = await router.state(of: id)
+        XCTAssertEqual(state, .delivered,
+                       "a real ack must still surface a .cast row to .delivered")
+    }
+
+    /// And a real failure ack can still fail it — only TIMERS are ruled out.
+    func testFailureAckStillFailsCastEntry() async {
+        let router = makeRouter()
+        let id = MessageID.random()
+        await router.beginTracking(of: id)
+        await router.commitToRelay(id)
+        await router.confirmFailure(of: id)
+        let state = await router.state(of: id)
+        XCTAssertEqual(state, .notDelivered,
+                       "confirmFailure must still be able to demote a .cast row")
+    }
 }
