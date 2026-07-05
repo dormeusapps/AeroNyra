@@ -717,7 +717,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         guard let router else { throw TransportError.notStarted }
         let state = await router.send(envelope, tracked: tracked,
                                       peerKey: peerKey, nostrRecipient: nostrRecipient)
-        guard state == .sent else { throw TransportError.sendFailed }
+        // Both .sent (BLE radio handoff) and .cast (committed to a Nostr relay)
+        // are successful commits to a transport. Only .waitingForRange /
+        // .notDelivered mean nothing got out — those throw so the caller's
+        // optimistic row is marked .notDelivered.
+        guard state == .sent || state == .cast else { throw TransportError.sendFailed }
     }
     
     /// Seal `text` to an already-established peer (looked up by its RAW 32-byte
@@ -864,7 +868,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             let sealed = try session.seal(payload.sealedPlaintext())
             let state = await router?.publishOverNostr(Envelope(ciphertext: sealed),
                                                        to: recipient)
-            guard state == .sent else { throw TransportError.sendFailed }
+            // .cast = the wrap was handed to >= 1 live relay (a chunk success),
+            // same success meaning as .sent here; only .waitingForRange/nil means
+            // no relay took it.
+            guard state == .sent || state == .cast else { throw TransportError.sendFailed }
             try? await Task.sleep(for: .milliseconds(Self.nostrMediaPacingMillis))
         }
         
@@ -894,10 +901,18 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             throw error
         }
         
-        // Whole burst is on the radio (BLE) or handed to the relays (Nostr) — now
-        // start the (longer) media timeout.
-        await router?.startDeliveryTimeout(for: mediaWireID,
-                                           after: MessageRouter.mediaDeliveryTimeout)
+        // Whole burst is on the radio (BLE) or handed to the relays (Nostr).
+        // BLE: arm the (longer) media stuck-send timeout, since a BLE ack should
+        // return promptly. Nostr: the peer is out of range and may be offline for
+        // hours — there is no bounded ack window, so DON'T arm a timer (it would
+        // falsely demote to .notDelivered). Commit the transfer .cast instead; a
+        // real ack later surfaces it to .delivered.
+        if goingOverBLE {
+            await router?.startDeliveryTimeout(for: mediaWireID,
+                                               after: MessageRouter.mediaDeliveryTimeout)
+        } else {
+            await router?.commitToRelay(mediaWireID)
+        }
         let via = goingOverBLE ? "BLE" : (redrive ? "Nostr (re-drive)" : "Nostr")
         print("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks over \(via) → \(peer.userIDHex.prefix(16))…")
         return mediaWireID

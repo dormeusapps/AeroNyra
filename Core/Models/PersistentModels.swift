@@ -279,6 +279,7 @@ public final class Message {
             switch deliveryStateRaw {
             case "waitingForRange": return .waitingForRange
             case "sent":            return .sent
+            case "cast":            return .cast
             case "findingPath":     return .findingPath
             case "delivered":       return .delivered
             case "relayed":         return .relayed(hops: relayHops)
@@ -290,6 +291,7 @@ public final class Message {
             switch newValue {
             case .waitingForRange: deliveryStateRaw = "waitingForRange"; relayHops = 0
             case .sent:            deliveryStateRaw = "sent";            relayHops = 0
+            case .cast:            deliveryStateRaw = "cast";            relayHops = 0
             case .findingPath:     deliveryStateRaw = "findingPath";     relayHops = 0
             case .delivered:       deliveryStateRaw = "delivered";       relayHops = 0
             case .relayed(let h):  deliveryStateRaw = "relayed";         relayHops = h

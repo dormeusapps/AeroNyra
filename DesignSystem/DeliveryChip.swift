@@ -48,6 +48,11 @@ struct DeliveryChip: View {
                 .font(.system(size: Self.iconSize, weight: .medium))
                 .foregroundStyle(Color.statusNeutral)
 
+        case .cast:
+            Image(systemName: "arrow.up.forward")
+                .font(.system(size: Self.iconSize, weight: .medium))
+                .foregroundStyle(Color.statusNeutral)
+
         case .findingPath:
             PulsingChipDot()
 
@@ -83,6 +88,8 @@ struct DeliveryChip: View {
             return "queued"
         case .sent:
             return "handed to radio"
+        case .cast:
+            return "in the current"
         case .findingPath:
             return "in transit"
         case .delivered:
@@ -98,7 +105,7 @@ struct DeliveryChip: View {
         switch state {
         case .waitingForRange, .relayed:
             return .statusRelay
-        case .sent, .findingPath, .delivered:
+        case .sent, .cast, .findingPath, .delivered:
             return .textTertiary
         case .notDelivered:
             return .statusError
@@ -113,6 +120,8 @@ struct DeliveryChip: View {
             return "Queued, waiting for range"
         case .sent:
             return "Sent, handed to radio"
+        case .cast:
+            return "Cast over relay, will surface when they reconnect"
         case .findingPath:
             return "In transit, finding a path"
         case .delivered:

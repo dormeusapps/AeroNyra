@@ -241,6 +241,13 @@ final class MessageInbox {
             let wireID = try await coordinator.send(trimmed, toRawKey: rawKey,
                                                     nostrRecipient: nostrRecipient)
             message.wireIDData = Data(wireID.bytes)
+            // Read back the transport the router committed this id to, race-free:
+            // .sent (BLE radio handoff) or .cast (handed to a Nostr relay — no ack
+            // deadline, "in the current, will surface"). Falls back to the current
+            // optimistic .sent if the outbox entry has already resolved/cleared.
+            if let committed = await router.state(of: wireID) {
+                message.deliveryState = committed
+            }
             save()
         } catch {
             message.deliveryState = .notDelivered
@@ -283,6 +290,11 @@ final class MessageInbox {
             let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
                                                          nostrRecipient: nostrRecipient)
             message.wireIDData = Data(wireID.bytes)
+            // .sent over BLE (90s timer armed), or .cast over Nostr (no timer —
+            // the transfer will surface when the peer reconnects).
+            if let committed = await router.state(of: wireID) {
+                message.deliveryState = committed
+            }
             save()
         } catch {
             message.deliveryState = .notDelivered
@@ -354,6 +366,12 @@ final class MessageInbox {
                                                     reuseID: reuse)
             }
             message.wireIDData = Data(wireID.bytes)
+            // Reflect the transport actually used: a resend while the peer is out
+            // of BLE range commits over Nostr → .cast ("will surface"), NOT the
+            // false "tap to resend" loop. In BLE range → .sent as before.
+            if let committed = await router.state(of: wireID) {
+                message.deliveryState = committed
+            }
             message.conversation?.lastActivity = .now
             save()
             print("inbox: resend OK → \(wireID)")
@@ -449,10 +467,15 @@ final class MessageInbox {
                                                              nostrRecipient: nostrRecipient,
                                                              reuseID: reuse, redrive: true)
                 // Same mediaID (reuse), so the row's wireID is unchanged; re-stamp
-                // it anyway for parity with the other send paths. Row stays `.sent`
-                // (re-driven, awaiting its ack over Nostr) — the ack path flips it
-                // terminal, after which a repeat departure won't re-drive it.
+                // it anyway for parity with the other send paths. A re-drive always
+                // commits over Nostr, so the router reports `.cast` — reflect that
+                // ("in the current, will surface"), not the optimistic `.sent`. The
+                // ack path flips it terminal, after which a repeat departure won't
+                // re-drive it.
                 message.wireIDData = Data(wireID.bytes)
+                if let committed = await router.state(of: wireID) {
+                    message.deliveryState = committed
+                }
                 message.conversation?.lastActivity = .now
                 save()
                 print("inbox: media re-driven over Nostr → \(wireID)")

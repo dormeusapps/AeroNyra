@@ -519,6 +519,7 @@ struct StreamView: View {
         case .delivered:         return "\(time(m)) · surfaced"
         case .relayed(let h):    return "\(time(m)) · via mesh · \(h) hop\(h == 1 ? "" : "s")"
         case .sent:              return "\(time(m)) · sent"
+        case .cast:              return "\(time(m)) · cast · will surface"
         case .findingPath:       return "\(time(m)) · finding a path…"
         case .notDelivered:      return "\(time(m)) · on the water"
         case .waitingForRange:   return "\(time(m)) · on the water"
@@ -550,6 +551,11 @@ struct StreamView: View {
             myLine(m, ripple: true,  meta: "\(time(m)) · via mesh · \(hops) hop\(hops == 1 ? "" : "s")")
         case .sent:
             myLine(m, ripple: false, meta: "\(time(m)) · sent")
+        case .cast:
+            // Committed to a relay for an out-of-range peer. It went — it just
+            // hasn't been picked up yet. NOT a WaitingLine: no "tap to resend",
+            // because there is nothing to resend; it will surface when they arrive.
+            myLine(m, ripple: false, meta: "\(time(m)) · cast · will surface")
         case .findingPath:
             myLine(m, ripple: false, meta: "\(time(m)) · finding a path…")
         case .waitingForRange:

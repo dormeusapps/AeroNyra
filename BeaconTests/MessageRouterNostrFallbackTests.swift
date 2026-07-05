@@ -25,7 +25,7 @@ final class MessageRouterNostrFallbackTests: XCTestCase {
 
         let state = await router.send(anyEnvelope(), tracked: false, nostrRecipient: recipient)
 
-        XCTAssertEqual(state, .sent)                 // handed to the relay
+        XCTAssertEqual(state, .cast)                 // handed to the relay
         XCTAssertEqual(nostr.publishedTo, [recipient])
     }
 

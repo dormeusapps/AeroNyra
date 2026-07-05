@@ -55,7 +55,7 @@ private func dynOverlay(darkWhite: CGFloat, lightBlack: CGFloat) -> Color {
 // MARK: - Tokens (§1)
 
 extension Color {
-
+    
     // SURFACES
     static let bgApp        = dyn(dark: 0x0F1413, light: 0xF4F7F6)
     static let bgSurface    = dyn(dark: 0x131817, light: 0xFFFFFF)
@@ -63,23 +63,26 @@ extension Color {
     static let composerBg   = dyn(dark: 0x1A201E, light: 0xFFFFFF)
     static let hairline     = dynOverlay(darkWhite: 0.06, lightBlack: 0.08)
     static let ring         = dynOverlay(darkWhite: 0.04, lightBlack: 0.05)
-
+    
     // BUBBLES
     static let bubbleInBg     = dyn(dark: 0x1E2422, light: 0xECF1EF)
     static let bubbleInText   = dyn(dark: 0xE4EAE8, light: 0x1C2421)
-    static let bubbleOutBg    = dyn(dark: 0x2A322F, light: 0xDCEFE7)
-    static let bubbleOutText  = dyn(dark: 0xEAF0EE, light: 0x123A2E)
-
+    // Sent bubbles are BRIGHT green with white text (the modern, "rich" look
+    // from the Design-4 conversation mockup) — not the old near-monochrome
+    // treatment. This is the deliberate departure toward the zip.
+    static let bubbleOutBg    = dyn(dark: 0x35C878, light: 0x2FBE6F)
+    static let bubbleOutText  = dyn(dark: 0xFFFFFF, light: 0xFFFFFF)
+    
     // TEXT
     static let textPrimary       = dyn(dark: 0xF2F5F4, light: 0x1C2421)
     static let textSecondary     = dyn(dark: 0x9AA5A0, light: 0x5D6B66)
     static let textTertiary      = dyn(dark: 0x6E7975, light: 0x8A938F)
     static let composerPlaceholder = dyn(dark: 0x5E6967, light: 0x8A938F)
-
+    
     // BRAND
     static let brand        = dyn(dark: 0x2D8B6F, light: 0x1F6E57)
     static let avatarText   = dyn(dark: 0xEAF5F0, light: 0xEAF5F0)
-
+    
     // STATUS — semantic. Used by delivery state, presence, signal bars.
     //
     // NOTE: per the Quiet Rule, UI keyed on delivery state should route
@@ -130,11 +133,11 @@ extension LinearGradient {
 /// bypass this and reach for raw tokens; everything else should go through
 /// here so the Quiet Rule stays enforced in one place.
 enum DeliveryColor {
-
+    
     /// The text color a delivery-state chip should render in by default.
     static func text(for state: MessageDeliveryState) -> Color {
         switch state {
-        case .delivered, .sent, .findingPath:
+        case .delivered, .sent, .cast, .findingPath:
             return .statusNeutral            // muted by default (Quiet Rule)
         case .waitingForRange, .relayed:
             return .statusRelay              // amber — mesh did/needs work

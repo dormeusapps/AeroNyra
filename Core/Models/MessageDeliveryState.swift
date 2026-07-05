@@ -31,6 +31,16 @@ public enum MessageDeliveryState: Equatable, Hashable, Codable, Sendable {
     /// Token: status/neutral. Sublabel: "handed to radio".
     case sent
 
+    /// Cast over a Nostr relay for a peer who is out of BLE range. There is NO
+    /// local ack deadline — the wrap sits at the relay until the recipient next
+    /// connects and fetches it, at which point a real ack surfaces it to
+    /// `.delivered`. Non-terminal. Distinct from `.sent` (a BLE radio handoff,
+    /// which DOES carry a short stuck-send deadline). A `.cast` row is demoted to
+    /// `.notDelivered` ONLY by a genuine failure ack (`confirmFailure`), never by
+    /// a timer — no timer is ever armed for a cast commit. Token: status/neutral.
+    /// Sublabel: "in the current".
+    case cast
+
     /// Confirmed received by the recipient.
     /// Token: status/healthy — but rendered muted by default (the Quiet rule).
     /// Sublabel: "confirmed".
@@ -67,7 +77,7 @@ public extension MessageDeliveryState {
         switch self {
         case .waitingForRange, .relayed, .notDelivered:
             return true
-        case .sent, .delivered, .findingPath:
+        case .sent, .cast, .delivered, .findingPath:
             return false
         }
     }
@@ -83,7 +93,7 @@ public extension MessageDeliveryState {
         switch self {
         case .delivered, .relayed, .notDelivered:
             return true
-        case .waitingForRange, .sent, .findingPath:
+        case .waitingForRange, .sent, .cast, .findingPath:
             return false
         }
     }
@@ -135,6 +145,14 @@ public extension MessageDeliveryState {
                          symbolName: "checkmark",
                          sublabel: "handed to radio")
 
+        case .cast:
+            // Cast over a relay; no deadline. Quiet by design — it is neither a
+            // success to celebrate nor a failure to flag, just "on its way, will
+            // surface." Neutral token, directional glyph (sent outward, will land).
+            return .init(colorToken: .neutral,
+                         symbolName: "arrow.up.forward",
+                         sublabel: "in the current")
+
         case .delivered:
             // Token is healthy, but Quiet renders it muted by default.
             return .init(colorToken: quiet ? .neutral : .healthy,
@@ -164,6 +182,7 @@ public extension MessageDeliveryState {
         switch self {
         case .waitingForRange: return "Waiting for range"
         case .sent:            return "Sent"
+        case .cast:            return "Cast"
         case .delivered:       return "Delivered"
         case .relayed(let h):  return h == 1 ? "Relayed · 1 hop" : "Relayed · \(h) hops"
         case .findingPath:     return "Finding a path"
@@ -181,7 +200,7 @@ public extension MessageDeliveryState {
 public extension MessageDeliveryState {
 
     private enum Kind: String, Codable {
-        case waitingForRange, sent, delivered, relayed, findingPath, notDelivered
+        case waitingForRange, sent, cast, delivered, relayed, findingPath, notDelivered
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -194,6 +213,7 @@ public extension MessageDeliveryState {
         switch kind {
         case .waitingForRange: self = .waitingForRange
         case .sent:            self = .sent
+        case .cast:            self = .cast
         case .delivered:       self = .delivered
         case .relayed:
             let hops = try c.decode(Int.self, forKey: .hops)
@@ -208,6 +228,7 @@ public extension MessageDeliveryState {
         switch self {
         case .waitingForRange: try c.encode(Kind.waitingForRange, forKey: .kind)
         case .sent:            try c.encode(Kind.sent, forKey: .kind)
+        case .cast:            try c.encode(Kind.cast, forKey: .kind)
         case .delivered:       try c.encode(Kind.delivered, forKey: .kind)
         case .relayed(let h):
             try c.encode(Kind.relayed, forKey: .kind)

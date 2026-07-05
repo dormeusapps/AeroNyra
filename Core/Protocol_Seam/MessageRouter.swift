@@ -259,8 +259,9 @@ public actor MessageRouter {
     }
 
     /// TIER 2 of the 3-tier DM routing (BLE → Nostr → queue). Attempt an
-    /// addressed publish over the internet transport. Returns `.sent` if the
-    /// wrap was handed to the relay, else `.waitingForRange` so the caller's
+    /// addressed publish over the internet transport. Returns `.cast` if the
+    /// wrap was handed to the relay (a relay commit carries NO local ack
+    /// deadline — see `.cast`), else `.waitingForRange` so the caller's
     /// optimistic row queues for Tier 3 (the inbox outbox + flush-on-reachable).
     /// A no-op `.waitingForRange` when we have no recipient pubkey or no
     /// addressed transport is wired.
@@ -270,7 +271,10 @@ public actor MessageRouter {
         }
         do {
             try await addressed.publish(envelope, to: recipient)
-            return .sent
+            return .cast   // handed to >= 1 live relay; NO local ack deadline — the
+                           // wrap waits at the relay until the peer next connects.
+                           // Distinct from .sent (a BLE radio handoff that DOES arm
+                           // a short stuck-send timer); .cast is never armed.
         } catch {
             return .waitingForRange
         }
@@ -331,10 +335,16 @@ public actor MessageRouter {
             else { continue }
 
             outbox[id]?.reroutedOverNostr = true
-            // Best-effort. Leave the row .sent regardless: on success the ack
-            // machinery resolves it; on a relay miss the stuck-send timeout still
-            // backstops. We deliberately do NOT flip to .notDelivered here.
-            _ = await publishViaNostr(envelope, to: recipient)
+            // Committed to the relay: mark .cast and CANCEL the BLE stuck-send
+            // timer this id was armed with at its original send. Without the
+            // cancel, that 45s timer keeps counting from the ORIGINAL send time
+            // and later fires .notDelivered on a message now sitting at a relay
+            // awaiting an offline peer (the bug). On a relay MISS
+            // (.waitingForRange) we leave .sent + the existing timer as the
+            // last-resort backstop — nothing got out, so eventual failure is
+            // honest. We never flip to .notDelivered here directly.
+            let outcome = await publishViaNostr(envelope, to: recipient)
+            if outcome == .cast { commitToRelay(id) }
             rerouted += 1
         }
         return rerouted
@@ -410,6 +420,20 @@ public actor MessageRouter {
     public func confirmFailure(of id: MessageID) {
         guard outbox[id] != nil else { return }
         update(id, .notDelivered)
+    }
+
+    /// Commit a tracked message to the relay (Nostr) leg: mark it `.cast` and
+    /// CANCEL any stuck-send timer armed for it. Used when a send is committed
+    /// over the internet fallback rather than the BLE radio — a relay wrap has no
+    /// bounded ack deadline (the peer may be offline for hours), so leaving a BLE
+    /// 45s/90s timer running would falsely demote it to `.notDelivered`. `.cast`
+    /// is non-terminal, so `update` does NOT auto-cancel — we cancel explicitly.
+    /// A later real ack still surfaces it to `.delivered`; a real failure ack
+    /// (`confirmFailure`) still fails it. Only a TIMER is ruled out.
+    public func commitToRelay(_ id: MessageID) {
+        guard outbox[id] != nil else { return }
+        update(id, .cast)
+        cancelTimeout(for: id)
     }
 
     /// Current tracked state of an outbound message, if any.
