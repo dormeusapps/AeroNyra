@@ -43,9 +43,14 @@ struct HomeView: View {
     @Environment(MeshPresence.self) private var presence
     /// STEP 7f — read verified state so unverified contacts never read as "near".
     @Environment(PairingService.self) private var pairing: PairingService?
+    /// Deletes flow through here (Clear History on a peer row).
+    @Environment(\.modelContext) private var modelContext
 
     /// Presents the pairing sheet from "let someone in".
     @State private var showPairing = false
+
+    /// Remove Contact: the peer awaiting the confirm dialog (nil = none).
+    @State private var peerPendingRemoval: Peer?
 
     /// Your local display name (Settings) — greets you on the surface line.
     @AppStorage("aeronyra.displayName") private var myName = ""
@@ -151,6 +156,20 @@ struct HomeView: View {
         .sheet(isPresented: $showPairing) {
             PairingView()
         }
+        .confirmationDialog(
+            "Remove \(peerPendingRemoval.map { displayName(for: $0) } ?? "contact")?",
+            isPresented: Binding(
+                get: { peerPendingRemoval != nil },
+                set: { if !$0 { peerPendingRemoval = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: peerPendingRemoval
+        ) { peer in
+            Button("Remove", role: .destructive) { removeContact(peer) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("You'll need to pair again in person to reconnect.")
+        }
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -225,7 +244,21 @@ struct HomeView: View {
                 NavigationLink {
                     StreamView(peer: peer)
                 } label: {
+                    // The menu rides the INNER cell — on the NavigationLink
+                    // itself the link swallows the long-press and no menu shows.
                     peerRow(peer, presence: z.presence)
+                        .contextMenu {
+                            // "Clear History" — the contact (and its verification
+                            // state) survives; only the conversation goes.
+                            Button("Clear History", role: .destructive) {
+                                clearHistory(for: peer)
+                            }
+                            // "Remove Contact" — peer + conversation + crypto
+                            // trust all go, behind a confirm dialog.
+                            Button("Remove Contact", role: .destructive) {
+                                peerPendingRemoval = peer
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
             }
@@ -273,6 +306,41 @@ struct HomeView: View {
         guard let convo = peer.conversations.first(where: { $0.kind == .direct })
         else { return 0 }
         return convo.messages.reduce(0) { $0 + ((!$1.isOutbound && !$1.isRead) ? 1 : 0) }
+    }
+
+    /// Clear History: deletes the peer's direct conversation — the .cascade
+    /// rule removes its Messages, the .nullify rule detaches (not deletes) the
+    /// Peer, so the row stays and the contact remains messageable: StreamView
+    /// resolves its conversation lazily and `currentConversation()` recreates
+    /// one on the next send.
+    /// KNOWN LIMITATION (accepted): the deleted rows' `wireIDData` were the
+    /// inbound dedup records, so late relay replays can resurface messages.
+    private func clearHistory(for peer: Peer) {
+        guard let convo = peer.conversations.first(where: { $0.kind == .direct })
+        else { return }
+        modelContext.delete(convo)
+        try? modelContext.save()
+    }
+
+    /// Remove Contact: full removal — crypto trust FIRST, rows second.
+    /// `pairing.revoke` persists the allowlist removal and drops the identity
+    /// from the live reconnect + verified gates (EnrollmentService.revoke →
+    /// coordinator.removeReconnectContact/removeVerifiedContact). If that
+    /// persist throws, STOP with the rows intact: better a visible row with
+    /// trust intact than a vanished row with a live pairing left behind.
+    /// The .direct conversation is deleted explicitly (Peer→Conversation is
+    /// .nullify, so deleting the peer alone would orphan it), then the Peer;
+    /// the `peers` @Query drops the row on save.
+    private func removeContact(_ peer: Peer) {
+        let rawKey = peer.publicKeyData
+        Task {
+            do { try await pairing?.revoke(rawKey) } catch { return }
+            if let convo = peer.conversations.first(where: { $0.kind == .direct }) {
+                modelContext.delete(convo)
+            }
+            modelContext.delete(peer)
+            try? modelContext.save()
+        }
     }
 
     // ─────────────────────────────────────────────────────────────

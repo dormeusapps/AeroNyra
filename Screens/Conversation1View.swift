@@ -35,6 +35,10 @@ struct StreamView: View {
     /// STEP 7f — presents the 4-word SAS sheet from the verify-gate composer.
     @State private var showVerify = false
 
+    /// Multi-select delete: select mode + the chosen message rows.
+    @State private var isSelecting = false
+    @State private var selection = Set<PersistentIdentifier>()
+
     /// Media send (mirrors the old composer's proven pattern).
     @State private var recorder = VoiceRecorder()
     @State private var pickedItem: PhotosPickerItem?
@@ -164,7 +168,37 @@ struct StreamView: View {
                         ForEach(streamItems) { item in
                             switch item {
                             case .day(let label):     dayMark(label)
-                            case .message(let m):     messageView(m)
+                            case .message(let m):
+                                if isSelecting {
+                                    // Selection wins over every bubble gesture
+                                    // (media open, voice play/seek, tap-to-resend):
+                                    // hit testing is off, the whole row is the toggle.
+                                    messageView(m)
+                                        .allowsHitTesting(false)
+                                        .overlay {
+                                            if selection.contains(m.persistentModelID) {
+                                                RoundedRectangle(cornerRadius: 10)
+                                                    .strokeBorder(Stillwater.Palette.biolume.opacity(0.55),
+                                                                  lineWidth: 1)
+                                                    .padding(-7)
+                                            }
+                                        }
+                                        .contentShape(Rectangle())
+                                        .onTapGesture { toggleSelection(m) }
+                                } else {
+                                    // Delete/Select are scoped to Message-backed rows
+                                    // only — day marks are labels, not records.
+                                    messageView(m)
+                                        .contextMenu {
+                                            Button("Select") {
+                                                selection = [m.persistentModelID]
+                                                isSelecting = true
+                                            }
+                                            Button("Delete", role: .destructive) {
+                                                deleteMessage(m)
+                                            }
+                                        }
+                                }
                             }
                         }
                     }
@@ -197,7 +231,9 @@ struct StreamView: View {
     // MARK: Composer
     private var composer: some View {
         Group {
-            if !isVerified {
+            if isSelecting {
+                selectionBar
+            } else if !isVerified {
                 verifyGate
             } else if recorder.isRecording {
                 recordingBar
@@ -238,6 +274,29 @@ struct StreamView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.plain)
+    }
+
+    /// Select-mode action bar — replaces the composer while selecting.
+    private var selectionBar: some View {
+        HStack {
+            Button { exitSelectMode() } label: {
+                Text("cancel")
+                    .stillwaterMono(10, trackingEm: 0.22, color: Stillwater.Palette.mist)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Button(role: .destructive) { deleteSelected() } label: {
+                Text("delete (\(selection.count))")
+                    .stillwaterMono(10, trackingEm: 0.22, color: .red)
+                    .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+            .disabled(selection.isEmpty)
+            .opacity(selection.isEmpty ? 0.4 : 1)
+        }
     }
 
     private var normalComposer: some View {
@@ -375,16 +434,70 @@ struct StreamView: View {
 
     /// Stamp when the recipient finished listening (arms the 2-min self-destruct).
     private func stampListened(_ m: Message) {
-        guard m.listenedAt == nil else { return }
+        guard !m.isDeleted, m.listenedAt == nil else { return }
         m.listenedAt = .now
         try? modelContext.save()
     }
 
     /// Wipe an ephemeral voice note's audio bytes. The row survives as a tombstone.
+    /// The `isDeleted` guard covers the voice note's unstructured scheduleWipe
+    /// task, which can fire after the user deleted the row from the context menu.
     private func wipeMedia(_ m: Message) {
-        guard m.mediaData != nil else { return }
+        guard !m.isDeleted, m.mediaData != nil else { return }
         m.mediaData = nil
         try? modelContext.save()
+    }
+
+    /// Local delete of a single message (media bytes go with the row). The
+    /// parent conversation's `lastActivity` is recomputed from the surviving
+    /// messages so Home ordering doesn't ride a deleted timestamp; if nothing
+    /// survives it is left unchanged (Conversation carries no creation stamp).
+    /// KNOWN LIMITATION (accepted): the row's `wireIDData` is also the inbound
+    /// dedup record, so a late relay replay of this message can resurface it.
+    private func deleteMessage(_ m: Message) {
+        let convo = m.conversation
+        let deletedID = m.id
+        modelContext.delete(m)
+        if let convo,
+           let newest = convo.messages
+               .filter({ $0.id != deletedID })
+               .map(\.timestamp).max() {
+            convo.lastActivity = newest
+        }
+        try? modelContext.save()
+    }
+
+    // MARK: Multi-select delete
+
+    private func toggleSelection(_ m: Message) {
+        let id = m.persistentModelID
+        if selection.contains(id) { selection.remove(id) } else { selection.insert(id) }
+    }
+
+    private func exitSelectMode() {
+        selection.removeAll()
+        isSelecting = false
+    }
+
+    /// Batch delete: same semantics as `deleteMessage`, with ONE `lastActivity`
+    /// recompute for the whole batch. Pending media wipes are covered by the
+    /// same `!m.isDeleted` guard in `wipeMedia`/`stampListened`. Same known
+    /// limitation: deleted rows' `wireIDData` were the dedup records.
+    private func deleteSelected() {
+        guard !selection.isEmpty else { exitSelectMode(); return }
+        let convo = conversation
+        let doomed = sortedMessages.filter { selection.contains($0.persistentModelID) }
+        for m in doomed { modelContext.delete(m) }
+        if let convo {
+            let deletedIDs = Set(doomed.map(\.id))
+            if let newest = convo.messages
+                .filter({ !deletedIDs.contains($0.id) })
+                .map(\.timestamp).max() {
+                convo.lastActivity = newest
+            }
+        }
+        try? modelContext.save()
+        exitSelectMode()
     }
 
     // MARK: Media send (photo · voice)

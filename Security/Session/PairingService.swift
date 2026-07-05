@@ -91,6 +91,14 @@ final class PairingService {
         try await enrollment.markVerified(identity: rawKey)
     }
 
+    /// Remove a paired contact entirely (Remove Contact). Delegates to
+    /// `EnrollmentService.revoke`: persists the allowlist removal (save-then-
+    /// adopt), then drops the identity from the live reconnect AND verified
+    /// gates — they cannot reconnect or message again without re-pairing.
+    func revoke(_ rawKey: Data) async throws {
+        try await enrollment.revoke(identity: rawKey)
+    }
+
     // MARK: - Invite mint (remote pairing, outbound half)
 
     /// Mint a fresh single-use invite carrying our payload; return the shareable
