@@ -549,7 +549,10 @@ final class MessageInbox {
     /// The wire ids of this peer's still-in-flight outbound messages (non-terminal,
     /// already sealed). A coarse fetch (outbound + has a wireID) filtered in Swift,
     /// since `#Predicate` can't traverse the peer relationship or read the computed
-    /// `deliveryState`. The set is small (only unconfirmed sends).
+    /// `deliveryState`. The set is small (only unconfirmed sends). `.cast` rows are
+    /// excluded: a relay commit carries no timer to extend (none may ever be armed
+    /// for it), so offering its id to `extendTimeout` on reconnect would re-arm a
+    /// stuck-send timer that later demotes a message sitting safely at a relay.
     private func inFlightWireIDs(forPeerKey peerKey: Data) -> [MessageID] {
         let descriptor = FetchDescriptor<Message>(
             predicate: #Predicate { $0.isOutbound && $0.wireIDData != nil }
@@ -558,6 +561,7 @@ final class MessageInbox {
         return rows.compactMap { row in
             guard row.conversation?.peer?.publicKeyData == peerKey,
                   !row.deliveryState.isTerminal,
+                  row.deliveryState != .cast,
                   let wire = row.wireID else { return nil }
             return wire
         }

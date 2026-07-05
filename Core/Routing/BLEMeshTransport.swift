@@ -87,6 +87,17 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     /// Bytes of length-prefix framing after the 1-byte type tag.
     private static let lengthPrefixBytes = 4   // UInt32 big-endian payload length
 
+    /// Upper bound on a frame's declared payload length. The largest legitimate
+    /// frame is a sealed envelope whose padded plaintext fills the top
+    /// PayloadBucket tier (16384 — see `PayloadBucket.sizes`) plus seal +
+    /// envelope-header overhead, all well under 20 KB; bundles and reconnect
+    /// sets are far smaller. 64 KiB leaves generous headroom while stopping a
+    /// hostile 4-byte prefix (up to ~4.29 GB) from growing the PRE-AUTH
+    /// reassembly buffer unbounded — frames are ingested from any link in radio
+    /// range, before any identity gate. An oversized declaration drops the
+    /// buffer to resync, exactly like an unknown frame type.
+    private static let maxDeclaredFrameLength = 65_536
+
     // MARK: - Queue confinement
     private let cbQueue = DispatchQueue(label: "com.aeronyra.ble.transport")
 
@@ -222,7 +233,15 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
         if state.declaredLength < 0 {
             guard state.buffer.count >= Self.lengthPrefixBytes else { return nil }
             let prefix = state.buffer.prefix(Self.lengthPrefixBytes)
-            state.declaredLength = prefix.reduce(0) { ($0 << 8) | Int($1) }
+            let declared = prefix.reduce(0) { ($0 << 8) | Int($1) }
+            guard declared <= Self.maxDeclaredFrameLength else {
+                // Hostile or corrupt length — drop the whole buffer to resync
+                // rather than accumulate toward it (unbounded pre-auth memory).
+                log.error("frame declares \(declared) bytes (max \(Self.maxDeclaredFrameLength)) — dropping buffer")
+                state = ReassemblyState()
+                return nil
+            }
+            state.declaredLength = declared
             state.buffer.removeFirst(Self.lengthPrefixBytes)
         }
 

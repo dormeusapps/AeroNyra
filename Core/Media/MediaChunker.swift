@@ -45,12 +45,35 @@ public enum MediaChunkerError: Error, Equatable {
     case inconsistentChunks
     /// Reassembled bytes did not match the manifest's SHA-256.
     case integrityFailure
+    /// The manifest declares geometry outside the defensive receive-side bounds
+    /// (`maxChunkCount` / `maxTotalBytes`) — rejected before any allocation.
+    case manifestOutOfBounds(chunkCount: Int, totalBytes: Int)
 }
 
 public struct MediaChunker {
 
     /// Fixed per-chunk header: mediaID(16) + index(4) + total(4).
     public static let headerSize = 16 + 4 + 4
+
+    /// Defensive receive-side bounds on manifest-declared geometry. A manifest
+    /// arrives from a (verified) peer but is still untrusted data: `chunkCount`
+    /// drives an O(chunkCount) sweep on EVERY subsequent ingest and sizes the
+    /// reassembly slot array, and `totalBytes` sizes the blob allocation. The
+    /// app's senders produce a ≤1280px JPEG or an AAC voice note — far under
+    /// 16 MiB — and chunk at the 4096/16384 buckets (≤ ~4,200 chunks for a
+    /// 16 MiB blob); 32,768 also covers a hypothetical 1024-bucket sender.
+    /// Anything larger is rejected before allocation.
+    public static let maxTotalBytes = 16 * 1024 * 1024
+    public static let maxChunkCount = 32_768
+
+    /// Whether a manifest's declared geometry is within the defensive bounds.
+    /// Also requires the trivially-consistent `chunkCount <= totalBytes` (every
+    /// chunk carries at least one media byte).
+    public static func manifestWithinBounds(_ manifest: MediaManifest) -> Bool {
+        manifest.chunkCount >= 1 && manifest.chunkCount <= maxChunkCount
+            && manifest.totalBytes >= 1 && manifest.totalBytes <= maxTotalBytes
+            && manifest.chunkCount <= manifest.totalBytes
+    }
 
     /// The PayloadBucket tier each chunk (header + payload) is sized to fill.
     /// 4096 is the balanced default; 16384 sends fewer/larger chunks, 1024
@@ -156,6 +179,13 @@ public struct MediaChunker {
     /// the manifest's chunk count and SHA-256. Throws on a gap, an inconsistent
     /// set, or an integrity mismatch.
     public func reassemble(_ chunks: [Data], manifest: MediaManifest) throws -> Data {
+        // Bounds first: `manifest.chunkCount` sizes the slot array and
+        // `totalBytes` the blob capacity below — never allocate to an
+        // out-of-bounds declaration.
+        guard Self.manifestWithinBounds(manifest) else {
+            throw MediaChunkerError.manifestOutOfBounds(chunkCount: manifest.chunkCount,
+                                                        totalBytes: manifest.totalBytes)
+        }
         let parsed = try chunks.map(parse)
 
         // All chunks must agree on mediaID and total, and match the manifest.
@@ -195,6 +225,11 @@ public struct MediaChunker {
     /// Which chunk indices are still missing, for a future re-request path
     /// (Phase 5b+/7c auto-retry). Returns the sorted set of absent indices.
     public func missingIndices(have chunks: [Data], manifest: MediaManifest) -> [Int] {
+        // An out-of-bounds manifest never enters the reassembler (rejected at
+        // ingest), but guard this non-throwing API too: never materialize an
+        // attacker-sized 0..<chunkCount range. Returning [] is safe — a caller
+        // that then tries to reassemble hits the bounds throw above.
+        guard Self.manifestWithinBounds(manifest) else { return [] }
         var seen = Set<Int>()
         for chunk in chunks {
             if let p = try? parse(chunk), p.index >= 0, p.index < manifest.chunkCount {

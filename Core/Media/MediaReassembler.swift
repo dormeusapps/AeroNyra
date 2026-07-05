@@ -52,8 +52,13 @@ public struct MediaReassembler {
     }
 
     /// Feed an arrived manifest. Returns a `Completed` if this was the last
-    /// missing piece (its chunks were already buffered).
+    /// missing piece (its chunks were already buffered). A manifest whose
+    /// declared geometry exceeds the defensive bounds (`MediaChunker.
+    /// manifestWithinBounds`) is ignored like an unparseable chunk — stored
+    /// nowhere, so its `chunkCount` can never drive the per-ingest completion
+    /// sweep or size a reassembly allocation.
     public mutating func ingest(manifest: MediaManifest) -> Completed? {
+        guard MediaChunker.manifestWithinBounds(manifest) else { return nil }
         manifests[manifest.mediaID] = manifest
         return tryComplete(manifest.mediaID)
     }

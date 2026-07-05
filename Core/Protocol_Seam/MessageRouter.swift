@@ -370,8 +370,13 @@ public actor MessageRouter {
     /// Arm the stuck-send timeout for an already-tracked message (media). No-op
     /// if the id isn't tracked, or already reached a terminal state — e.g. an
     /// ack beat the burst's completion, in which case there is nothing to time.
+    /// Also a no-op for a `.cast` entry: a relay commit has NO bounded ack
+    /// deadline (the peer may be offline for hours), and the invariant is that
+    /// no timer is EVER armed for a cast commit — only a real failure ack may
+    /// demote it.
     public func startDeliveryTimeout(for id: MessageID, after duration: Duration) {
-        guard let entry = outbox[id], !entry.state.isTerminal else { return }
+        guard let entry = outbox[id], !entry.state.isTerminal,
+              entry.state != .cast else { return }
         armTimeout(for: id, after: duration)
     }
 
@@ -382,8 +387,14 @@ public actor MessageRouter {
     /// the router never learns which peer this is for — the caller (which owns
     /// peer↔message) decides which ids to extend. No-op if the id isn't tracked or
     /// already reached a terminal state (an ack that already won the race).
+    /// Also a no-op for a `.cast` entry: `commitToRelay` cancelled its timer on
+    /// purpose (a relay wrap has no bounded ack window), and re-arming here would
+    /// have that timer fire `.notDelivered` on a message sitting safely at a
+    /// relay — the reconnect-grace demotion bug. No timer is ever armed for
+    /// `.cast`; a real ack still surfaces or fails it.
     public func extendTimeout(for id: MessageID, by duration: Duration) {
-        guard let entry = outbox[id], !entry.state.isTerminal else { return }
+        guard let entry = outbox[id], !entry.state.isTerminal,
+              entry.state != .cast else { return }
         armTimeout(for: id, after: duration)
     }
 
