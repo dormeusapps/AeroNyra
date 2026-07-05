@@ -448,6 +448,7 @@ final class MessageInbox {
         for message in rows {
             guard message.isMedia,
                   !message.deliveryState.isTerminal,            // still in flight (unacked)
+                  !message.nostrRedriveDone,                    // PERSISTED cap-of-1: re-drive over Nostr at most once, ever (survives relaunch)
                   let peer = message.conversation?.peer,
                   departed.contains(peer.publicKeyData),
                   let nostrRecipient = peer.nostrPubkey,         // must have an internet address
@@ -461,6 +462,15 @@ final class MessageInbox {
             // suspenders; an unverified peer is never in a reachable set to depart
             // from, but the re-drive path is defended like every other send path).
             guard isVerified(rawKey) else { continue }
+
+            // Durable cap-of-1 reservation (ISSUE-3b): persist the flag BEFORE the
+            // await, so (a) a force-quit mid-re-drive or (b) a re-drive that fails and
+            // marks the row `.notDelivered` can't loop back into the rate-limited relays
+            // on the next launch. On @MainActor this also serialises a near-simultaneous
+            // second call: it re-fetches, sees the saved flag, and skips — no double
+            // publish. Set once and never cleared: one Nostr re-drive per row, for real.
+            message.nostrRedriveDone = true
+            save()
 
             do {
                 let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,

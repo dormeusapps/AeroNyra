@@ -220,6 +220,16 @@ public final class Message {
     /// queryable; `relayHops` carries the associated value of `.relayed`.
     public var deliveryStateRaw: String
     public var relayHops: Int
+
+    /// ISSUE-3b idempotency (PERSISTED). Set once this media row has been re-driven
+    /// over Nostr after a mid-burst BLE drop, enforcing a hard cap of ONE re-drive
+    /// that SURVIVES a force-quit. An in-memory guard clears on relaunch, so a still-
+    /// `.cast` row (or one whose re-drive already failed to `.notDelivered`) would be
+    /// re-driven again on every launch, hammering the rate-limited relays. The inline
+    /// `= false` default backfills existing rows with no schema work (lightweight,
+    /// no-op migration), and lets the manual `init` omit it. Text rows never set it;
+    /// only `redriveInFlightMedia` writes it.
+    public var nostrRedriveDone: Bool = false
     
     /// Media payload, if this message is a photo or voice note rather than text.
     /// Nil for text messages. The blob is the reassembled, integrity-verified
