@@ -499,6 +499,55 @@ final class MessageInbox {
         }
     }
 
+    // MARK: - Ephemeral media reaper (SEC-6 / P3)
+
+    /// Wipe the blobs of INBOUND media past their ephemerality window
+    /// (`MediaEphemeralityPolicy`): photos `photoWindow` after receipt, voice
+    /// notes `voiceListenWindow` after they were listened to. The render-time
+    /// wipes only run when a row is actually on screen — a never-opened
+    /// conversation would otherwise hold the bytes forever (the SEC-6 defect:
+    /// forensically recoverable after first unlock). Called at boot (ReadyView's
+    /// setup task) and on every return to the foreground. Idempotent — a second
+    /// run finds nothing to wipe.
+    ///
+    /// TOMBSTONE, NOT DELETE: only `mediaData` is nilled, mirroring the view
+    /// layer's `wipeMedia`. The row MUST survive — its `wireIDData` is the dedup
+    /// record (`alreadyStored`) that stops a late relay replay of the same
+    /// transfer from re-materializing a self-destructed photo. Outbound rows are
+    /// excluded in the store predicate itself: a resend still needs their blob,
+    /// and outbound media deliberately never expires (see the policy header).
+    func reapExpiredMedia() {
+        let descriptor = FetchDescriptor<Message>(
+            predicate: #Predicate { $0.isOutbound == false && $0.mediaData != nil }
+        )
+        guard let rows = try? modelContext.fetch(descriptor), !rows.isEmpty else { return }
+
+        let now = Date.now
+        var reaped = 0
+        for message in rows {
+            let expired: Bool
+            switch message.mediaMime {
+            case .jpeg:
+                expired = now.timeIntervalSince(message.timestamp)
+                    >= MediaEphemeralityPolicy.photoWindow
+            case .m4a:
+                // Listen-armed: an unlistened voice note never expires.
+                guard let listened = message.listenedAt else { continue }
+                expired = now.timeIntervalSince(listened)
+                    >= MediaEphemeralityPolicy.voiceListenWindow
+            case nil:
+                continue   // blob with no mime — unknown kind, leave it alone
+            }
+            guard expired else { continue }
+            message.mediaData = nil
+            reaped += 1
+        }
+        if reaped > 0 {
+            save()
+            print("inbox: reaped \(reaped) expired media blob(s)")
+        }
+    }
+
     // MARK: - Reconnect grace (STEP 0b / A)
 
     /// A peer completed the closed-contact reconnect handshake. Open (or extend) a

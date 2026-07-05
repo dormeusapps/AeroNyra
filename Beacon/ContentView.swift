@@ -622,10 +622,15 @@ private struct ReadyView: View {
     let pairingService: PairingService
     
     @State private var inbox: MessageInbox?
-    
+
     /// The shared presence object injected by ContentView. We write its
     /// identity-resolved set from the coordinator's `reachablePeers` stream.
     @Environment(MeshPresence.self) private var presence
+
+    /// Drives the ephemeral-media reaper (SEC-6 / P3): re-run it every time the
+    /// app returns to the foreground, so media that crossed its window while the
+    /// app was suspended is wiped without waiting for a relaunch or a render.
+    @Environment(\.scenePhase) private var scenePhase
     
     var body: some View {
         Group {
@@ -653,12 +658,22 @@ private struct ReadyView: View {
                                          router: router,
                                          isVerified: { pairingService.isVerified($0) })
                 inbox = built
+                // Ephemeral media reaper (SEC-6 / P3), boot pass: wipe inbound
+                // media that crossed its window while the app was closed — the
+                // render-time wipes only cover rows that get drawn, so a
+                // never-opened conversation is this pass's whole point.
+                built.reapExpiredMedia()
                 // Initial auto-retry: any peers already reachable at launch get
                 // their stuck `.notDelivered` messages re-sent now. No-op if the
                 // set is empty (presence not resolved yet — the stream trigger
                 // below catches it once a peer comes up).
                 await built.flushUndelivered(toReachableKeys: presence.reachablePeerKeys)
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Foreground pass of the reaper (idempotent; nil-safe before the
+            // boot task has built the inbox — that task runs its own pass).
+            if phase == .active { inbox?.reapExpiredMedia() }
         }
         .task {
             // Mirror identity-resolved presence into MeshPresence for the app's

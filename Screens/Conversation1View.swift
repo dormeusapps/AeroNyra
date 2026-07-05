@@ -636,7 +636,9 @@ private struct StillwaterVoiceNote: View {
     @State private var expiredNow = false
 
     private static let barCount = 30
-    private static let listenWindow: TimeInterval = 120
+    /// Listen-armed self-destruct window — shared with the MessageInbox reaper
+    /// via MediaEphemeralityPolicy (SEC-6), so view and reaper can't drift.
+    private static var listenWindow: TimeInterval { MediaEphemeralityPolicy.voiceListenWindow }
 
     init(message: Message, isOutbound: Bool,
          stampListened: @escaping () -> Void, wipe: @escaping () -> Void) {
@@ -758,14 +760,17 @@ private struct StillwaterPhoto: View {
     let wipe: () -> Void
 
     @State private var expanded = false
+    @State private var expiredNow = false
 
     /// Inbound photos disappear 24h after they arrive (received-time, no view
-    /// tracking). Outbound photos you sent are never expired here.
-    private static let photoWindow: TimeInterval = 24 * 60 * 60
+    /// tracking) — the window is MediaEphemeralityPolicy.photoWindow, shared
+    /// with the MessageInbox reaper (SEC-6) so view and reaper can't drift.
+    /// Outbound photos you sent are never expired here.
+    private static var photoWindow: TimeInterval { MediaEphemeralityPolicy.photoWindow }
 
     private var expired: Bool {
         guard !isOutbound else { return false }
-        if message.mediaData == nil { return true }
+        if expiredNow || message.mediaData == nil { return true }
         return Date.now.timeIntervalSince(message.timestamp) >= Self.photoWindow
     }
 
@@ -782,9 +787,27 @@ private struct StillwaterPhoto: View {
                     .foregroundColor(Stillwater.Palette.mistDim)
             }
         }
-        // Opportunistically wipe the bytes once past the window (the render is
-        // already gated on `expired`, so it's a tombstone regardless).
-        .task { if expired, message.mediaData != nil { wipe() } }
+        // Past the window already: wipe the bytes now (the render is gated on
+        // `expired`, so it's a tombstone regardless). Otherwise schedule the
+        // boundary wipe for the REMAINING interval, so a conversation left open
+        // across the 24h mark tombstones without needing a re-render (the same
+        // treatment the voice note's scheduleWipe gives its 2-min window).
+        // Riding the view's own .task means the sleep is cancelled on
+        // disappear — the isCancelled guard stops a cancellation from wiping
+        // EARLY; an off-screen row is the reaper's job instead.
+        .task {
+            if expired {
+                if message.mediaData != nil { wipe() }
+                expiredNow = true
+                return
+            }
+            guard !isOutbound else { return }
+            let remaining = Self.photoWindow - Date.now.timeIntervalSince(message.timestamp)
+            try? await Task.sleep(for: .seconds(remaining))
+            guard !Task.isCancelled else { return }
+            wipe()
+            expiredNow = true
+        }
     }
 
     private func photo(_ image: UIImage) -> some View {
