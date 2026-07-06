@@ -19,6 +19,7 @@
 		7C3450EE2FF6DDAB00148C83 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450ED2FF6DDA700148C83 /* PairingView.swift */; };
 		7C3450F02FF6DF5200148C83 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450EF2FF6DF4A00148C83 /* HomeView.swift */; };
 		7C3450F22FF6E1DD00148C83 /* Conversation1View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */; };
+		7CCB110C2FF9000000C4113C /* VideoBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CCB110B2FF9000000C4113B /* VideoBubble.swift */; };
 		7C3450F92FF7025E00148C83 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450F82FF7025A00148C83 /* QRScannerView.swift */; };
 		7C3450FB2FF71E4400148C83 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450FA2FF71E3F00148C83 /* SettingsView.swift */; };
 		7C7A84042FF82B90004CACFC /* SASVerifySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C7A84032FF82B8C004CACFC /* SASVerifySheet.swift */; };
@@ -79,6 +80,7 @@
 		7C3450ED2FF6DDA700148C83 /* PairingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingView.swift; sourceTree = "<group>"; };
 		7C3450EF2FF6DF4A00148C83 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation1View.swift; sourceTree = "<group>"; };
+		7CCB110B2FF9000000C4113B /* VideoBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoBubble.swift; sourceTree = "<group>"; };
 		7C3450F82FF7025A00148C83 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		7C3450FA2FF71E3F00148C83 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7C3B094C2FED902E00AE9EC1 /* Beacon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Beacon.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -343,6 +345,7 @@
 				7C3450FA2FF71E3F00148C83 /* SettingsView.swift */,
 				7C3450F82FF7025A00148C83 /* QRScannerView.swift */,
 				7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */,
+				7CCB110B2FF9000000C4113B /* VideoBubble.swift */,
 				7C3450EF2FF6DF4A00148C83 /* HomeView.swift */,
 				7C3450ED2FF6DDA700148C83 /* PairingView.swift */,
 				7CE0C8862FEF461800151314 /* ChatsListView.swift */,
@@ -602,6 +605,7 @@
 				7C27E3D12FF5763400D7CD0B /* PeerAvatar.swift in Sources */,
 				7CAEDF9E2FF177D10084A5C4 /* ReadableColumn.swift in Sources */,
 				7C3450F22FF6E1DD00148C83 /* Conversation1View.swift in Sources */,
+				7CCB110C2FF9000000C4113C /* VideoBubble.swift in Sources */,
 				7CE0C8852FEF45FF00151314 /* ChatRow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

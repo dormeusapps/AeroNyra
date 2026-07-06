@@ -42,6 +42,10 @@ struct StreamView: View {
     /// Media send (mirrors the old composer's proven pattern).
     @State private var recorder = VoiceRecorder()
     @State private var pickedItem: PhotosPickerItem?
+
+    /// v1 video messages: the human-readable reason a picked clip was refused
+    /// (length / weight), shown as an alert on the composer's picker.
+    @State private var videoSendNotice: String?
     @State private var showMicDenied = false
 
     /// Observe the app-wide accent so the stream recolours on change.
@@ -329,7 +333,11 @@ struct StreamView: View {
     }
 
     private var photoButton: some View {
-        PhotosPicker(selection: $pickedItem, matching: .images, photoLibrary: .shared()) {
+        // ONE attach point: the plus opens the library for photos AND videos;
+        // the picked item's content type routes it below.
+        PhotosPicker(selection: $pickedItem,
+                     matching: .any(of: [.images, .videos]),
+                     photoLibrary: .shared()) {
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(Stillwater.Palette.mist)
@@ -339,7 +347,14 @@ struct StreamView: View {
         }
         .onChange(of: pickedItem) { _, item in
             guard let item else { return }
-            Task { await sendPickedPhoto(item) }
+            Task { await sendPicked(item) }
+        }
+        .alert("can't carry this clip", isPresented: Binding(
+            get: { videoSendNotice != nil },
+            set: { if !$0 { videoSendNotice = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(videoSendNotice ?? "")
         }
     }
 
@@ -500,14 +515,46 @@ struct StreamView: View {
         exitSelectMode()
     }
 
-    // MARK: Media send (photo · voice)
+    // MARK: Media send (photo · video · voice)
+
+    /// One picker, two kinds: route the picked item by its content type —
+    /// a movie takes the video path, anything else the photo path.
+    @MainActor
+    private func sendPicked(_ item: PhotosPickerItem) async {
+        defer { pickedItem = nil }
+        if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+            await sendPickedVideo(item)
+        } else {
+            await sendPickedPhoto(item)
+        }
+    }
+
     @MainActor
     private func sendPickedPhoto(_ item: PhotosPickerItem) async {
-        defer { pickedItem = nil }
         guard let inbox,
               let raw = try? await item.loadTransferable(type: Data.self),
               let jpeg = Self.meshSizedJPEG(from: raw) else { return }
         await inbox.sendMedia(jpeg, mime: .jpeg, in: currentConversation())
+    }
+
+    /// v1 video: duration-gate + transcode (VideoTranscoder), then the same
+    /// send path a photo takes. The two refusals surface as distinct notices;
+    /// the picker's temp copy is removed whichever way this exits.
+    @MainActor
+    private func sendPickedVideo(_ item: PhotosPickerItem) async {
+        guard let inbox,
+              let picked = try? await item.loadTransferable(type: PickedVideo.self) else { return }
+        defer { try? FileManager.default.removeItem(at: picked.url) }
+        do {
+            let mp4 = try await VideoTranscoder.transcodeToMP4(from: picked.url)
+            await inbox.sendMedia(mp4, mime: .mp4, in: currentConversation())
+        } catch VideoTranscoderError.clipTooLong(let seconds) {
+            videoSendNotice = "that clip runs \(Int(seconds))s — the water carries up to \(Int(VideoTranscoder.maxClipSeconds))s"
+        } catch VideoTranscoderError.overBudget {
+            videoSendNotice = "that clip is too heavy to carry, even compressed"
+        } catch {
+            videoSendNotice = "the clip couldn't be prepared"
+        }
     }
 
     @MainActor
@@ -620,6 +667,17 @@ struct StreamView: View {
                                 isOutbound: m.isOutbound,
                                 stampListened: { stampListened(m) },
                                 wipe: { wipeMedia(m) })
+        case .some(.mp4):
+            // v1 video: inline player over the persisted blob. A reaped row
+            // (blob gone, mime stamp survives) renders the same tombstone as
+            // any expired media.
+            if let data = m.mediaData {
+                VideoBubble(data: data, isOutbound: m.isOutbound)
+            } else {
+                Text("— media —")
+                    .font(Stillwater.Serif.italic(15))
+                    .foregroundColor(Stillwater.Palette.mistDim)
+            }
         default:
             Text("— media —")
                 .font(Stillwater.Serif.italic(15))
