@@ -542,10 +542,10 @@ final class MessageInbox {
     // MARK: - Ephemeral media reaper (SEC-6 / P3)
 
     /// Wipe the blobs of media past their ephemerality window
-    /// (`MediaEphemeralityPolicy`): inbound photos `photoWindow` after receipt,
-    /// inbound voice notes `voiceListenWindow` after they were listened to, and
-    /// STORIES `storyWindow` after they were sent — BOTH directions, sender
-    /// included (the stories-only SEC-6 reversal). The render-time
+    /// (`MediaEphemeralityPolicy`): inbound photos AND v1 videos `photoWindow`
+    /// after receipt, inbound voice notes `voiceListenWindow` after they were
+    /// listened to, and STORIES `storyWindow` after they were sent — BOTH
+    /// directions, sender included (the stories-only SEC-6 reversal). The render-time
     /// wipes only run when a row is actually on screen — a never-opened
     /// conversation would otherwise hold the bytes forever (the SEC-6 defect:
     /// forensically recoverable after first unlock). Called at boot (ReadyView's
@@ -571,34 +571,12 @@ final class MessageInbox {
         let now = Date.now
         var reaped = 0
         for message in rows {
-            let expired: Bool
-            if message.isStory {
-                // STORIES: one rule, BOTH directions — `storyWindow` after the
-                // send anchor. `sentAt` is stamped at send (outbound) or
-                // clamped at persist (inbound); an anomalous story row missing
-                // it falls back to insert time rather than living forever.
-                expired = now.timeIntervalSince(message.sentAt ?? message.timestamp)
-                    >= MediaEphemeralityPolicy.storyWindow
-            } else {
-                switch message.mediaMime {
-                case .jpeg:
-                    expired = now.timeIntervalSince(message.timestamp)
-                        >= MediaEphemeralityPolicy.photoWindow
-                case .m4a:
-                    // Listen-armed: an unlistened voice note never expires.
-                    guard let listened = message.listenedAt else { continue }
-                    expired = now.timeIntervalSince(listened)
-                        >= MediaEphemeralityPolicy.voiceListenWindow
-                case .mp4:
-                    // Video is stories-only and expires via the story branch
-                    // above; a non-story mp4 has no defined window yet — leave
-                    // the blob alone rather than invent one here.
-                    continue
-                case nil:
-                    continue   // blob with no mime — unknown kind, leave it alone
-                }
-            }
-            guard expired else { continue }
+            guard MediaEphemeralityPolicy.isExpired(isStory: message.isStory,
+                                                    mime: message.mediaMime,
+                                                    timestamp: message.timestamp,
+                                                    sentAt: message.sentAt,
+                                                    listenedAt: message.listenedAt,
+                                                    now: now) else { continue }
             message.mediaData = nil
             reaped += 1
         }
