@@ -140,11 +140,6 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		7CCA110A2FF9000000C4113A /* Calls */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Calls;
-			sourceTree = "<group>";
-		};
 		7C18935B2FF2873A00C69ADA /* Nostr */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -204,6 +199,11 @@
 		7CAEDF7D2FF158A60084A5C4 /* Media */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Media;
+			sourceTree = "<group>";
+		};
+		7CCA110A2FF9000000C4113A /* Calls */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Calls;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -390,7 +390,6 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				7CCA110A2FF9000000C4113A /* Calls */,
 				7C18935B2FF2873A00C69ADA /* Nostr */,
 				7C3B094E2FED902E00AE9EC1 /* Beacon */,
 				7C3B09762FED916500AE9EC1 /* Models */,
@@ -401,6 +400,7 @@
 				7C3B09912FEDADAD00AE9EC1 /* AtRest */,
 				7C3B09982FEDF37A00AE9EC1 /* Wipe */,
 				7CAEDF7D2FF158A60084A5C4 /* Media */,
+				7CCA110A2FF9000000C4113A /* Calls */,
 			);
 			name = Beacon;
 			productName = Beacon;
