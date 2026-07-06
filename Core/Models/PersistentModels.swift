@@ -237,11 +237,27 @@ public final class Message {
     /// (Phase 5b), same as `content` — not per-row encryption.
     public var mediaData: Data?
     
-    /// Raw `MediaMimeType` ("jpeg"/"m4a") when `mediaData` is set; nil for text.
+    /// Raw `MediaMimeType` ("jpeg"/"m4a"/"mp4") when `mediaData` is set; nil
+    /// for text.
     public var mediaMimeRaw: String?
-    
+
+    /// STORIES: true when this media row is a story — ephemeral on BOTH ends,
+    /// self-destructing `MediaEphemeralityPolicy.storyWindow` after `sentAt`
+    /// (the stories-only reversal of SEC-6's "outbound never expires" rule).
+    /// The inline `= false` default backfills existing rows with no schema
+    /// work (lightweight migration, same pattern as `nostrRedriveDone`).
+    public var isStory: Bool = false
+
+    /// STORIES: when the SENDER first sent this media — the anchor the story
+    /// expiry window counts from. Outbound: this row's `timestamp`, stamped at
+    /// first send and REUSED on resend/re-drive so a retry can't extend the
+    /// window. Inbound: the manifest's sender-asserted stamp CLAMPED to
+    /// arrival time at persist (a future-dated stamp must not make a story
+    /// immortal). nil for non-story and legacy rows.
+    public var sentAt: Date?
+
     public var conversation: Conversation?
-    
+
     public init(content: String,
                 isOutbound: Bool,
                 deliveryState: MessageDeliveryState = .sent,
@@ -250,6 +266,8 @@ public final class Message {
                 mediaData: Data? = nil,
                 mediaMimeRaw: String? = nil,
                 listenedAt: Date? = nil,
+                isStory: Bool = false,
+                sentAt: Date? = nil,
                 timestamp: Date = .now,
                 id: UUID = UUID()) {
         self.id = id
@@ -261,6 +279,8 @@ public final class Message {
         self.mediaData = mediaData
         self.mediaMimeRaw = mediaMimeRaw
         self.listenedAt = listenedAt
+        self.isStory = isStory
+        self.sentAt = sentAt
         // Initialize the decomposed fields, then route through the bridge.
         self.deliveryStateRaw = "sent"
         self.relayHops = 0

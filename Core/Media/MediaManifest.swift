@@ -30,6 +30,7 @@ import CryptoKit
 public enum MediaMimeType: String, Sendable, Codable, CaseIterable {
     case jpeg          // photos
     case m4a           // voice notes (AAC in an MPEG-4 container)
+    case mp4           // video stories (H.264/AAC in an MPEG-4 container)
 }
 
 // MARK: - MediaManifest
@@ -54,16 +55,60 @@ public struct MediaManifest: Equatable, Sendable, Codable {
     /// over the reassembled bytes and rejects a mismatch.
     public let sha256: String
 
+    /// When the SENDER first sent this media — the anchor a story's expiry
+    /// window counts from (a resend/re-drive re-stamps the ORIGINAL time, so
+    /// a retry can never extend the window). nil on a legacy manifest and on
+    /// non-story media. Sender-asserted: the receiver must clamp it to its
+    /// own arrival time before persisting (a future-dated stamp would make a
+    /// story immortal).
+    public let sentAt: Date?
+
+    /// True when this transfer is a story: ephemeral on BOTH ends,
+    /// self-destructing a fixed window after `sentAt` — the stories-only
+    /// reversal of the SEC-6 "outbound never expires" rule. Absent on a
+    /// legacy manifest → false (see the custom decoder below).
+    public let isStory: Bool
+
     public init(mediaID: String,
                 mime: MediaMimeType,
                 totalBytes: Int,
                 chunkCount: Int,
-                sha256: String) {
+                sha256: String,
+                sentAt: Date? = nil,
+                isStory: Bool = false) {
         self.mediaID = mediaID
         self.mime = mime
         self.totalBytes = totalBytes
         self.chunkCount = chunkCount
         self.sha256 = sha256
+        self.sentAt = sentAt
+        self.isStory = isStory
+    }
+
+    // MARK: Wire compatibility
+
+    /// Explicit keys + a hand-written decoder so a LEGACY manifest (neither
+    /// new field present) still decodes. `sentAt` would tolerate absence even
+    /// synthesized (optional → decodeIfPresent), but a synthesized decode of
+    /// the non-optional `isStory` throws on a missing key — and the receive
+    /// path treats a throw as a bad manifest and drops the whole transfer.
+    /// Encoding stays synthesized: providing only `init(from:)` preserves the
+    /// compiler's `encode(to:)`, and unknown keys are ignored by old peers'
+    /// JSONDecoder, so a story manifest decodes on a legacy build as ordinary
+    /// media.
+    private enum CodingKeys: String, CodingKey {
+        case mediaID, mime, totalBytes, chunkCount, sha256, sentAt, isStory
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mediaID    = try c.decode(String.self, forKey: .mediaID)
+        mime       = try c.decode(MediaMimeType.self, forKey: .mime)
+        totalBytes = try c.decode(Int.self, forKey: .totalBytes)
+        chunkCount = try c.decode(Int.self, forKey: .chunkCount)
+        sha256     = try c.decode(String.self, forKey: .sha256)
+        sentAt     = try c.decodeIfPresent(Date.self, forKey: .sentAt)
+        isStory    = try c.decodeIfPresent(Bool.self, forKey: .isStory) ?? false
     }
 }
 

@@ -81,8 +81,9 @@ final class MessageInbox {
                 handleEstablished(peerKey: key)
             case .received(let key, let plaintext, let wireID):
                 handleReceived(peerKey: key, plaintext: plaintext, wireID: wireID)
-            case .receivedMedia(let key, let data, let mime, let wireID):
-                handleReceivedMedia(peerKey: key, data: data, mime: mime, wireID: wireID)
+            case .receivedMedia(let key, let data, let mime, let wireID, let sentAt, let isStory):
+                handleReceivedMedia(peerKey: key, data: data, mime: mime, wireID: wireID,
+                                    sentAt: sentAt, isStory: isStory)
             case .learnedNostrIdentity(let key, let nostrPubkey):
                 handleLearnedNostrIdentity(peerKey: key, nostrPubkey: nostrPubkey)
             case .reconnected(let key):
@@ -127,7 +128,8 @@ final class MessageInbox {
     /// inbound media Message (blob in the row, protected at rest by Phase 5b).
     /// Deduped on the mediaID-derived wireID, so a re-sent transfer is ignored.
     private func handleReceivedMedia(peerKey: Data, data: Data,
-                                     mime: MediaMimeType, wireID: MessageID) {
+                                     mime: MediaMimeType, wireID: MessageID,
+                                     sentAt: Date?, isStory: Bool) {
         guard !alreadyStored(wireID) else { return }
 
         let peer = peer(forRawKey: peerKey)
@@ -140,7 +142,16 @@ final class MessageInbox {
                               isRead: false,
                               wireID: wireID,
                               mediaData: data,
-                              mediaMimeRaw: mime.rawValue)
+                              mediaMimeRaw: mime.rawValue,
+                              isStory: isStory)
+        // CLAMP (SEC-6 stories): the manifest's `sentAt` is the SENDER's clock —
+        // attacker-controlled. Unclamped, a future-dated stamp makes a story
+        // that NEVER expires (now − future < window, forever). Take the earlier
+        // of their stamp and our arrival time; a story manifest missing the
+        // stamp entirely anchors on arrival. Non-story rows keep sentAt nil.
+        if isStory {
+            message.sentAt = min(sentAt ?? message.timestamp, message.timestamp)
+        }
         modelContext.insert(message)
         message.conversation = conversation
         conversation.lastActivity = .now
@@ -260,7 +271,12 @@ final class MessageInbox {
     /// text), then chunk + seal + send. On any failure the row is kept and
     /// marked `.notDelivered`; the transcript shows the media the instant this
     /// is called, not after the radio finishes the burst.
-    func sendMedia(_ data: Data, mime: MediaMimeType, in conversation: Conversation) async {
+    ///
+    /// STORIES: pass `isStory: true` to send a photo story. The row is stamped
+    /// `sentAt` = its own `timestamp` (the ONE first-send instant), and both
+    /// fields ride the manifest so the receiver expires on the same anchor.
+    func sendMedia(_ data: Data, mime: MediaMimeType, in conversation: Conversation,
+                   isStory: Bool = false) async {
         guard let peer = conversation.peer else {
             print("inbox: cannot send media — conversation has no peer")
             return
@@ -272,7 +288,10 @@ final class MessageInbox {
                               isOutbound: true,
                               deliveryState: .sent,
                               mediaData: data,
-                              mediaMimeRaw: mime.rawValue)
+                              mediaMimeRaw: mime.rawValue,
+                              isStory: isStory)
+        // One instant is the expiry anchor everywhere: row insert time.
+        if isStory { message.sentAt = message.timestamp }
         modelContext.insert(message)
         message.conversation = conversation
         conversation.lastActivity = .now
@@ -288,7 +307,9 @@ final class MessageInbox {
 
         do {
             let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
-                                                         nostrRecipient: nostrRecipient)
+                                                         nostrRecipient: nostrRecipient,
+                                                         sentAt: message.sentAt,
+                                                         isStory: isStory)
             message.wireIDData = Data(wireID.bytes)
             // .sent over BLE (90s timer armed), or .cast over Nostr (no timer —
             // the transfer will surface when the peer reconnects).
@@ -326,6 +347,16 @@ final class MessageInbox {
     /// and stores the fresh wireID; on failure it reverts to `.notDelivered`.
     func resend(_ message: Message) async {
         guard message.isOutbound, message.deliveryState == .notDelivered else { return }
+        // STORIES (SEC-6 reversal safety): an EXPIRED story's blob was reaped
+        // but the row survives as a tombstone. `isMedia` is blob-presence, so
+        // without this guard a reaped story still at `.notDelivered` would fall
+        // into the TEXT branch below on the next return-to-range auto-flush and
+        // transmit an EMPTY message. A media row is recognizable after the wipe
+        // by its surviving mime stamp: mime set + blob gone → skip, forever.
+        if message.mediaMimeRaw != nil, message.mediaData == nil {
+            print("inbox: skip resend — media tombstone (expired story)")
+            return
+        }
         guard let peer = message.conversation?.peer else {
             print("inbox: cannot resend — message has no peer")
             return
@@ -359,7 +390,9 @@ final class MessageInbox {
             if message.isMedia, let data = message.mediaData, let mime = message.mediaMime {
                 wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
                                                          nostrRecipient: nostrRecipient,
-                                                         reuseID: reuse)
+                                                         reuseID: reuse,
+                                                         sentAt: message.sentAt,
+                                                         isStory: message.isStory)
             } else {
                 wireID = try await coordinator.send(message.content, toRawKey: rawKey,
                                                     nostrRecipient: nostrRecipient,
@@ -475,7 +508,9 @@ final class MessageInbox {
             do {
                 let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
                                                              nostrRecipient: nostrRecipient,
-                                                             reuseID: reuse, redrive: true)
+                                                             reuseID: reuse, redrive: true,
+                                                             sentAt: message.sentAt,
+                                                             isStory: message.isStory)
                 // Same mediaID (reuse), so the row's wireID is unchanged; re-stamp
                 // it anyway for parity with the other send paths. A re-drive always
                 // commits over Nostr, so the router reports `.cast` — reflect that
@@ -501,9 +536,11 @@ final class MessageInbox {
 
     // MARK: - Ephemeral media reaper (SEC-6 / P3)
 
-    /// Wipe the blobs of INBOUND media past their ephemerality window
-    /// (`MediaEphemeralityPolicy`): photos `photoWindow` after receipt, voice
-    /// notes `voiceListenWindow` after they were listened to. The render-time
+    /// Wipe the blobs of media past their ephemerality window
+    /// (`MediaEphemeralityPolicy`): inbound photos `photoWindow` after receipt,
+    /// inbound voice notes `voiceListenWindow` after they were listened to, and
+    /// STORIES `storyWindow` after they were sent — BOTH directions, sender
+    /// included (the stories-only SEC-6 reversal). The render-time
     /// wipes only run when a row is actually on screen — a never-opened
     /// conversation would otherwise hold the bytes forever (the SEC-6 defect:
     /// forensically recoverable after first unlock). Called at boot (ReadyView's
@@ -513,12 +550,16 @@ final class MessageInbox {
     /// TOMBSTONE, NOT DELETE: only `mediaData` is nilled, mirroring the view
     /// layer's `wipeMedia`. The row MUST survive — its `wireIDData` is the dedup
     /// record (`alreadyStored`) that stops a late relay replay of the same
-    /// transfer from re-materializing a self-destructed photo. Outbound rows are
-    /// excluded in the store predicate itself: a resend still needs their blob,
-    /// and outbound media deliberately never expires (see the policy header).
+    /// transfer from re-materializing a self-destructed photo. Outbound
+    /// NON-STORY rows are excluded in the store predicate itself: a resend
+    /// still needs their blob. An outbound STORY is admitted and reaped like
+    /// any other; the tombstone guard in `resend` keeps the blob-less row out
+    /// of every send path afterwards.
     func reapExpiredMedia() {
         let descriptor = FetchDescriptor<Message>(
-            predicate: #Predicate { $0.isOutbound == false && $0.mediaData != nil }
+            predicate: #Predicate {
+                $0.mediaData != nil && ($0.isOutbound == false || $0.isStory)
+            }
         )
         guard let rows = try? modelContext.fetch(descriptor), !rows.isEmpty else { return }
 
@@ -526,17 +567,31 @@ final class MessageInbox {
         var reaped = 0
         for message in rows {
             let expired: Bool
-            switch message.mediaMime {
-            case .jpeg:
-                expired = now.timeIntervalSince(message.timestamp)
-                    >= MediaEphemeralityPolicy.photoWindow
-            case .m4a:
-                // Listen-armed: an unlistened voice note never expires.
-                guard let listened = message.listenedAt else { continue }
-                expired = now.timeIntervalSince(listened)
-                    >= MediaEphemeralityPolicy.voiceListenWindow
-            case nil:
-                continue   // blob with no mime — unknown kind, leave it alone
+            if message.isStory {
+                // STORIES: one rule, BOTH directions — `storyWindow` after the
+                // send anchor. `sentAt` is stamped at send (outbound) or
+                // clamped at persist (inbound); an anomalous story row missing
+                // it falls back to insert time rather than living forever.
+                expired = now.timeIntervalSince(message.sentAt ?? message.timestamp)
+                    >= MediaEphemeralityPolicy.storyWindow
+            } else {
+                switch message.mediaMime {
+                case .jpeg:
+                    expired = now.timeIntervalSince(message.timestamp)
+                        >= MediaEphemeralityPolicy.photoWindow
+                case .m4a:
+                    // Listen-armed: an unlistened voice note never expires.
+                    guard let listened = message.listenedAt else { continue }
+                    expired = now.timeIntervalSince(listened)
+                        >= MediaEphemeralityPolicy.voiceListenWindow
+                case .mp4:
+                    // Video is stories-only and expires via the story branch
+                    // above; a non-story mp4 has no defined window yet — leave
+                    // the blob alone rather than invent one here.
+                    continue
+                case nil:
+                    continue   // blob with no mime — unknown kind, leave it alone
+                }
             }
             guard expired else { continue }
             message.mediaData = nil

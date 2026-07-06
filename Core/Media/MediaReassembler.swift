@@ -35,6 +35,11 @@ public struct MediaReassembler {
         public let mediaID: String
         public let mime: MediaMimeType
         public let data: Data
+        /// STORIES: carried VERBATIM from the manifest — still the sender's
+        /// asserted clock at this layer. The persistence layer clamps it to
+        /// arrival time; pure reassembly logic doesn't own a trusted clock.
+        public let sentAt: Date?
+        public let isStory: Bool
     }
 
     private let chunker: MediaChunker
@@ -97,6 +102,7 @@ public struct MediaReassembler {
         }
         manifests[id] = nil
         chunks[id] = nil
-        return Completed(mediaID: id, mime: manifest.mime, data: blob)
+        return Completed(mediaID: id, mime: manifest.mime, data: blob,
+                         sentAt: manifest.sentAt, isStory: manifest.isStory)
     }
 }

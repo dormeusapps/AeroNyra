@@ -86,7 +86,8 @@ enum SessionEvent: Sendable {
     /// integrity-verified from this peer. `data` is the whole blob; `wireID` is
     /// derived from the 16-byte mediaID (stable across the transfer) so dedup
     /// works the same as for text. Partial transfers never surface here.
-    case receivedMedia(peerKey: Data, data: Data, mime: MediaMimeType, wireID: MessageID)
+    case receivedMedia(peerKey: Data, data: Data, mime: MediaMimeType, wireID: MessageID,
+                       sentAt: Date?, isStory: Bool)
     
     /// This peer announced their raw 32-byte x-only secp256k1 Nostr public key
     /// over the established sealed channel (Phase 8d npub-bootstrap — never from
@@ -791,10 +792,18 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// (mediaID, index) into exactly ONE transfer that completes once and persists
     /// once (handleReceivedMedia dedups on the mediaID-derived wireID). Pair with
     /// `reuseID:` = the row's existing wireID so the mediaID is preserved.
+    ///
+    /// STORIES: `sentAt`/`isStory` are stamped verbatim into the manifest
+    /// (MediaChunker.split). The caller (MessageInbox) passes the row's
+    /// ORIGINAL first-send instant on a resend/re-drive, so a retry re-stamps
+    /// the same expiry anchor — the 8h window can never be extended by
+    /// retrying. Both default off: every non-story call site is unchanged.
     func sendMedia(_ blob: Data, mime: MediaMimeType, toRawKey rawKey: Data,
                    nostrRecipient: Data? = nil,
                    reuseID: MessageID? = nil,
-                   redrive: Bool = false) async throws -> MessageID {
+                   redrive: Bool = false,
+                   sentAt: Date? = nil,
+                   isStory: Bool = false) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
@@ -840,7 +849,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // identical to the first. On a first send reuseID is nil → fresh random.
         let idBytes = (reuseID ?? .random()).bytes
         let mediaWireID = MessageID(bytes: idBytes)!
-        let (manifest, chunks) = try chunker.split(blob, mime: mime, mediaID: idBytes)
+        let (manifest, chunks) = try chunker.split(blob, mime: mime, mediaID: idBytes,
+                                                   sentAt: sentAt, isStory: isStory)
         
         // Register the transfer for delivery tracking up front, so an ack that
         // races back before the burst finishes still matches.
@@ -1124,7 +1134,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         guard let idBytes = Self.hexToBytes(done.mediaID),
               let wireID = MessageID(bytes: idBytes) else { return nil }
         eventsContinuation.yield(
-            .receivedMedia(peerKey: rawKey, data: done.data, mime: done.mime, wireID: wireID)
+            .receivedMedia(peerKey: rawKey, data: done.data, mime: done.mime, wireID: wireID,
+                           sentAt: done.sentAt, isStory: done.isStory)
         )
         print("first-contact: MEDIA complete \(done.data.count)B (\(done.mime.rawValue))")
         return wireID

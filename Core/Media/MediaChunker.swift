@@ -113,11 +113,17 @@ public struct MediaChunker {
     ///   - mime: what the bytes are.
     ///   - mediaID: 16 raw bytes tying chunks to the manifest. Defaults to a
     ///     fresh random id; pass one only for deterministic tests.
+    ///   - sentAt: the sender-side first-send instant a story's expiry counts
+    ///     from, stamped into the manifest. nil for non-story media (the
+    ///     manifest omits the key — legacy wire shape).
+    ///   - isStory: marks the manifest as a story transfer.
     /// - Returns: the manifest (send first) and the ordered chunk plaintexts
     ///   (each becomes one sealed Envelope).
     public func split(_ blob: Data,
                       mime: MediaMimeType,
-                      mediaID: [UInt8]? = nil) throws -> (manifest: MediaManifest, chunks: [Data]) {
+                      mediaID: [UInt8]? = nil,
+                      sentAt: Date? = nil,
+                      isStory: Bool = false) throws -> (manifest: MediaManifest, chunks: [Data]) {
         guard !blob.isEmpty else { throw MediaChunkerError.emptyBlob }
 
         let idBytes = try mediaID ?? Self.randomID()
@@ -149,7 +155,9 @@ public struct MediaChunker {
             mime: mime,
             totalBytes: blob.count,
             chunkCount: payloads.count,
-            sha256: MediaManifest.hashHex(blob))
+            sha256: MediaManifest.hashHex(blob),
+            sentAt: sentAt,
+            isStory: isStory)
 
         return (manifest, chunks)
     }

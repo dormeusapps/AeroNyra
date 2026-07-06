@@ -18,9 +18,14 @@
 //   • An INBOUND voice note self-destructs `voiceListenWindow` after the
 //     recipient FINISHED LISTENING (`Message.listenedAt`). An unlistened note
 //     never expires — expiry is listen-armed by design.
-//   • OUTBOUND media never expires here: the blob is still needed to resend a
-//     non-terminal row. Wiping sender-side copies is a separate, deliberate
-//     product decision (flagged in SEC-6, not taken).
+//   • A STORY (EITHER direction) self-destructs `storyWindow` after it was
+//     first SENT (`Message.sentAt` — outbound: stamped at first send and
+//     reused on every retry; inbound: the manifest stamp clamped to arrival).
+//   • OUTBOUND NON-STORY media never expires here: the blob is still needed
+//     to resend a non-terminal row. Wiping sender-side copies of STORIES is
+//     the deliberate reversal SEC-6 flagged as "not taken" — now taken, for
+//     stories ONLY. The resend path skips the reaped tombstone (the guard in
+//     MessageInbox.resend), so a wiped story can never re-enter a send path.
 //
 
 import Foundation
@@ -36,4 +41,9 @@ public enum MediaEphemeralityPolicy {
     /// Inbound voice notes disappear this long after the recipient finished
     /// listening.
     public static let voiceListenWindow: TimeInterval = 120
+
+    /// Stories disappear this long after they were SENT — on BOTH ends,
+    /// sender included (the stories-only SEC-6 reversal). Anchored on
+    /// `Message.sentAt`, never on receipt or on a retry's re-send time.
+    public static let storyWindow: TimeInterval = 8 * 60 * 60
 }
