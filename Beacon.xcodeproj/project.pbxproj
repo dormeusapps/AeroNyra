@@ -140,6 +140,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		7CCA110A2FF9000000C4113A /* Calls */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Calls;
+			sourceTree = "<group>";
+		};
 		7C18935B2FF2873A00C69ADA /* Nostr */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -268,6 +273,7 @@
 		7C3B09772FED920D00AE9EC1 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				7CCA110A2FF9000000C4113A /* Calls */,
 				7C18935B2FF2873A00C69ADA /* Nostr */,
 				7CAEDF7D2FF158A60084A5C4 /* Media */,
 				7C3B09822FED9AC700AE9EC1 /* Protocol_Seam */,
@@ -384,6 +390,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				7CCA110A2FF9000000C4113A /* Calls */,
 				7C18935B2FF2873A00C69ADA /* Nostr */,
 				7C3B094E2FED902E00AE9EC1 /* Beacon */,
 				7C3B09762FED916500AE9EC1 /* Models */,
