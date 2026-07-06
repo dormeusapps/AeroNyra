@@ -108,21 +108,43 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     /// Reassembly buffers for inbound notifications (peripheral → us), keyed by
     /// the remote peripheral's id.
     private var notifyReassembly: [UUID: ReassemblyState] = [:]
-    /// Consecutive write-with-response FAILURES per peripheral, keyed by its id.
+    /// Consecutive FAILED FRAMES per peripheral, keyed by its id (ISSUE-11).
     /// A media transfer is thousands of chunked writes; a single transient ATT
     /// error mid-burst must NOT tear the link down (that aborts the transfer and
     /// leaves the receiver's reassembler stuck on a half-delivered payload). But
     /// a peer that powered its radio OFF fails EVERY write while CoreBluetooth
     /// stays silent (no didDisconnectPeripheral) — a zombie link. This counter
-    /// tells the two apart: it climbs on consecutive failures and is reset to 0
-    /// by any successful write. Crossing `writeErrorTeardownThreshold` means the
-    /// link is genuinely dead even if the CBError code wasn't conclusive.
+    /// tells the two apart: it climbs on consecutive FRAME failures and is reset
+    /// to 0 by any successful write. Counting per frame (not per chunk) matters:
+    /// with the old burst-enqueue, one doomed frame's queued chunks each failed
+    /// separately and burned the whole threshold in a single send. Crossing
+    /// `writeErrorTeardownThreshold` means the link is genuinely dead even if
+    /// the error code wasn't conclusive.
     private var writeErrorCounts: [UUID: Int] = [:]
-    /// Consecutive transient write failures before we conclude the link is dead
-    /// and tear it down. Low enough to surface a real zombie link within a few
-    /// writes (→ noReachablePeers → Nostr fallback); high enough that a single
+    /// Consecutive failed frames before we conclude the link is dead and tear
+    /// it down. Low enough to surface a real zombie link within a few frames
+    /// (→ noReachablePeers → Nostr fallback); high enough that a single
     /// backpressure glitch in a media burst is ridden through, as HEAD did.
     private static let writeErrorTeardownThreshold = 3
+
+    // MARK: - Central-side write engine (per-peer FIFO, one chunk in flight)
+    /// Outbound frames per peer, each frame as its remaining chunk slices in
+    /// order. STRICT FIFO with flow control (ISSUE-11): only the head chunk of
+    /// the head frame is ever in flight; the next leaves when `didWriteValueFor`
+    /// acks it. This attributes an ATT failure to exactly ONE frame — the old
+    /// tight enqueue loop put every chunk in flight at once, so one doomed
+    /// frame produced N failure callbacks and multi-counted against the
+    /// teardown threshold.
+    private var writeQueues: [UUID: [[Data]]] = [:]
+    /// Peers whose head chunk is awaiting its `didWriteValueFor` response.
+    private var writeInFlight: Set<UUID> = []
+    /// Resend budget left for the CURRENT head chunk before its whole frame is
+    /// declared failed. A frame either completes or is dropped whole — a
+    /// partially delivered frame would corrupt the peer's sequential
+    /// reassembly ([type][len][payload]).
+    private var chunkRetriesLeft: [UUID: Int] = [:]
+    /// Resend attempts per chunk on a transient error before the frame fails.
+    private static let chunkRetryLimit = 2
 
     // MARK: - Peripheral (advertiser) side
     private var peripheral: CBPeripheralManager?
@@ -188,6 +210,9 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             self.writeReassembly.removeAll()
             self.pendingNotifications.removeAll()
             self.writeErrorCounts.removeAll()
+            self.writeQueues.removeAll()
+            self.writeInFlight.removeAll()
+            self.chunkRetriesLeft.removeAll()
             self.started = false
             self.emitReachable()
             self.log.info("stop(): radios torn down")
@@ -378,18 +403,59 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
         return false
     }
 
-    /// central → peripheral: chunked GATT write-with-response. cbQueue.
+    /// central → peripheral: enqueue a frame for chunked, flow-controlled
+    /// GATT write-with-response delivery (ISSUE-11). Chunks leave strictly one
+    /// at a time — the next departs only after `didWriteValueFor` acks the
+    /// previous — so a failure is attributed to exactly ONE frame (see
+    /// `writeErrorCounts`). Returning true means ENQUEUED, not delivered;
+    /// send() has always been fire-and-forget at this layer. cbQueue.
     @discardableResult
     private func writeFrameToPeer(_ frame: Data, id: UUID) -> Bool {
-        guard let peer = peers[id], let ch = writeTargets[id] else { return false }
+        guard let peer = peers[id], writeTargets[id] != nil else { return false }
         let maxChunk = max(20, peer.maximumWriteValueLength(for: .withResponse))
+        var chunks: [Data] = []
         var offset = 0
         while offset < frame.count {
             let end = min(offset + maxChunk, frame.count)
-            peer.writeValue(frame.subdata(in: offset..<end), for: ch, type: .withResponse)
+            chunks.append(frame.subdata(in: offset..<end))
             offset = end
         }
+        writeQueues[id, default: []].append(chunks)
+        pumpWriteQueue(id)
         return true
+    }
+
+    /// Send the head chunk of the head frame unless one is already in flight
+    /// (also used to RESEND the head chunk after a transient failure, which
+    /// deliberately does not pop it). cbQueue.
+    private func pumpWriteQueue(_ id: UUID) {
+        guard !writeInFlight.contains(id),
+              let peer = peers[id], let ch = writeTargets[id],
+              let chunk = writeQueues[id]?.first?.first else { return }
+        writeInFlight.insert(id)
+        peer.writeValue(chunk, for: ch, type: .withResponse)
+    }
+
+    /// Pop the acked head chunk (and its frame, once empty), then send the
+    /// next. cbQueue.
+    private func advanceWriteQueue(_ id: UUID) {
+        if var frames = writeQueues[id], !frames.isEmpty {
+            frames[0].removeFirst()
+            if frames[0].isEmpty { frames.removeFirst() }
+            writeQueues[id] = frames.isEmpty ? nil : frames
+        }
+        pumpWriteQueue(id)
+    }
+
+    /// Drop the head frame WHOLE after its chunk retries are exhausted — a
+    /// partial frame would corrupt the peer's sequential reassembly — and move
+    /// on to the next queued frame. cbQueue.
+    private func failHeadFrame(_ id: UUID) {
+        if var frames = writeQueues[id], !frames.isEmpty {
+            frames.removeFirst()
+            writeQueues[id] = frames.isEmpty ? nil : frames
+        }
+        pumpWriteQueue(id)
     }
 
     /// peripheral → central: chunked notify with backpressure. cbQueue.
@@ -455,6 +521,9 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
             writeTargets.removeAll()
             notifyReassembly.removeAll()
             writeErrorCounts.removeAll()
+            writeQueues.removeAll()
+            writeInFlight.removeAll()
+            chunkRetriesLeft.removeAll()
             emitReachable()
             return
         }
@@ -496,6 +565,9 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
         writeTargets[peripheral.identifier] = nil
         notifyReassembly[peripheral.identifier] = nil
         writeErrorCounts[peripheral.identifier] = nil
+        writeQueues[peripheral.identifier] = nil
+        writeInFlight.remove(peripheral.identifier)
+        chunkRetriesLeft[peripheral.identifier] = nil
         emitReachable()
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
     }
@@ -554,13 +626,16 @@ extension BLEMeshTransport: CBPeripheralDelegate {
                            didWriteValueFor characteristic: CBCharacteristic,
                            error: Error?) {
         let id = peripheral.identifier
+        writeInFlight.remove(id)
 
-        // SUCCESS: the link is demonstrably alive. Clear any accumulated failure
-        // streak so a later transient glitch starts counting from zero again.
-        // (HEAD had NO success branch — the if-let-error had no else — so the
-        // counter needs this to be a true "consecutive" measure.)
+        // SUCCESS: the link is demonstrably alive. Clear the failed-frame
+        // streak and the chunk retry budget, then advance the FIFO. (HEAD had
+        // NO success branch — the if-let-error had no else — so the counter
+        // needs this to be a true "consecutive" measure.)
         guard let error else {
             if writeErrorCounts[id] != nil { writeErrorCounts[id] = 0 }
+            chunkRetriesLeft[id] = nil
+            advanceWriteQueue(id)
             return
         }
 
@@ -569,20 +644,23 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         // WITHOUT delivering didDisconnectPeripheral, the same gap the power-off
         // handlers guard against, so the link goes ZOMBIE and the router never
         // gets noReachablePeers → never falls back to the relay) OR a transient
-        // ATT/backpressure hiccup mid-burst. A media transfer is thousands of
-        // chunked writes; tearing the link down on the FIRST transient error
-        // aborts the transfer and strands the receiver's reassembler on a
-        // half-delivered payload. So we DISCRIMINATE:
+        // ATT/backpressure hiccup mid-burst. We DISCRIMINATE by error domain
+        // and code (ISSUE-11):
         //
-        //   • conclusive link-dead CBError code  → tear down now
-        //   • OR consecutive failures ≥ threshold → tear down (catches the
-        //     silent power-off, whose code isn't guaranteed to be conclusive:
-        //     every write fails, so the streak crosses threshold within a few)
-        //   • otherwise (transient) → log and CONTINUE, as HEAD did, so the
-        //     burst survives the hiccup.
-        let count = (writeErrorCounts[id] ?? 0) + 1
-        writeErrorCounts[id] = count
-
+        //   • conclusive link-dead CBError code → tear down now.
+        //   • CBATTError — an ATT-level response from the peer's stack. The
+        //     old `error as? CBError` cast NEVER matched these (different
+        //     domain), routing every ATT rejection down the transient path: a
+        //     dead link failing each write with "Unknown ATT error" was kept
+        //     alive indefinitely — the ISSUE-11 loop (HW log: confirmed links
+        //     failing writes 30s post-arm, never tearing down). Only genuine
+        //     backpressure statuses are transient; every other ATT status —
+        //     including codes outside the standard table, which localize as
+        //     "Unknown ATT error" — is CONCLUSIVE → tear down now.
+        //   • otherwise (transient) → resend the chunk up to chunkRetryLimit,
+        //     then fail the FRAME (one strike); the frame streak crossing
+        //     writeErrorTeardownThreshold is the backstop for the silent
+        //     power-off, whose code isn't guaranteed to be conclusive.
         let linkDead: Bool
         if let cb = error as? CBError {
             switch cb.code {
@@ -592,25 +670,52 @@ extension BLEMeshTransport: CBPeripheralDelegate {
             default:
                 linkDead = false
             }
+        } else if let att = error as? CBATTError {
+            switch att.code {
+            case .insufficientResources, .prepareQueueFull:
+                linkDead = false   // TX backpressure — the retry rides it out
+            default:
+                linkDead = true    // fatal or unknown ATT status — conclusive
+            }
         } else {
             linkDead = false
         }
 
-        guard linkDead || count >= Self.writeErrorTeardownThreshold else {
-            // Transient, below threshold: keep the link — don't abort the burst.
-            log.error("write failed to \(id): \(error.localizedDescription) (transient \(count)/\(Self.writeErrorTeardownThreshold)) → keeping link")
-            return
+        if !linkDead {
+            // Transient: burn a resend on the CURRENT head chunk first (it was
+            // not popped, so the pump re-sends the same bytes).
+            let retries = chunkRetriesLeft[id] ?? Self.chunkRetryLimit
+            if retries > 0 {
+                chunkRetriesLeft[id] = retries - 1
+                log.error("write chunk failed to \(id): \(error.localizedDescription) → retrying (\(retries) left)")
+                pumpWriteQueue(id)
+                return
+            }
+            // Retries exhausted → the FRAME fails and counts ONE strike.
+            chunkRetriesLeft[id] = nil
+            let count = (writeErrorCounts[id] ?? 0) + 1
+            writeErrorCounts[id] = count
+            guard count >= Self.writeErrorTeardownThreshold else {
+                // Below threshold: keep the link — drop this frame whole and
+                // move on, so the burst survives the hiccup.
+                log.error("write frame failed to \(id): \(error.localizedDescription) (transient \(count)/\(Self.writeErrorTeardownThreshold)) → keeping link")
+                failHeadFrame(id)
+                return
+            }
         }
 
-        // Genuinely dead. Tear the link down (mirroring didDisconnectPeripheral)
+        // Genuinely dead: conclusive code, or the frame-failure streak crossed
+        // the threshold. Tear the link down (mirroring didDisconnectPeripheral)
         // so reachability drops immediately and the next send routes over Nostr;
         // cancel + rescan so we rediscover the peer if its radio returns.
-        let reason = linkDead ? "link-dead code" : "\(count) consecutive failures"
+        let reason = linkDead ? "link-dead code" : "\(writeErrorCounts[id] ?? 0) consecutive frame failures"
         log.error("write failed to \(id): \(error.localizedDescription) (\(reason)) → dropping dead link")
         peers[id] = nil
         writeTargets[id] = nil
         notifyReassembly[id] = nil
         writeErrorCounts[id] = nil
+        writeQueues[id] = nil
+        chunkRetriesLeft[id] = nil
         central?.cancelPeripheralConnection(peripheral)
         emitReachable()
         if central?.state == .poweredOn {
