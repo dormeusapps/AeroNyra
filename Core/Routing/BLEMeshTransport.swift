@@ -146,6 +146,22 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     /// Resend attempts per chunk on a transient error before the frame fails.
     private static let chunkRetryLimit = 2
 
+    // MARK: - Reconnect backoff after a dead-link teardown (central side)
+    /// Consecutive write-failure teardowns per peripheral id (ISSUE-11).
+    /// Without a holdoff, teardown → rescan → rediscover → re-greet → fail
+    /// spins at radio speed against a peer whose writes keep failing. Same
+    /// idiom as NostrTransport's relay backoff: exponential from
+    /// `baseReconnectDelay`, capped at `maxReconnectDelay`, reset by any
+    /// successful write (the same liveness signal that resets
+    /// `writeErrorCounts`). Applies ONLY to write-failure teardowns — a normal
+    /// didDisconnectPeripheral (peer walked away) still rescans immediately,
+    /// so ISSUE-3b departure handling is untouched.
+    private var reconnectAttempts: [UUID: Int] = [:]
+    /// Peripherals we must not reconnect to before this deadline.
+    private var reconnectHoldoff: [UUID: DispatchTime] = [:]
+    private static let baseReconnectDelay: Double = 1     // seconds
+    private static let maxReconnectDelay: Double = 30     // capped backoff ceiling
+
     // MARK: - Peripheral (advertiser) side
     private var peripheral: CBPeripheralManager?
     private var mailbox: CBMutableCharacteristic?
@@ -213,6 +229,8 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             self.writeQueues.removeAll()
             self.writeInFlight.removeAll()
             self.chunkRetriesLeft.removeAll()
+            self.reconnectAttempts.removeAll()
+            self.reconnectHoldoff.removeAll()
             self.started = false
             self.emitReachable()
             self.log.info("stop(): radios torn down")
@@ -524,6 +542,8 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
             writeQueues.removeAll()
             writeInFlight.removeAll()
             chunkRetriesLeft.removeAll()
+            reconnectAttempts.removeAll()
+            reconnectHoldoff.removeAll()
             emitReachable()
             return
         }
@@ -539,6 +559,15 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
                                advertisementData: [String: Any],
                                rssi RSSI: NSNumber) {
         guard peers[peripheral.identifier] == nil else { return }
+        // ISSUE-11: in post-teardown holdoff? Skip — the delayed rescan
+        // scheduled at teardown restarts the scan session once the holdoff
+        // ends (duplicates are disabled, so a running session won't re-report
+        // this peer; the session restart is what re-reports it).
+        if let until = reconnectHoldoff[peripheral.identifier], DispatchTime.now() < until {
+            log.info("discovered \(peripheral.identifier) but in reconnect holdoff → skipping")
+            return
+        }
+        reconnectHoldoff[peripheral.identifier] = nil
         log.info("discovered peer \(peripheral.identifier) rssi \(RSSI) → connecting")
         peers[peripheral.identifier] = peripheral
         central.connect(peripheral, options: nil)
@@ -635,6 +664,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         guard let error else {
             if writeErrorCounts[id] != nil { writeErrorCounts[id] = 0 }
             chunkRetriesLeft[id] = nil
+            reconnectAttempts[id] = nil   // proven alive → backoff starts over
             advanceWriteQueue(id)
             return
         }
@@ -718,8 +748,27 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         chunkRetriesLeft[id] = nil
         central?.cancelPeripheralConnection(peripheral)
         emitReachable()
-        if central?.state == .poweredOn {
-            central?.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
+
+        // ISSUE-11: back off before chasing this peer again. An immediate
+        // rescan re-discovers, re-connects, and re-greets the same dead link
+        // within ~a second — the infinite write-fail loop. Exponential
+        // per-peer holdoff (NostrTransport idiom); the scan restart is
+        // deferred to the holdoff deadline because duplicate reports are
+        // disabled — restarting the session is what makes CoreBluetooth
+        // re-report the peer. NOTE: the cancel above fires
+        // didDisconnectPeripheral, which must not (and does not) clear these
+        // two maps. Reachability still dropped ABOVE, immediately — the
+        // holdoff delays re-admission only, so ISSUE-3b's departure-triggered
+        // Nostr re-drive fires on schedule.
+        let attempt = (reconnectAttempts[id] ?? 0) + 1
+        reconnectAttempts[id] = attempt
+        let delay = min(Self.maxReconnectDelay,
+                        Self.baseReconnectDelay * pow(2, Double(attempt - 1)))
+        reconnectHoldoff[id] = .now() + delay
+        log.info("reconnect holdoff for \(id): \(delay)s (teardown #\(attempt))")
+        cbQueue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.started, self.central?.state == .poweredOn else { return }
+            self.central?.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
         }
     }
 }
