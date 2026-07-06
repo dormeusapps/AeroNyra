@@ -1,0 +1,16 @@
+title = "AeroNyra gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Published crypto test vectors and non-secret keychain labels"
+paths = [
+    '''BeaconTests/NostrGiftWrapTests\.swift''',
+    '''BeaconTests/NIP44Tests\.swift''',
+    '''BeaconTests/NostrEventTests\.swift''',
+    '''BeaconTests/Secp256k1SchnorrTests\.swift''',
+]
+regexes = [
+    '''com\.aeronyra\.[a-z]+\.v[0-9]+''',
+]

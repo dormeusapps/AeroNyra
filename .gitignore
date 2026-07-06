@@ -1,0 +1,34 @@
+## macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+## Xcode — build products & user state
+build/
+DerivedData/
+*.xcuserstate
+**/xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.xcarchive
+
+## Swift Package Manager
+.build/
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+
+## CocoaPods
+# Decision: Pods/ is ignored; Podfile + Podfile.lock ARE committed (versions pinned).
+# Flip this (remove the line) if you'd rather ship a fully self-contained clone.
+Pods/
+
+## Signing material & secrets — NEVER commit
+*.mobileprovision
+*.p12
+*.cer
+*.certSigningRequest
+*.p8
+*.keystore
+*.env
+*.local.xcconfig
+**/secrets*.plist
