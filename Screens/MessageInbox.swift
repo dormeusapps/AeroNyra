@@ -88,6 +88,11 @@ final class MessageInbox {
                 handleLearnedNostrIdentity(peerKey: key, nostrPubkey: nostrPubkey)
             case .reconnected(let key):
                 await handleReconnected(peerKey: key)
+            case .callSignal:
+                // FaceTime v1: consumed by the call layer, not persisted.
+                // CallController wiring arrives with the in-chat UI step;
+                // until then a stray frame is deliberately ignored here.
+                break
             }
         }
     }

@@ -160,8 +160,10 @@ final class MessagePayloadReconnectHelloTests: XCTestCase {
     }
 
     func testUnknownTagStillDecodesNil() {
-            XCTAssertNil(MessagePayload.decode(Data([8, 1])),
-                         "an unknown tag (8) must decode to nil, not be misread")
+            // 8–10 became the call-signaling kinds (FaceTime v1); 11 is the
+            // next genuinely-unknown tag.
+            XCTAssertNil(MessagePayload.decode(Data([11, 1])),
+                         "an unknown tag (11) must decode to nil, not be misread")
             XCTAssertNil(MessagePayload.decode(Data([0, 1])),
                          "tag 0 is unused and must decode to nil")
             XCTAssertNil(MessagePayload.decode(Data()), "empty buffer decodes nil")

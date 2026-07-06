@@ -88,6 +88,9 @@ enum SessionEvent: Sendable {
     /// works the same as for text. Partial transfers never surface here.
     case receivedMedia(peerKey: Data, data: Data, mime: MediaMimeType, wireID: MessageID,
                        sentAt: Date?, isStory: Bool)
+    /// A sealed, VERIFIED-contact call-signaling frame (FaceTime v1). Routed
+    /// to the call layer, never persisted as a Message.
+    case callSignal(peerKey: Data, signal: CallSignal)
     
     /// This peer announced their raw 32-byte x-only secp256k1 Nostr public key
     /// over the established sealed channel (Phase 8d npub-bootstrap — never from
@@ -945,7 +948,22 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             print("first-contact: delivery-ack seal/send failed: \(error)")
         }
     }
-    
+
+    /// Seal + route one call-signaling frame to a verified peer (FaceTime v1).
+    /// UNTRACKED, like a delivery ack: signaling earns no delivery state and
+    /// is never acked — ring timeouts belong to CallController, not the
+    /// outbox. Rides the same addressed rail as text (BLE if reachable,
+    /// Nostr Tier-2 fallback via `nostrRecipient`); throws if no transport
+    /// takes it, so the call layer can end the attempt immediately.
+    func sendCallSignal(_ signal: CallSignal, toRawKey rawKey: Data,
+                        nostrRecipient: Data? = nil) async throws {
+        let peer = store.peerIdentity(fromRawKey: rawKey)
+        let session = try store.session(with: peer)
+        let sealed = try session.seal(MessagePayload.callSignal(signal).sealedPlaintext())
+        try await routeOut(Envelope(ciphertext: sealed), tracked: false,
+                           peerKey: rawKey, nostrRecipient: nostrRecipient)
+    }
+
     /// Announce OUR Nostr public key to an established peer over the sealed
     /// channel (Phase 8d npub-bootstrap). Sent UNTRACKED + best-effort, exactly
     /// like a delivery ack: never acked, no delivery state, and a failure simply
@@ -1119,6 +1137,46 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 } catch {
                     print("first-contact: invite-echo redeem failed: \(error)")
                 }
+
+            case .callRequest(let body):
+                // F1 (7f STRICT-VERIFIED): call signaling is user-reaching
+                // content — an unverified session-holder must not be able to
+                // ring us. Gated exactly like .text; drop silently, no reply.
+                guard verifiedIdentities.contains(rawKey) else {
+                    print("first-contact: DROP call-request from unverified \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                guard let signal = CallSignal.parseRequestBody(body) else {
+                    print("first-contact: malformed call-request from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
+
+            case .callAnswer(let body):
+                // F1 (7f STRICT-VERIFIED): gated exactly like .callRequest —
+                // an answer from an unverified holder is dropped, no reply.
+                guard verifiedIdentities.contains(rawKey) else {
+                    print("first-contact: DROP call-answer from unverified \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                guard let signal = CallSignal.parseAnswerBody(body) else {
+                    print("first-contact: malformed call-answer from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
+
+            case .callDecline(let body):
+                // F1 (7f STRICT-VERIFIED): gated exactly like .callRequest —
+                // a decline from an unverified holder is dropped, no reply.
+                guard verifiedIdentities.contains(rawKey) else {
+                    print("first-contact: DROP call-decline from unverified \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                guard let signal = CallSignal.parseDeclineBody(body) else {
+                    print("first-contact: malformed call-decline from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
             }
         } catch {
             print("first-contact: open failed: \(error)")

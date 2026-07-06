@@ -89,7 +89,10 @@ final class MessagePayloadTests: XCTestCase {
         XCTAssertEqual(WirePayloadKind.nostrIdentity.rawValue, 5)
         XCTAssertEqual(WirePayloadKind.reconnectHello.rawValue, 6)
         XCTAssertEqual(WirePayloadKind.inviteEcho.rawValue,     7)
-        XCTAssertEqual(WirePayloadKind.allCases.count,          7)
+        XCTAssertEqual(WirePayloadKind.callRequest.rawValue,    8)
+        XCTAssertEqual(WirePayloadKind.callAnswer.rawValue,     9)
+        XCTAssertEqual(WirePayloadKind.callDecline.rawValue,    10)
+        XCTAssertEqual(WirePayloadKind.allCases.count,          10)
     }
     
     func testTextStillRoundTripsAlongsideNewKind() {

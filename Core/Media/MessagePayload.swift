@@ -83,6 +83,9 @@ public enum WirePayloadKind: UInt8, Sendable, CaseIterable {
     case nostrIdentity = 5   // npub bootstrap: 32-byte x-only secp256k1 pubkey
     case reconnectHello = 6  // closed-contact auth it's-me: 1-byte version tag
     case inviteEcho    = 7   // remote-invite echo: 16-byte invite id
+    case callRequest   = 8   // call signaling: callID(16) ‖ complete SDP offer
+    case callAnswer    = 9   // call signaling: callID(16) ‖ complete SDP answer
+    case callDecline   = 10  // call signaling: callID(16) — decline / cancel-before-connect
 }
 
 // MARK: - MessagePayload
@@ -98,6 +101,9 @@ public enum MessagePayload: Sendable, Equatable {
     case nostrIdentity(Data)   // npub bootstrap body: x-only pubkey (32 bytes)
     case reconnectHello(Data)  // closed-contact auth it's-me body: version(1)
     case inviteEcho(Data)      // remote-invite echo body: invite id (16 bytes)
+    case callRequest(Data)     // call signaling body: callID(16) ‖ SDP offer
+    case callAnswer(Data)      // call signaling body: callID(16) ‖ SDP answer
+    case callDecline(Data)     // call signaling body: callID(16)
 
     public var kind: WirePayloadKind {
         switch self {
@@ -108,6 +114,9 @@ public enum MessagePayload: Sendable, Equatable {
         case .nostrIdentity: return .nostrIdentity
         case .reconnectHello: return .reconnectHello
         case .inviteEcho:    return .inviteEcho
+        case .callRequest:   return .callRequest
+        case .callAnswer:    return .callAnswer
+        case .callDecline:   return .callDecline
         }
     }
 
@@ -120,7 +129,10 @@ public enum MessagePayload: Sendable, Equatable {
              .ack(let d),
              .nostrIdentity(let d),
              .reconnectHello(let d),
-             .inviteEcho(let d):
+             .inviteEcho(let d),
+             .callRequest(let d),
+             .callAnswer(let d),
+             .callDecline(let d):
             return d
         }
     }
@@ -145,7 +157,8 @@ public enum MessagePayload: Sendable, Equatable {
         switch self {
         case .mediaManifest, .mediaChunk:
             return encoded()                        // already bucket-shaped
-        case .text, .ack, .nostrIdentity, .reconnectHello, .inviteEcho:
+        case .text, .ack, .nostrIdentity, .reconnectHello, .inviteEcho,
+             .callRequest, .callAnswer, .callDecline:
             return PayloadPadding.pad(encoded())    // collapse length to a bucket
         }
     }
@@ -172,6 +185,9 @@ public enum MessagePayload: Sendable, Equatable {
         case .nostrIdentity: return .nostrIdentity(body)
         case .reconnectHello: return .reconnectHello(body)
         case .inviteEcho:    return .inviteEcho(body)
+        case .callRequest:   return .callRequest(body)
+        case .callAnswer:    return .callAnswer(body)
+        case .callDecline:   return .callDecline(body)
         }
     }
 

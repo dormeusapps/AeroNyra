@@ -141,3 +141,20 @@ public extension CallSignal {
         }
     }
 }
+
+// MARK: - MessagePayload bridge (wire step)
+
+public extension MessagePayload {
+
+    /// Wrap a CallSignal in its tagged payload (WirePayloadKind 8–10), the
+    /// exact bytes `sealedPlaintext()` pads and the session seals. Kept here —
+    /// not in MessagePayload.swift — so call knowledge stays in Core/Calls,
+    /// mirroring how `deliveryAck` builders live beside their feature.
+    static func callSignal(_ signal: CallSignal) -> MessagePayload {
+        switch signal {
+        case .request: return .callRequest(signal.encodedBody())
+        case .answer:  return .callAnswer(signal.encodedBody())
+        case .decline: return .callDecline(signal.encodedBody())
+        }
+    }
+}
