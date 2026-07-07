@@ -315,16 +315,22 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         refreshRecognizerCache()
     }
     
-    // MARK: Reachability → send our bundle to new links + publish presence
-    
+    // MARK: Reachability → send reconnect beacons to new links + publish presence
+
     func onReachable(_ ids: [UUID]) async {
         let current = Set(ids)
         reachableLinks = current
         greetedLinks.formIntersection(current)   // drop links that went away
         for link in current where !greetedLinks.contains(link) {
             greetedLinks.insert(link)
-            await sendOurBundle(to: link)
-            await sendReconnectBeacons(to: link)   // 5d: both run; bundle leaves at step 6
+            // Reconnect beacons only. The over-RF prekey-bundle greet is GONE
+            // (identity-off-RF invariant): enrolled contacts bootstrap a session
+            // via the QR/invite payload or a self-identifying prekey message, and
+            // maintain it via warmInboundSessions + the 0x03 it's-me handshake — so
+            // nothing enrolled needs a bundle over BLE. Greeting every connector
+            // leaked our long-term identity key to any unauthenticated peer that
+            // linked (and handed strangers the bundle to forge a prekey message).
+            await sendReconnectBeacons(to: link)
         }
         // BLE→internet handoff. Capture who was reachable BEFORE we recompute, so
         // a peer that just dropped out of range (or whose Bluetooth went off — the
@@ -338,17 +344,6 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             if n > 0 {
                 print("first-contact: BLE dropped — rerouted \(n) in-flight msg(s) → Nostr")
             }
-        }
-    }
-    
-    private func sendOurBundle(to link: UUID) async {
-        do {
-            let bundle = try store.localPrekeyBundle()
-            try await transport.sendBundle(bundle.data, toLink: link)
-            print("first-contact: sent our bundle → link \(link)")
-        } catch {
-            greetedLinks.remove(link)   // allow a retry on the next tick
-            print("first-contact: bundle send to \(link) failed: \(error)")
         }
     }
     
