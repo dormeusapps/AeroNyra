@@ -196,8 +196,12 @@ struct HomeView: View {
                 .stillwaterMono(10.5, trackingEm: 0.42)
             Spacer()
             HStack(spacing: 7) {
+                // Stillwater gate: the key light breathes only when someone is
+                // actually near (identity-resolved set, same as the zones) and
+                // sits still at its rest value when alone.
                 BreathingDot(color: Stillwater.Palette.biolume, size: 5, glow: 8,
-                             duration: 4.0, delay: 0, accent: accentHex)
+                             duration: 4.0, delay: 0, accent: accentHex,
+                             breathing: !nearPeers.isEmpty)
                 Text("key alive")
                     .stillwaterMono(8.5, trackingEm: 0.22, color: Stillwater.Palette.mistDim)
             }
@@ -221,7 +225,9 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("\(myName.isEmpty ? "you" : myName) — the surface")
                 .stillwaterMono(8, trackingEm: 0.3, color: Stillwater.Palette.mistDim)
-            SurfaceLine(accent: accentHex)
+            // Stillwater gate: the surface pulses only when someone is near
+            // (same identity-resolved set as the zones); still water when alone.
+            SurfaceLine(accent: accentHex, breathing: !nearPeers.isEmpty)
         }
     }
 
@@ -470,6 +476,14 @@ private struct PresenceLight: View {
 }
 
 // A soft light that breathes: opacity + scale on a sine-eased loop, desynced.
+//
+// GATED (Stillwater): the loop runs only while `breathing` is true — motion
+// means presence. The on/off is driven by explicit `withAnimation` transactions
+// in `onChange(initial:)`, NOT the old `.animation(value:) + .onAppear` flip:
+// that pattern raced view insertion (the flip could commit inside the insertion
+// transaction and never arm — the intermittent frozen/pulsing wipe-launch bug).
+// An explicit transaction attaches the animation to the mutation itself, so
+// arming is deterministic in both directions.
 private struct BreathingDot: View {
     let color: Color
     let size: CGFloat
@@ -478,8 +492,13 @@ private struct BreathingDot: View {
     var delay: Double = 0
     var dim: Bool = false
     var accent: Int = 0
+    /// Presence gate. Defaults true: the per-peer `PresenceLight` dots exist
+    /// only while their peer IS present, so they always breathe; the wordmark
+    /// key light passes the real near-gate.
+    var breathing: Bool = true
 
-    @State private var on = false
+    /// rest = false … peak = true. Never set outside the transactions below.
+    @State private var phase = false
 
     var body: some View {
         let _ = accent
@@ -487,10 +506,23 @@ private struct BreathingDot: View {
             .fill(color)
             .frame(width: size, height: size)
             .shadow(color: glow > 0 ? color.opacity(0.35) : .clear, radius: glow)
-            .scaleEffect(on ? 1.0 : (dim ? 0.92 : 0.9))
-            .opacity(on ? (dim ? 0.6 : 1.0) : (dim ? 0.3 : 0.55))
-            .animation(Stillwater.Motion.breathe(duration).delay(delay), value: on)
-            .onAppear { on = true }
+            .scaleEffect(phase ? 1.0 : (dim ? 0.92 : 0.9))
+            .opacity(phase ? (dim ? 0.6 : 1.0) : (dim ? 0.3 : 0.55))
+            .onChange(of: breathing, initial: true) { _, isNear in
+                if isNear {
+                    // Ease IN: the loop starts from rest, so the first breath's
+                    // own sine rise is the fade-in — no snap on arrival.
+                    withAnimation(Stillwater.Motion.breathe(duration).delay(delay)) {
+                        phase = true
+                    }
+                } else {
+                    // Ease OUT: retarget from the current presentation value and
+                    // settle to the calm REST value (never frozen mid-pulse).
+                    withAnimation(Stillwater.Motion.water(1.0)) {
+                        phase = false
+                    }
+                }
+            }
     }
 }
 
@@ -542,9 +574,15 @@ private struct UnreadStone: View {
     }
 }
 
-// You — the surface: one luminous line that pulses slowly.
+// You — the surface: one luminous line. Pulses slowly while someone is near;
+// still water (rest opacity) when alone. Same deterministic gate discipline as
+// BreathingDot — explicit transactions, no onAppear arming race.
 private struct SurfaceLine: View {
     var accent: Int = 0
+    /// Presence gate: `!nearPeers.isEmpty` from HomeView (identity-resolved).
+    var breathing: Bool = false
+
+    /// rest = false … bright = true. Never set outside the transactions below.
     @State private var alive = false
 
     var body: some View {
@@ -558,8 +596,20 @@ private struct SurfaceLine: View {
         .frame(height: 1)
         .shadow(color: Stillwater.Palette.biolume.opacity(0.45), radius: 6)
         .opacity(alive ? 1.0 : 0.5)
-        .animation(.easeInOut(duration: 5).repeatForever(autoreverses: true), value: alive)
-        .onAppear { alive = true }
+        .onChange(of: breathing, initial: true) { _, isNear in
+            if isNear {
+                // Ease IN: first rise of the 5s breath is the fade-in.
+                withAnimation(.easeInOut(duration: 5).repeatForever(autoreverses: true)) {
+                    alive = true
+                }
+            } else {
+                // Ease OUT: settle to rest (0.5) over the water curve — the
+                // last peer leaving calms the surface, it doesn't snap it.
+                withAnimation(Stillwater.Motion.water(1.0)) {
+                    alive = false
+                }
+            }
+        }
     }
 }
 
