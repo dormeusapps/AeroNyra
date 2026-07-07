@@ -86,6 +86,7 @@ public enum WirePayloadKind: UInt8, Sendable, CaseIterable {
     case callRequest   = 8   // call signaling: callID(16) ‖ complete SDP offer
     case callAnswer    = 9   // call signaling: callID(16) ‖ complete SDP answer
     case callDecline   = 10  // call signaling: callID(16) — decline / cancel-before-connect
+    case inviteEchoV2  = 11  // remote-invite echo v2: inviteID(16) ‖ redeemer npub(32)
 }
 
 // MARK: - MessagePayload
@@ -104,6 +105,7 @@ public enum MessagePayload: Sendable, Equatable {
     case callRequest(Data)     // call signaling body: callID(16) ‖ SDP offer
     case callAnswer(Data)      // call signaling body: callID(16) ‖ SDP answer
     case callDecline(Data)     // call signaling body: callID(16)
+    case inviteEchoV2(Data)    // remote-invite echo v2: inviteID(16) ‖ npub(32)
 
     public var kind: WirePayloadKind {
         switch self {
@@ -117,6 +119,7 @@ public enum MessagePayload: Sendable, Equatable {
         case .callRequest:   return .callRequest
         case .callAnswer:    return .callAnswer
         case .callDecline:   return .callDecline
+        case .inviteEchoV2:  return .inviteEchoV2
         }
     }
 
@@ -132,7 +135,8 @@ public enum MessagePayload: Sendable, Equatable {
              .inviteEcho(let d),
              .callRequest(let d),
              .callAnswer(let d),
-             .callDecline(let d):
+             .callDecline(let d),
+             .inviteEchoV2(let d):
             return d
         }
     }
@@ -158,7 +162,7 @@ public enum MessagePayload: Sendable, Equatable {
         case .mediaManifest, .mediaChunk:
             return encoded()                        // already bucket-shaped
         case .text, .ack, .nostrIdentity, .reconnectHello, .inviteEcho,
-             .callRequest, .callAnswer, .callDecline:
+             .inviteEchoV2, .callRequest, .callAnswer, .callDecline:
             return PayloadPadding.pad(encoded())    // collapse length to a bucket
         }
     }
@@ -188,6 +192,7 @@ public enum MessagePayload: Sendable, Equatable {
         case .callRequest:   return .callRequest(body)
         case .callAnswer:    return .callAnswer(body)
         case .callDecline:   return .callDecline(body)
+        case .inviteEchoV2:  return .inviteEchoV2(body)
         }
     }
 
@@ -334,5 +339,30 @@ public extension MessagePayload {
     static func parseInviteEcho(_ body: Data) -> Data? {
         guard body.count == inviteEchoIDByteCount else { return nil }
         return body
+    }
+
+    // MARK: - Invite echo v2  (npub-bootstrap over pure Nostr)
+
+    /// Byte length of an `.inviteEchoV2` body: inviteID(16) ‖ redeemer npub(32).
+    /// The npub rides the echo because a PURE-NOSTR pair has no BLE rail for the
+    /// lazy `announceNostrIdentity` — without it the minter can never address
+    /// the redeemer over the relay. V1 (id-only, tag 7) remains the form a
+    /// redeemer with no Nostr identity seals, and stays decodable forever.
+    static var inviteEchoV2ByteCount: Int { inviteEchoIDByteCount + nostrPubkeyByteCount }
+
+    /// Build a v2 invite-echo: the burned invite id plus OUR x-only npub, so
+    /// the minter learns the redeemer's Nostr address at echo-receipt.
+    static func inviteEchoV2(inviteID: Data, redeemerNostrPubkey: Data) -> MessagePayload {
+        .inviteEchoV2(inviteID + redeemerNostrPubkey)
+    }
+
+    /// Parse an `.inviteEchoV2` body back into its halves. Returns nil unless
+    /// the body is EXACTLY 48 bytes — same strict untrusted-input discipline as
+    /// `parseInviteEcho` / `parseNostrIdentity`; `decode` does not length-check.
+    static func parseInviteEchoV2(_ body: Data)
+        -> (inviteID: Data, redeemerNostrPubkey: Data)? {
+        guard body.count == inviteEchoV2ByteCount else { return nil }
+        return (Data(body.prefix(inviteEchoIDByteCount)),
+                Data(body.suffix(nostrPubkeyByteCount)))
     }
 }

@@ -467,15 +467,76 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         emitReachablePeers()
 
         // Seal the echo and route it (Nostr-capable) back to the initiator.
-        let payload = MessagePayload.inviteEchoV1(inviteID: inviteID)
+        // V2 when we have a Nostr identity: the echo carries OUR npub so the
+        // MINTER learns our relay address at echo-receipt — a pure-Nostr pair
+        // has no BLE rail for the lazy announce, so without this the minter
+        // could never send to us over the relay. V1 (id-only) when we have
+        // none; the minter's V1 path then behaves exactly as before.
+        let payload: MessagePayload
+        if let ourNpub = ourNostrPublicKey, ourNpub.count == 32 {
+            payload = MessagePayload.inviteEchoV2(inviteID: inviteID,
+                                                  redeemerNostrPubkey: ourNpub)
+        } else {
+            payload = MessagePayload.inviteEchoV1(inviteID: inviteID)
+        }
         let sealed = try session.seal(payload.sealedPlaintext())
         try await routeOut(Envelope(ciphertext: sealed),
                            tracked: false,
                            nostrRecipient: nostrRecipient)
 
         eventsContinuation.yield(.established(peerKey: rawKey))
+        // Persist the MINTER's npub from the invite payload (threaded in as
+        // `nostrRecipient`) so this peer is Nostr-addressable from the FIRST
+        // send — same event the announce path uses, and the inbox handler's
+        // same-key no-op / last-wins semantics make a re-redeem converge.
+        if let nostrRecipient, nostrRecipient.count == 32 {
+            eventsContinuation.yield(
+                .learnedNostrIdentity(peerKey: rawKey, nostrPubkey: nostrRecipient))
+        }
         print("first-contact: REDEEMED invite → echo sent to \(peer.userIDHex.prefix(16))…")
         return rawKey
+    }
+
+    /// Shared V1/V2 invite-echo handling on the MINTER (see `receive`): burn the
+    /// id, then — gated — surface the redeemer as a contact. `redeemerNostrPubkey`
+    /// is non-nil only for a V2 echo, already strict-length-validated by
+    /// `parseInviteEchoV2`.
+    private func redeemInviteEcho(inviteID: Data, redeemerNostrPubkey: Data?,
+                                  peer: PublicIdentity, rawKey: Data) async {
+        do {
+            let redeemed = try await inviteRedeemer?.redeemEcho(
+                inviteID: inviteID, redeemerIdentity: rawKey) ?? false
+            print("first-contact: invite-echo \(redeemed ? "REDEEMED" : "ignored") from \(peer.userIDHex.prefix(16))…")
+            // MINTER-SIDE COMPLETION: make the redeemer a Peer/Conversation
+            // row, exactly as the redeemer's own `redeemInvite` does for us
+            // (same `.established` event → MessageInbox.handleEstablished,
+            // whose fetch-or-create converges a re-fired echo to ONE row).
+            // GATED, unlike the redeemer side: invite ids are attacker-
+            // choosable bytes and this arm is deliberately outside the 7f
+            // verified gate, so an unconditional yield would let any
+            // session-holder conjure a contact row with a garbage echo.
+            // Admit only a fresh burn (redeemed) OR an identity already in
+            // the enrolled set — the legitimate-echo-replayed case (the id
+            // is burned, single-use, but the contact is real), which is
+            // what makes reprocessing idempotent. Do NOT "repair" by
+            // re-running enroll here: outside the burn gate a re-enroll
+            // would DOWNGRADE an SAS-verified contact to unverified
+            // (ContactAllowlist.enroll replaces the record).
+            if redeemed || reconnectAllowlistIdentities.contains(rawKey) {
+                eventsContinuation.yield(.established(peerKey: rawKey))
+                // V2: persist the REDEEMER's npub under the SAME gate — echo
+                // bytes are attacker-choosable, so nothing persists for a
+                // garbage echo. This is the minter's half of the pure-Nostr
+                // npub-bootstrap; the redeemer's half rides `redeemInvite`.
+                if let redeemerNostrPubkey {
+                    eventsContinuation.yield(
+                        .learnedNostrIdentity(peerKey: rawKey,
+                                              nostrPubkey: redeemerNostrPubkey))
+                }
+            }
+        } catch {
+            print("first-contact: invite-echo redeem failed: \(error)")
+        }
     }
     
     // MARK: Reconnect handshake (Closed-Contact)
@@ -1130,31 +1191,21 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     print("first-contact: malformed invite-echo from \(peer.userIDHex.prefix(16))…")
                     return
                 }
-                do {
-                    let redeemed = try await inviteRedeemer?.redeemEcho(
-                        inviteID: inviteID, redeemerIdentity: rawKey) ?? false
-                    print("first-contact: invite-echo \(redeemed ? "REDEEMED" : "ignored") from \(peer.userIDHex.prefix(16))…")
-                    // MINTER-SIDE COMPLETION: make the redeemer a Peer/Conversation
-                    // row, exactly as the redeemer's own `redeemInvite` does for us
-                    // (same `.established` event → MessageInbox.handleEstablished,
-                    // whose fetch-or-create converges a re-fired echo to ONE row).
-                    // GATED, unlike the redeemer side: invite ids are attacker-
-                    // choosable bytes and this arm is deliberately outside the 7f
-                    // verified gate, so an unconditional yield would let any
-                    // session-holder conjure a contact row with a garbage echo.
-                    // Admit only a fresh burn (redeemed) OR an identity already in
-                    // the enrolled set — the legitimate-echo-replayed case (the id
-                    // is burned, single-use, but the contact is real), which is
-                    // what makes reprocessing idempotent. Do NOT "repair" by
-                    // re-running enroll here: outside the burn gate a re-enroll
-                    // would DOWNGRADE an SAS-verified contact to unverified
-                    // (ContactAllowlist.enroll replaces the record).
-                    if redeemed || reconnectAllowlistIdentities.contains(rawKey) {
-                        eventsContinuation.yield(.established(peerKey: rawKey))
-                    }
-                } catch {
-                    print("first-contact: invite-echo redeem failed: \(error)")
+                // V1 (id-only): a redeemer with no Nostr identity. Full handling
+                // lives in redeemInviteEcho, shared with V2.
+                await redeemInviteEcho(inviteID: inviteID, redeemerNostrPubkey: nil,
+                                       peer: peer, rawKey: rawKey)
+
+            case .inviteEchoV2(let body):
+                guard let parsed = MessagePayload.parseInviteEchoV2(body) else {
+                    print("first-contact: malformed invite-echo-v2 from \(peer.userIDHex.prefix(16))…")
+                    return
                 }
+                // V2: id ‖ redeemer npub — the pure-Nostr npub-bootstrap. The
+                // npub persists only behind the same gate as the contact row.
+                await redeemInviteEcho(inviteID: parsed.inviteID,
+                                       redeemerNostrPubkey: parsed.redeemerNostrPubkey,
+                                       peer: peer, rawKey: rawKey)
 
             case .callRequest(let body):
                 // F1 (7f STRICT-VERIFIED): call signaling is user-reaching
