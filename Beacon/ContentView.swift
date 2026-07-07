@@ -441,6 +441,7 @@ struct ContentView: View {
                 pendingInvitesStore,
                 nostrEventLedgerStore,
                 try SwiftDataStoreWipe(),
+                DeviceResidueWipe(),   // self name/photo defaults + notifications + badge
             ]
         )
         

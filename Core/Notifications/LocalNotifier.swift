@@ -64,9 +64,10 @@ final class LocalNotifier: NSObject, UNUserNotificationCenterDelegate {
 
     /// Fire a banner + sound for a genuinely new inbound message and stamp the
     /// app badge with the total unread count. Suppressed when the conversation
-    /// is the one on screen. `conversationID` is the peer's raw 32-byte
-    /// identity key — the thread key of the receive path, NOT a UUID.
-    func messageArrived(conversationID: Data, unreadTotal: Int) async {
+    /// is the one on screen. `conversationID` is the peer's raw 32-byte identity
+    /// key (the receive-path thread key, used ONLY for the on-screen suppression
+    /// check); `threadKey` is the Conversation's random UUID, used for grouping.
+    func messageArrived(conversationID: Data, threadKey: UUID, unreadTotal: Int) async {
         guard conversationID != activeConversationID else { return }
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized else { return }
@@ -76,9 +77,10 @@ final class LocalNotifier: NSObject, UNUserNotificationCenterDelegate {
         content.body = "New message"
         content.sound = .default
         content.badge = NSNumber(value: unreadTotal)
-        // Same-thread banners group together in Notification Center. Hex of
-        // the peer key — stable, and reveals nothing the pairing QR didn't.
-        content.threadIdentifier = Self.threadIdentifier(for: conversationID)
+        // Same-thread banners group together in Notification Center. Keyed by the
+        // Conversation's random UUID — NOT the peer identity-key hex, which would
+        // persist a stable device identifier in the system notification store.
+        content.threadIdentifier = threadKey.uuidString
 
         let request = UNNotificationRequest(identifier: UUID().uuidString,
                                             content: content,
@@ -114,9 +116,4 @@ final class LocalNotifier: NSObject, UNUserNotificationCenterDelegate {
                                 didReceive response: UNNotificationResponse) async {
     }
 
-    // MARK: - Helpers
-
-    private static func threadIdentifier(for conversationID: Data) -> String {
-        conversationID.map { String(format: "%02x", $0) }.joined()
-    }
 }

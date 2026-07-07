@@ -136,7 +136,7 @@ final class MessageInbox {
         message.conversation = conversation   // sets the inverse → appears in transcript
         conversation.lastActivity = .now
         save()
-        notifyMessageArrived(peerKey: peerKey)   // N2 — genuinely-new row only (dedup above)
+        notifyMessageArrived(peerKey: peerKey, conversationKey: conversation.id)   // N2 — genuinely-new row only (dedup above)
     }
 
     /// A complete media transfer was reassembled + verified: persist it as an
@@ -171,7 +171,7 @@ final class MessageInbox {
         message.conversation = conversation
         conversation.lastActivity = .now
         save()
-        notifyMessageArrived(peerKey: peerKey)   // N2 — genuinely-new row only (dedup above)
+        notifyMessageArrived(peerKey: peerKey, conversationKey: conversation.id)   // N2 — genuinely-new row only (dedup above)
     }
 
     /// A peer announced their Nostr public key over the established sealed
@@ -721,10 +721,12 @@ final class MessageInbox {
     /// the same `Data` form every key crossing this boundary uses. Suppression
     /// for the on-screen conversation lives in the notifier
     /// (`activeConversationID`, set/cleared by StreamView).
-    private func notifyMessageArrived(peerKey: Data) {
+    private func notifyMessageArrived(peerKey: Data, conversationKey: UUID) {
         guard let notifier else { return }
         let unread = unreadInboundTotal()
-        Task { await notifier.messageArrived(conversationID: peerKey, unreadTotal: unread) }
+        Task { await notifier.messageArrived(conversationID: peerKey,
+                                             threadKey: conversationKey,
+                                             unreadTotal: unread) }
     }
 
     /// Re-sync the app-icon badge to the store's true unread total. Called by
