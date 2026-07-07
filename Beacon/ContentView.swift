@@ -631,6 +631,12 @@ private struct ReadyView: View {
     /// app returns to the foreground, so media that crossed its window while the
     /// app was suspended is wiped without waiting for a relaunch or a render.
     @Environment(\.scenePhase) private var scenePhase
+
+    /// The local-notification façade (N1), injected by BeaconApp (which installed
+    /// it as the UNUserNotificationCenter delegate at app init). ReadyView owns
+    /// the PERMISSION MOMENT: ask the first time the app is foreground with at
+    /// least one contact — never on a fresh, contactless install.
+    @Environment(LocalNotifier.self) private var notifier
     
     var body: some View {
         Group {
@@ -675,12 +681,21 @@ private struct ReadyView: View {
                 // set is empty (presence not resolved yet — the stream trigger
                 // below catches it once a peer comes up).
                 await built.flushUndelivered(toReachableKeys: presence.reachablePeerKeys)
+                // N1 — notification permission. The boot task runs foreground,
+                // so this covers the launch-with-contacts case; the scenePhase
+                // hook below covers pairing-then-backgrounding. Idempotent: the
+                // notifier only prompts while the system status is .notDetermined.
+                await requestNotificationAuthIfPaired()
             }
         }
         .onChange(of: scenePhase) { _, phase in
             // Foreground pass of the reaper (idempotent; nil-safe before the
             // boot task has built the inbox — that task runs its own pass).
-            if phase == .active { inbox?.reapExpiredMedia() }
+            if phase == .active {
+                inbox?.reapExpiredMedia()
+                // N1 — the other half of the permission moment (see boot task).
+                Task { await requestNotificationAuthIfPaired() }
+            }
         }
         .task {
             // Mirror identity-resolved presence into MeshPresence for the app's
@@ -712,6 +727,19 @@ private struct ReadyView: View {
                 }
             }
         }
+    }
+
+    /// N1 — the permission moment. Ask for notification authorization only once
+    /// the app is foreground AND at least one contact exists (a Peer row —
+    /// created at establishment, so "has paired with someone real"). A fresh
+    /// install never sees the prompt. Re-invocations are free: the notifier
+    /// no-ops unless the system status is still .notDetermined, so the prompt
+    /// can never re-appear after the user has answered.
+    private func requestNotificationAuthIfPaired() async {
+        let contacts = (try? container.mainContext
+            .fetchCount(FetchDescriptor<Peer>())) ?? 0
+        guard contacts >= 1 else { return }
+        await notifier.requestAuthorizationIfNeeded()
     }
 }
 
