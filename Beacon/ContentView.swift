@@ -377,7 +377,7 @@ struct ContentView: View {
             // and sysdiagnose. The public key is safe as a launch marker; use the
             // already-hoisted `ourNostrPubkey` (== nostr.publicKeyBytes) in hex.
             let npubHex = ourNostrPubkey?.prefix(6).map { String(format: "%02x", $0) }.joined()
-            print("nostr identity ready · npub \(npubHex ?? "?")…")
+            RedactLog.event("nostr identity ready", "npub \(npubHex ?? "?")…")
         } catch {
             print("nostr identity load/create failed (BLE unaffected): \(error)")
         }
@@ -444,7 +444,7 @@ struct ContentView: View {
             ]
         )
         
-        print("session store ready (persistent) · identity \(secure.localIdentity.userIDHex.prefix(16))… · transports=\(transports.count)")
+        RedactLog.event("session store ready (persistent) · transports=\(transports.count)", "identity \(secure.localIdentity.userIDHex.prefix(16))…")
         
         // Register the receiver + router and start consuming `incoming`, then
         // catch up on any links that already formed before the coordinator

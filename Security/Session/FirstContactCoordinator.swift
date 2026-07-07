@@ -396,7 +396,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // `reconnectAllowlistIdentities` → `verifiedIdentities` on the guard below.
         let rawKey = store.rawPublicKey(of: peer)
         guard reconnectAllowlistIdentities.contains(rawKey) else {
-            print("first-contact: DROP unenrolled bundle from \(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: DROP unenrolled bundle", "from \(peer.userIDHex.prefix(16))…")
             return
         }
 
@@ -414,7 +414,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         if iInitiate {
             await initiate(with: bundle, peer: peer)
         } else {
-            print("first-contact: responder role for \(peer.userIDHex.prefix(16))… — session forms on first message")
+            RedactLog.event("first-contact: responder role — session forms on first message", "\(peer.userIDHex.prefix(16))…")
         }
     }
     
@@ -428,7 +428,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             _ = try store.establishSession(from: bundle)
             let rawKey = store.rawPublicKey(of: peer)
             eventsContinuation.yield(.established(peerKey: rawKey))
-            print("first-contact: INITIATED session with \(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: INITIATED session", "with \(peer.userIDHex.prefix(16))…")
         } catch {
             print("first-contact: initiate failed: \(error)")
         }
@@ -488,7 +488,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             eventsContinuation.yield(
                 .learnedNostrIdentity(peerKey: rawKey, nostrPubkey: nostrRecipient))
         }
-        print("first-contact: REDEEMED invite → echo sent to \(peer.userIDHex.prefix(16))…")
+        RedactLog.event("first-contact: REDEEMED invite → echo sent", "to \(peer.userIDHex.prefix(16))…")
         return rawKey
     }
 
@@ -501,7 +501,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         do {
             let redeemed = try await inviteRedeemer?.redeemEcho(
                 inviteID: inviteID, redeemerIdentity: rawKey) ?? false
-            print("first-contact: invite-echo \(redeemed ? "REDEEMED" : "ignored") from \(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: invite-echo \(redeemed ? "REDEEMED" : "ignored")", "from \(peer.userIDHex.prefix(16))…")
             // MINTER-SIDE COMPLETION: make the redeemer a Peer/Conversation
             // row, exactly as the redeemer's own `redeemInvite` does for us
             // (same `.established` event → MessageInbox.handleEstablished,
@@ -677,7 +677,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             let sealed = try session.seal(MessagePayload.reconnectHelloV1().sealedPlaintext())
             let frame = Self.reconnectFrame(Self.reconnectItsMe, sealed)
             try await transport.sendReconnect(frame, toLink: link)
-            print("first-contact: sent reconnect it's-me → \(peer.userIDHex.prefix(16))… on link \(link)")
+            RedactLog.event("first-contact: sent reconnect it's-me · link \(link)", "\(peer.userIDHex.prefix(16))…")
         } catch {
             print("first-contact: it's-me seal/send failed on link \(link): \(error)")
         }
@@ -697,7 +697,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // enrolled-but-unverified reconnect flips NO presence and is not admitted
             // until the SAS is done (was `reconnectAllowlistIdentities` at 7e).
             guard verifiedIdentities.contains(store.rawPublicKey(of: peer)) else {
-                print("first-contact: DROP reconnect from unverified \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: DROP reconnect from unverified", "\(peer.userIDHex.prefix(16))…")
                 return
             }
             guard let payload = MessagePayload.decodeSealed(plaintext),
@@ -715,7 +715,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // peer just reconnected so it can hold that peer's auto-retry briefly
             // and extend its live delivery timeouts (A / STEP 0b) — per-peer.
             eventsContinuation.yield(.reconnected(peerKey: store.rawPublicKey(of: peer)))
-            print("first-contact: reconnect ADMITTED \(peer.userIDHex.prefix(16))… on link \(link)")
+            RedactLog.event("first-contact: reconnect ADMITTED · link \(link)", "\(peer.userIDHex.prefix(16))…")
         } catch {
             // Stranger / replay / undecodable: admit nothing. Quiet by design.
             print("first-contact: reconnect it's-me did not open on link \(link): \(error)")
@@ -983,7 +983,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             await router?.commitToRelay(mediaWireID)
         }
         let via = goingOverBLE ? "BLE" : (redrive ? "Nostr (re-drive)" : "Nostr")
-        print("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks over \(via) → \(peer.userIDHex.prefix(16))…")
+        RedactLog.event("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks over \(via)", "→ \(peer.userIDHex.prefix(16))…")
         return mediaWireID
     }
     
@@ -1037,9 +1037,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             let sealed = try session.seal(payload.sealedPlaintext())
             await router?.send(Envelope(ciphertext: sealed), tracked: false)
             announcedNostrTo.insert(rawKey)
-            print("first-contact: announced our Nostr id → \(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: announced our Nostr id", "→ \(peer.userIDHex.prefix(16))…")
         } catch {
-            print("first-contact: nostr-id announce to \(peer.userIDHex.prefix(16))… failed: \(error)")
+            RedactLog.event("first-contact: nostr-id announce failed", "to \(peer.userIDHex.prefix(16))… — \(error)")
         }
     }
     
@@ -1085,7 +1085,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             await announceNostrIdentity(to: peer, rawKey: rawKey)
             
             guard let payload = MessagePayload.decodeSealed(plaintext) else {
-                print("first-contact: opened but undecodable payload from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: opened but undecodable payload", "from \(peer.userIDHex.prefix(16))…")
                 return
             }
             
@@ -1101,24 +1101,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // echo-open time the redeemer is not yet enrolled (redeemEcho enrolls
                 // them). Only .text/.mediaManifest/.mediaChunk are gated.
                 guard verifiedIdentities.contains(rawKey) else {
-                    print("first-contact: DROP text from unverified \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP text from unverified", "\(peer.userIDHex.prefix(16))…")
                     return
                 }
                 eventsContinuation.yield(
                     .received(peerKey: rawKey, plaintext: body, wireID: envelope.id)
                 )
-                print("first-contact: OPENED text from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: OPENED text", "from \(peer.userIDHex.prefix(16))…")
                 // Acknowledge the text message by its envelope id, with hops.
                 await sendDeliveryAck(wireID: envelope.id, hops: hops(of: envelope), to: peer)
                 
             case .mediaManifest(let json):
                 // 7f: strict-verified inbound gate (see .text). Drop before reassembly.
                 guard verifiedIdentities.contains(rawKey) else {
-                    print("first-contact: DROP media manifest from unverified \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP media manifest from unverified", "\(peer.userIDHex.prefix(16))…")
                     return
                 }
                 guard let manifest = try? JSONDecoder().decode(MediaManifest.self, from: json) else {
-                    print("first-contact: bad media manifest from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: bad media manifest", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
                 if let done = reassembler.ingest(manifest: manifest),
@@ -1131,7 +1131,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             case .mediaChunk(let chunk):
                 // 7f: strict-verified inbound gate (see .text). Drop before reassembly.
                 guard verifiedIdentities.contains(rawKey) else {
-                    print("first-contact: DROP media chunk from unverified \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP media chunk from unverified", "\(peer.userIDHex.prefix(16))…")
                     return
                 }
                 if let done = reassembler.ingest(chunk: chunk),
@@ -1148,11 +1148,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // Delivered / Relayed, cancelling that message's timeout. We
                 // never ack an ack, so this terminates the receipt exchange.
                 guard let (wireID, hops) = MessagePayload.parseDeliveryAck(body) else {
-                    print("first-contact: malformed delivery ack from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed delivery ack", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
                 await router?.confirmDelivery(of: wireID, hops: Int(hops))
-                print("first-contact: ACK \(wireID) (\(hops) hop(s)) from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: ACK (\(hops) hop(s))", "\(wireID) from \(peer.userIDHex.prefix(16))…")
                 
             case .nostrIdentity(let body):
                 // A peer announced their raw 32-byte x-only secp256k1 pubkey over
@@ -1164,13 +1164,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // row (keyed by `rawKey`), so the router can later address a Nostr
                 // gift wrap to this peer when BLE is out of range.
                 guard let nostrKey = MessagePayload.parseNostrIdentity(body) else {
-                    print("first-contact: malformed nostr-identity from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed nostr-identity", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
                 eventsContinuation.yield(
                     .learnedNostrIdentity(peerKey: rawKey, nostrPubkey: nostrKey)
                 )
-                print("first-contact: NOSTR identity \(nostrKey.count)B from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: NOSTR identity \(nostrKey.count)B", "from \(peer.userIDHex.prefix(16))…")
                 
             case .reconnectHello:
                 // A reconnect it's-me must NEVER arrive on the envelope /
@@ -1180,10 +1180,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // ONLY there (Invariant #2 — never admit on this relayable path).
                 // Reaching here means a misroute or an adversary stuffing a
                 // reconnect kind into a 0x01 envelope: ignore it, admit nothing.
-                print("first-contact: ignoring reconnectHello on the envelope path (link-local only) from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: ignoring reconnectHello on the envelope path (link-local only)", "from \(peer.userIDHex.prefix(16))…")
             case .inviteEcho(let body):
                 guard let inviteID = MessagePayload.parseInviteEcho(body) else {
-                    print("first-contact: malformed invite-echo from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed invite-echo", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
                 // V1 (id-only): a redeemer with no Nostr identity. Full handling
@@ -1193,7 +1193,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
 
             case .inviteEchoV2(let body):
                 guard let parsed = MessagePayload.parseInviteEchoV2(body) else {
-                    print("first-contact: malformed invite-echo-v2 from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed invite-echo-v2", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
                 // V2: id ‖ redeemer npub — the pure-Nostr npub-bootstrap. The
@@ -1207,11 +1207,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // content — an unverified session-holder must not be able to
                 // ring us. Gated exactly like .text; drop silently, no reply.
                 guard verifiedIdentities.contains(rawKey) else {
-                    print("first-contact: DROP call-request from unverified \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP call-request from unverified", "\(peer.userIDHex.prefix(16))…")
                     return
                 }
                 guard let signal = CallSignal.parseRequestBody(body) else {
-                    print("first-contact: malformed call-request from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed call-request", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
@@ -1220,11 +1220,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // F1 (7f STRICT-VERIFIED): gated exactly like .callRequest —
                 // an answer from an unverified holder is dropped, no reply.
                 guard verifiedIdentities.contains(rawKey) else {
-                    print("first-contact: DROP call-answer from unverified \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP call-answer from unverified", "\(peer.userIDHex.prefix(16))…")
                     return
                 }
                 guard let signal = CallSignal.parseAnswerBody(body) else {
-                    print("first-contact: malformed call-answer from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed call-answer", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
@@ -1233,11 +1233,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // F1 (7f STRICT-VERIFIED): gated exactly like .callRequest —
                 // a decline from an unverified holder is dropped, no reply.
                 guard verifiedIdentities.contains(rawKey) else {
-                    print("first-contact: DROP call-decline from unverified \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP call-decline from unverified", "\(peer.userIDHex.prefix(16))…")
                     return
                 }
                 guard let signal = CallSignal.parseDeclineBody(body) else {
-                    print("first-contact: malformed call-decline from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed call-decline", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))

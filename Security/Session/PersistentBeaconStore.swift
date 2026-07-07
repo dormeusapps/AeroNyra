@@ -439,7 +439,7 @@ public final class PersistentBeaconStore: IdentityKeyStore, PreKeyStore, SignedP
     }
 
     private func warnSkip(_ kind: String, _ id: String) {
-        print("\(Self.logPrefix) skipped unreadable \(kind) [\(id)] on load")
+        RedactLog.event("\(Self.logPrefix) skipped unreadable \(kind) on load", "[\(id)]")
     }
 
     // MARK: - Sender-key composite key (mirrors the reference's private struct)
