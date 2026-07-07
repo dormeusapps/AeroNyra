@@ -40,10 +40,10 @@ struct MessageRow: View {
 
     // MARK: - Spec constants (DESIGN_TOKENS §3)
 
-    private static let bubbleRadius: CGFloat = 17
-    private static let bubbleTailRadius: CGFloat = 5
-    private static let bubblePaddingH: CGFloat = 13
-    private static let bubblePaddingV: CGFloat = 9
+    private static let bubbleRadius: CGFloat = 20
+    private static let bubbleTailRadius: CGFloat = 6
+    private static let bubblePaddingH: CGFloat = 15
+    private static let bubblePaddingV: CGFloat = 11
     /// Minimum spacer on the opposite side of the bubble. Caps bubble width
     /// at roughly the 76–78% spec on standard iPhone widths.
     private static let oppositeSideMin: CGFloat = 60
@@ -257,15 +257,16 @@ struct MessageRow: View {
     }
 
     private var receiptStatusText: String {
-        switch message.deliveryState {
-        case .waitingForRange: return "Queued"
-        case .sent:            return "Sent"
-        case .findingPath:     return "In transit"
-        case .delivered:       return "Delivered"
-        case .relayed:         return "Relayed"
-        case .notDelivered:    return "Failed"
+            switch message.deliveryState {
+            case .waitingForRange: return "Queued"
+            case .sent:            return "Sent"
+            case .cast:            return "Cast"
+            case .findingPath:     return "In transit"
+            case .delivered:       return "Delivered"
+            case .relayed:         return "Relayed"
+            case .notDelivered:    return "Failed"
+            }
         }
-    }
 
     private var receiptHopsLabel: String {
         if case .relayed(let h) = message.deliveryState {
@@ -285,28 +286,28 @@ struct MessageRow: View {
     // arrives from the BLE transport. This is not fake data — it's the
     // best honest reading we can make from what we know right now.
     private var receiptSignalText: String {
-        switch message.deliveryState {
-        case .delivered, .sent: return "good"
-        case .relayed, .waitingForRange, .findingPath: return "fair"
-        case .notDelivered: return "weak"
+            switch message.deliveryState {
+            case .delivered, .sent, .cast: return "good"
+            case .relayed, .waitingForRange, .findingPath: return "fair"
+            case .notDelivered: return "weak"
+            }
         }
-    }
 
     private var receiptSignalColor: Color {
-        switch message.deliveryState {
-        case .delivered, .sent: return .statusHealthy
-        case .relayed, .waitingForRange, .findingPath: return .statusRelay
-        case .notDelivered: return .statusError
+            switch message.deliveryState {
+            case .delivered, .sent, .cast: return .statusHealthy
+            case .relayed, .waitingForRange, .findingPath: return .statusRelay
+            case .notDelivered: return .statusError
+            }
         }
-    }
 
     private var receiptSignalBars: SignalBars.Strength {
-        switch message.deliveryState {
-        case .delivered, .sent: return .good
-        case .relayed, .waitingForRange, .findingPath: return .fair
-        case .notDelivered: return .weak
+            switch message.deliveryState {
+            case .delivered, .sent, .cast: return .good
+            case .relayed, .waitingForRange, .findingPath: return .fair
+            case .notDelivered: return .weak
+            }
         }
-    }
 }
 
 // MARK: - Peer display helpers

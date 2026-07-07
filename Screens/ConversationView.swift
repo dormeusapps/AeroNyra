@@ -15,17 +15,19 @@
 //   2. TRANSCRIPT — messages flow up from the bottom; newest at the
 //      bottom. Each row composes MessageRow.
 //
-//   3. COMPOSER — quiet by default: a placeholder, no shouting. A muted
-//      camera affordance leads; the trailing slot shows a mic when the
-//      draft is empty (record a voice note) or the send button when there
-//      is text. While recording, the whole row becomes a recording bar:
+//   3. COMPOSER — the iMessage shape, in Beacon's tokens. A circular "+"
+//      leads (attach a photo); the text field lives inside a full-width
+//      pill; the trailing slot INSIDE the pill shows a mic when the draft is
+//      empty (record a voice note) or the brand send button when there is
+//      text. While recording, the whole row becomes a recording bar:
 //      cancel · live metered waveform · elapsed · send.
 //
 //  Text send is wired through `MessageInbox` (optimistic persist → seal →
-//  BLE). The camera picks an image, normalizes it to a mesh-sized JPEG, and
+//  BLE). The "+" picks an image, normalizes it to a mesh-sized JPEG, and
 //  hands it to `inbox.sendMedia`. The mic records mono AAC via VoiceRecorder
 //  and hands the .m4a to the same media path. All three are chunked + sealed
-//  per-chunk by the coordinator.
+//  per-chunk by the coordinator. The Apple reshape is presentation only — the
+//  send/pick/record data paths are unchanged.
 //
 
 import SwiftUI
@@ -73,44 +75,69 @@ struct ConversationView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 8) {
-            backButton
-            Spacer()
+        VStack(spacing: 10) {
+            // Top row: back (left) and info (right) flank the centered block.
+            HStack {
+                backButton
+                Spacer()
+                infoButton
+            }
             peerCenter
-            Spacer()
-            // Symmetric placeholder for a future trailing action; keeps
-            // the peer name visually centered without jumping later.
-            Color.clear
-                .frame(width: 32, height: 32)
         }
         .padding(.horizontal, 12)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 12)
+    }
+
+    private var infoButton: some View {
+        NavigationLink {
+            PeerSettingsView(conversation: conversation)
+        } label: {
+            Image(systemName: "info")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.brand)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.bgSurface))
+                .overlay(Circle().strokeBorder(Color.hairline, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Contact info")
     }
 
     private var backButton: some View {
         Button(action: { dismiss() }) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 17, weight: .medium))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Color.brand)
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(Color.bgSurface))
+                .overlay(Circle().strokeBorder(Color.hairline, lineWidth: 1))
+                .contentShape(Circle())
         }
         .accessibilityLabel("Back")
     }
 
-    /// Centered peer block. Tap pushes the Peer Settings screen.
+    /// Centered peer block, iMessage-style: a larger avatar over a small name
+    /// with a trailing chevron (tap → Peer Settings), presence underneath.
     private var peerCenter: some View {
         NavigationLink {
             PeerSettingsView(conversation: conversation)
         } label: {
-            VStack(spacing: 4) {
-                Text(peerNameDisplay)
-                    .font(Typography.headerName)
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(1)
+            VStack(spacing: 6) {
+                PeerAvatar(peer: conversation.peer, size: 60)
+                HStack(spacing: 3) {
+                    Text(peerNameDisplay)
+                        .font(Typography.headerName)
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.textTertiary)
+                }
                 presenceRow
             }
+            .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -174,7 +201,7 @@ struct ConversationView: View {
 
     private var transcript: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 9) {
+            LazyVStack(alignment: .leading, spacing: 12) {
                 ForEach(orderedMessages) { message in
                     MessageRow(message: message)
                         .id(message.id)
@@ -219,31 +246,47 @@ struct ConversationView: View {
         }
     }
 
-    /// Idle composer: camera · text field · (send if text, else mic).
+    /// Idle composer, iMessage shape: circular "+" · pill[ text · mic|send ].
+    /// The trailing affordance lives INSIDE the pill and swaps mic⇄send with
+    /// the draft — mic when empty (voice note), brand send arrow when there's
+    /// text. Layout only; the actions are unchanged.
     private var normalComposer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            photoButton
+        HStack(alignment: .bottom, spacing: 8) {
+            plusButton
 
-            TextField(text: $draft, axis: .vertical) {
-                Text("message…")
-                    .foregroundStyle(Color.composerPlaceholder)
-            }
-            .textFieldStyle(.plain)
-            .font(Typography.messageBody)
-            .foregroundStyle(Color.textPrimary)
-            .lineLimit(1...5)
-            .padding(.horizontal, 15)
-            .padding(.vertical, 9)
+            HStack(alignment: .bottom, spacing: 4) {
+                TextField(text: $draft, axis: .vertical) {
+                    Text("Message")
+                        .foregroundStyle(Color.composerPlaceholder)
+                }
+                .textFieldStyle(.plain)
+                .font(Typography.messageBody)
+                .foregroundStyle(Color.textPrimary)
+                .lineLimit(1...5)
+                .padding(.leading, 15)
+                .padding(.vertical, 8)
 
-            if hasText {
-                sendButton
-                    .transition(.scale.combined(with: .opacity))
-            } else {
-                micButton
-                    .transition(.scale.combined(with: .opacity))
+                // In-pill trailing slot: mic (empty) ⇄ send (has text).
+                Group {
+                    if hasText {
+                        sendButton
+                            .transition(.scale.combined(with: .opacity))
+                    } else {
+                        micButton
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .padding(.trailing, 4)
+                .padding(.bottom, 4)
+                .animation(.easeOut(duration: 0.18), value: hasText)
             }
+            .background(
+                Capsule(style: .continuous).fill(Color.composerBg)
+            )
+            .overlay(
+                Capsule(style: .continuous).strokeBorder(Color.hairline, lineWidth: 1)
+            )
         }
-        .animation(.easeOut(duration: 0.18), value: hasText)
     }
 
     /// Recording bar: cancel · live metered waveform · elapsed · send.
@@ -282,18 +325,21 @@ struct ConversationView: View {
         }
     }
 
-    /// The camera affordance — always present, leading the composer. Muted
-    /// per the Calm posture. Opens the system photo picker (library); the
-    /// selection is handled in `onChange`.
-    private var photoButton: some View {
+    /// The leading "+" attachment affordance (iMessage shape). A muted circle
+    /// per the Calm posture; opens the system photo picker (library), the
+    /// selection handled in `onChange`. Same data path as before — only the
+    /// glyph and circular chrome changed from the old camera button.
+    private var plusButton: some View {
         PhotosPicker(selection: $pickedItem,
                      matching: .images,
                      photoLibrary: .shared()) {
-            Image(systemName: "camera")
-                .font(.system(size: 20, weight: .regular))
+            Image(systemName: "plus")
+                .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(Color.textSecondary)
-                .frame(width: 38, height: 38)
-                .contentShape(Rectangle())
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(Color.composerBg))
+                .overlay(Circle().strokeBorder(Color.hairline, lineWidth: 1))
+                .contentShape(Circle())
         }
         .accessibilityLabel("Attach photo")
         .onChange(of: pickedItem) { _, newItem in
@@ -302,30 +348,33 @@ struct ConversationView: View {
         }
     }
 
-    /// Trailing mic when the draft is empty — starts a voice-note recording.
+    /// In-pill trailing mic when the draft is empty — starts a voice-note
+    /// recording. Sized to sit inside the composer pill.
     private var micButton: some View {
         Button {
             Task { await startRecording() }
         } label: {
             Image(systemName: "mic")
-                .font(.system(size: 20, weight: .regular))
-                .foregroundStyle(Color.textSecondary)
-                .frame(width: 38, height: 38)
-                .contentShape(Rectangle())
+                .font(.system(size: 18, weight: .regular))
+                .foregroundStyle(Color.textTertiary)
+                .frame(width: 30, height: 30)
+                .contentShape(Circle())
         }
         .accessibilityLabel("Record voice note")
     }
 
+    /// In-pill trailing send when there is text — brand-teal circle, sized to
+    /// sit inside the composer pill (the recording bar keeps its own 38px send).
     private var sendButton: some View {
         Button {
             sendDraft()
         } label: {
             Circle()
                 .fill(Color.brand)
-                .frame(width: 38, height: 38)
+                .frame(width: 30, height: 30)
                 .overlay(
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
                 )
         }

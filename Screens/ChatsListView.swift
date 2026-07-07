@@ -3,14 +3,14 @@
 //  Screens
 //
 //  The home screen — every conversation, ordered by recent activity.
-//  This is the real entry point of the app; ContentView will route
-//  here once we replace the debug Conversation-direct wiring.
+//  This is the app's ROOT: ContentView lands here directly (no tab bar;
+//  the Nearby/radar screen was removed with the closed-contact pivot).
 //
-//  Quiet posture: no compose button (new conversations are discovered
-//  via the Nearby screen — you can't text a stranger you've never met
-//  in person), no avatar uploads, no online/offline status, no badge
-//  counts on the app icon. Just a list of who you've met, and how near
-//  they are right now.
+//  Quiet posture: new contacts are added deliberately (pair by QR in person,
+//  or by invite + 4-word confirm) — you can't text a stranger who merely has
+//  the app. No online/offline status, no badge counts on the app icon. The
+//  top bar carries two deliberate actions: add a contact, and open settings.
+//  Just a list of who you've paired with, and how near they are right now.
 //
 
 import SwiftUI
@@ -48,15 +48,50 @@ struct ChatsListView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 14) {
             Text("Chats")
                 .font(.custom("Geist-Bold", size: 26))
                 .foregroundStyle(Color.textPrimary)
             Spacer()
+            addContactButton
+            settingsButton
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
         .padding(.bottom, 14)
+    }
+
+    /// Add a contact — the entry to the (deliberate) pairing flow: show/scan a
+    /// QR in person, or generate/redeem an invite. The pairing surface itself
+    /// lands with enrollment (7c) + the pairing UI (7d); this is its placed,
+    /// consistent home in the top bar. Muted per the Calm posture.
+    private var addContactButton: some View {
+        Button {
+            // Wired to the pairing flow in 7d. Placed now so the root's shape
+            // is final and nothing shifts when pairing lands.
+        } label: {
+            Image(systemName: "person.badge.plus")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(Color.textSecondary)
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Add contact")
+    }
+
+    /// Open settings — profile, your own identity/QR, and (later) the emergency
+    /// wipe. Muted; opens the settings surface (built in the UI phase).
+    private var settingsButton: some View {
+        Button {
+            // Wired to the settings surface in the UI phase.
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(Color.textSecondary)
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Settings")
     }
 
     private var hairline: some View {

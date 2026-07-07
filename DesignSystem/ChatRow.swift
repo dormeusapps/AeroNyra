@@ -51,18 +51,11 @@ struct ChatRow: View {
 
     // MARK: - Avatar
 
-    /// The deterministic-hue identity disc — same hue every time for the
-    /// same peer, derived from their public key.
+    /// The identity disc — shared component (deterministic hue from the peer's
+    /// key, plus an initial when a petname is set). One source of truth so the
+    /// header, list, and future custom photos all render identically.
     private var avatar: some View {
-        Circle()
-            .fill(LinearGradient.avatarBrand)
-            .hueRotation(.degrees(hueDegrees))
-            .frame(width: Self.avatarSize, height: Self.avatarSize)
-    }
-
-    private var hueDegrees: Double {
-        guard let peer = conversation.peer else { return 0 }
-        return peer.avatarHue * 360
+        PeerAvatar(peer: conversation.peer, size: Self.avatarSize)
     }
 
     // MARK: - Name
