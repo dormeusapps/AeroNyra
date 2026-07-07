@@ -1134,6 +1134,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     let redeemed = try await inviteRedeemer?.redeemEcho(
                         inviteID: inviteID, redeemerIdentity: rawKey) ?? false
                     print("first-contact: invite-echo \(redeemed ? "REDEEMED" : "ignored") from \(peer.userIDHex.prefix(16))…")
+                    // MINTER-SIDE COMPLETION: make the redeemer a Peer/Conversation
+                    // row, exactly as the redeemer's own `redeemInvite` does for us
+                    // (same `.established` event → MessageInbox.handleEstablished,
+                    // whose fetch-or-create converges a re-fired echo to ONE row).
+                    // GATED, unlike the redeemer side: invite ids are attacker-
+                    // choosable bytes and this arm is deliberately outside the 7f
+                    // verified gate, so an unconditional yield would let any
+                    // session-holder conjure a contact row with a garbage echo.
+                    // Admit only a fresh burn (redeemed) OR an identity already in
+                    // the enrolled set — the legitimate-echo-replayed case (the id
+                    // is burned, single-use, but the contact is real), which is
+                    // what makes reprocessing idempotent. Do NOT "repair" by
+                    // re-running enroll here: outside the burn gate a re-enroll
+                    // would DOWNGRADE an SAS-verified contact to unverified
+                    // (ContactAllowlist.enroll replaces the record).
+                    if redeemed || reconnectAllowlistIdentities.contains(rawKey) {
+                        eventsContinuation.yield(.established(peerKey: rawKey))
+                    }
                 } catch {
                     print("first-contact: invite-echo redeem failed: \(error)")
                 }
