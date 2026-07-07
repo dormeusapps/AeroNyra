@@ -58,14 +58,23 @@ final class MessageInbox {
     /// (e.g. a stale auto-retry). `@ObservationIgnored`: not view state.
     @ObservationIgnored private let isVerified: (Data) -> Bool
 
+    /// N2 — the local-notification façade (owned by BeaconApp, threaded in by
+    /// ReadyView). Fired ONLY from the two inbound persist seams below, which
+    /// sit downstream of decryption AND the `alreadyStored(wireID)` dedup, so a
+    /// BLE message later re-fetched from a relay can never double-fire. Optional
+    /// + `@ObservationIgnored`: not view state, absent in tests/previews.
+    @ObservationIgnored private let notifier: LocalNotifier?
+
     init(modelContext: ModelContext,
          coordinator: FirstContactCoordinator,
          router: MessageRouter,
-         isVerified: @escaping (Data) -> Bool) {
+         isVerified: @escaping (Data) -> Bool,
+         notifier: LocalNotifier? = nil) {
         self.modelContext = modelContext
         self.coordinator = coordinator
         self.router = router
         self.isVerified = isVerified
+        self.notifier = notifier
     }
 
     // MARK: - Inbound event loop
@@ -127,6 +136,7 @@ final class MessageInbox {
         message.conversation = conversation   // sets the inverse → appears in transcript
         conversation.lastActivity = .now
         save()
+        notifyMessageArrived(peerKey: peerKey)   // N2 — genuinely-new row only (dedup above)
     }
 
     /// A complete media transfer was reassembled + verified: persist it as an
@@ -161,6 +171,7 @@ final class MessageInbox {
         message.conversation = conversation
         conversation.lastActivity = .now
         save()
+        notifyMessageArrived(peerKey: peerKey)   // N2 — genuinely-new row only (dedup above)
     }
 
     /// A peer announced their Nostr public key over the established sealed
@@ -698,6 +709,42 @@ final class MessageInbox {
                   let wire = row.wireID else { return nil }
             return wire
         }
+    }
+
+    // MARK: - Local notification (N2)
+
+    /// Fire the banner + badge for a genuinely-new inbound row. Called ONLY from
+    /// the two persist seams above, after their `alreadyStored(wireID)` dedup and
+    /// after the row is saved — so the unread count below already includes it,
+    /// and a relay replay of a BLE-delivered message never reaches here. The
+    /// thread key is the peer's raw 32-byte identity key (`Peer.publicKeyData`),
+    /// the same `Data` form every key crossing this boundary uses. Suppression
+    /// for the on-screen conversation lives in the notifier
+    /// (`activeConversationID`, set/cleared by StreamView).
+    private func notifyMessageArrived(peerKey: Data) {
+        guard let notifier else { return }
+        let unread = unreadInboundTotal()
+        Task { await notifier.messageArrived(conversationID: peerKey, unreadTotal: unread) }
+    }
+
+    /// Re-sync the app-icon badge to the store's true unread total. Called by
+    /// StreamView after `markInboundRead` saves, so READING a chat pulls the
+    /// badge back down — without this the badge stamped on arrival sticks at
+    /// its old count until the next message lands. Idempotent (it's a count,
+    /// not a delta) and a no-op when no notifier is wired.
+    func syncBadgeToUnreadTotal() {
+        notifier?.syncBadge(unreadInboundTotal())
+    }
+
+    /// The store's TRUE app-wide unread total — a count, not a blind increment,
+    /// so the badge self-heals across replays, relaunches, and reads. Same
+    /// `!isOutbound && !isRead` definition as the Home unread stone
+    /// (HomeView.unreadCount) and the chats-list dot (ChatsListView.hasUnread).
+    private func unreadInboundTotal() -> Int {
+        let descriptor = FetchDescriptor<Message>(
+            predicate: #Predicate { !$0.isOutbound && !$0.isRead }
+        )
+        return (try? modelContext.fetchCount(descriptor)) ?? 0
     }
 
     // MARK: - Fetch-or-create

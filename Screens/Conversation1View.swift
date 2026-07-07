@@ -26,6 +26,10 @@ struct StreamView: View {
     @Environment(MessageInbox.self) private var inbox: MessageInbox?
     @Environment(MeshPresence.self) private var presence
     @Environment(PairingService.self) private var pairing: PairingService?
+    /// N2 — while this stream is on screen, its peer key is the notifier's
+    /// `activeConversationID`, so a message for the chat you are already
+    /// reading never banners. Optional (like inbox/pairing) so previews render.
+    @Environment(LocalNotifier.self) private var notifier: LocalNotifier?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -105,6 +109,15 @@ struct StreamView: View {
         .navigationBarBackButtonHidden(true)
         .task { markInboundRead() }
         .onChange(of: sortedMessages.count) { markInboundRead() }
+        // N2 — suppress banners for the conversation on screen. The clear is
+        // guarded: navigating A → B can run B's onAppear before A's onDisappear,
+        // and an unguarded nil-out would clobber B's freshly-set key.
+        .onAppear { notifier?.activeConversationID = peer.publicKeyData }
+        .onDisappear {
+            if notifier?.activeConversationID == peer.publicKeyData {
+                notifier?.activeConversationID = nil
+            }
+        }
         .sheet(isPresented: $showSettings) {
             PeerSettingsView(conversation: currentConversation())
         }
@@ -444,7 +457,13 @@ struct StreamView: View {
             m.isRead = true
             changed = true
         }
-        if changed { try? modelContext.save() }
+        if changed {
+            try? modelContext.save()
+            // N2 — reading re-syncs the app badge to the store's true unread
+            // total (same context the inbox counts over), so the count stamped
+            // at arrival doesn't stick until the next message lands.
+            inbox?.syncBadgeToUnreadTotal()
+        }
     }
 
     /// Stamp when the recipient finished listening (arms the 2-min self-destruct).

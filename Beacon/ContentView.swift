@@ -662,7 +662,8 @@ private struct ReadyView: View {
                 let built = MessageInbox(modelContext: container.mainContext,
                                          coordinator: coordinator,
                                          router: router,
-                                         isVerified: { pairingService.isVerified($0) })
+                                         isVerified: { pairingService.isVerified($0) },
+                                         notifier: notifier)   // N2 — banner at the persist seams
                 inbox = built
                 // Ephemeral media reaper (SEC-6 / P3), boot pass: wipe inbound
                 // media that crossed its window while the app was closed — the
