@@ -373,12 +373,26 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     }
     
     // MARK: Inbound bundle → maybe initiate
-    
-    func onBundle(link: UUID, data: Data) async {
+
+    /// Outcome of processing one inbound bundle. Pairing call sites BRANCH on
+    /// this — a dropped or failed bundle must roll back its enrollment — while
+    /// the BLE feed discards it. `.responder` is a SUCCESS, not a failure: the
+    /// tie-break gave the peer the initiator role and our session forms on
+    /// their first message.
+    enum BundleOutcome: Sendable {
+        case initiated           // we held the higher key; session established now
+        case responder           // peer initiates; session forms on their first message
+        case malformed           // bundle didn't parse
+        case droppedUnenrolled   // the 7e closed-contact gate refused it
+        case initiateFailed      // establishSession threw
+    }
+
+    @discardableResult
+    func onBundle(link: UUID, data: Data) async -> BundleOutcome {
         let bundle = PrekeyBundle(data: data)
         guard let peer = try? store.peerIdentity(from: bundle) else {
             print("first-contact: malformed bundle on link \(link)")
-            return
+            return .malformed
         }
         // STEP 7e/7f — CLOSED-CONTACT GATE. This gate DELIBERATELY stays on the
         // ENROLLED set (not the verified subset). A bundle from anyone we have not
@@ -397,7 +411,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let rawKey = store.rawPublicKey(of: peer)
         guard reconnectAllowlistIdentities.contains(rawKey) else {
             RedactLog.event("first-contact: DROP unenrolled bundle", "from \(peer.userIDHex.prefix(16))…")
-            return
+            return .droppedUnenrolled
         }
 
         linkPeers[link] = peer
@@ -412,13 +426,15 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let iInitiate = theirs.lexicographicallyPrecedes(mine)
         
         if iInitiate {
-            await initiate(with: bundle, peer: peer)
+            return await initiate(with: bundle, peer: peer) ? .initiated : .initiateFailed
         } else {
             RedactLog.event("first-contact: responder role — session forms on first message", "\(peer.userIDHex.prefix(16))…")
+            return .responder
         }
     }
-    
-    private func initiate(with bundle: PrekeyBundle, peer: PublicIdentity) async {
+
+    /// Returns whether the session was established.
+    private func initiate(with bundle: PrekeyBundle, peer: PublicIdentity) async -> Bool {
         do {
             // Establish the outgoing session from the peer's bundle. We do NOT
             // auto-send anything here any more — the composer drives the first
@@ -429,8 +445,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             let rawKey = store.rawPublicKey(of: peer)
             eventsContinuation.yield(.established(peerKey: rawKey))
             RedactLog.event("first-contact: INITIATED session", "with \(peer.userIDHex.prefix(16))…")
+            return true
         } catch {
             print("first-contact: initiate failed: \(error)")
+            return false
         }
     }
 
@@ -490,6 +508,17 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
         RedactLog.event("first-contact: REDEEMED invite → echo sent", "to \(peer.userIDHex.prefix(16))…")
         return rawKey
+    }
+
+    /// QR npub parity (CONTACT_MODEL §6): persist a proximity-authenticated
+    /// npub carried by a scanned PairingPayload — the SAME event the invite
+    /// redeem above yields, so MessageInbox lands it on the Peer row and the
+    /// contact is Nostr-addressable from the first send. Strict 32-byte gate
+    /// mirrors that path; anything else is dropped, not an error.
+    func learnNostrIdentity(peerKey: Data, nostrPubkey: Data) {
+        guard nostrPubkey.count == 32 else { return }
+        eventsContinuation.yield(
+            .learnedNostrIdentity(peerKey: peerKey, nostrPubkey: nostrPubkey))
     }
 
     /// Shared V1/V2 invite-echo handling on the MINTER (see `receive`): burn the

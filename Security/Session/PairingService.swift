@@ -160,9 +160,30 @@ final class PairingService {
             throw PairError.selfScan
         }
 
-        // Establish (tie-break applied inside onBundle) then admit as verified.
-        await coordinator.onBundle(link: UUID(), data: payload.bundle.data)
+        // ORDER (Finding A): enroll FIRST — onBundle's 7e closed-contact gate
+        // reads the live enrolled set, and its own header assumes pairing
+        // enrolls before it runs. On a fresh install the old order dropped the
+        // scanned bundle at that gate, then enrolled anyway: a verified
+        // contact with no session and no way to ever get one. Establish
+        // second, and roll the enrollment back if the bundle was dropped or
+        // establishment failed, so that state is unreachable.
         try await enrollment.enroll(identity: rawKey, verified: true)
+
+        switch await coordinator.onBundle(link: UUID(), data: payload.bundle.data) {
+        case .initiated, .responder:
+            break   // .responder is healthy: the higher-key peer initiates and
+                    // our session forms on their first message.
+        case .malformed, .droppedUnenrolled, .initiateFailed:
+            try? await enrollment.revoke(identity: rawKey)
+            throw PairError.malformed
+        }
+
+        // npub parity with redeemInvite: the scanned payload can carry the
+        // peer's Nostr key. Without this, a QR-paired contact has no far path
+        // until the BLE announce happens to fire on a later reconnect.
+        if let npub = payload.nostrPublicKey {
+            await coordinator.learnNostrIdentity(peerKey: rawKey, nostrPubkey: npub)
+        }
 
         return PairResult(rawKey: rawKey, hint: String(peer.userIDHex.prefix(6)).uppercased())
     }
@@ -195,6 +216,32 @@ final class PairingService {
 
         guard rawKey != sessionStore.rawPublicKey(of: sessionStore.localIdentity) else {
             throw PairError.selfScan   // our own invite
+        }
+
+        // READ-COMPARE-DECIDE (Finding B). The invite channel is explicitly
+        // untrusted (CONTACT_MODEL §2) and the Invite envelope is
+        // unauthenticated, so a REPLAYED invite — captured from a text thread
+        // inside the TTL window — reaches this line. An identity we already
+        // hold a pairing with must be a NO-OP: re-running enroll would replace
+        // the allowlist record and silently downgrade an SAS-verified contact
+        // to unverified — the exact downgrade redeemInviteEcho's minter side
+        // refuses (CONTACT_MODEL §8: established pairs never re-pair). No
+        // re-establish either: unauthenticated input never replaces a working
+        // ratchet; the minter's unburned id just expires. Recovery for a peer
+        // who lost state (reinstall) is Remove Contact → redeem, which routes
+        // through revoke and lands below as unenrolled.
+        //
+        // KNOWN GAP, not compliance: a CHANGED key cannot be matched to "the
+        // same contact" here — contact identity IS the key — so a key change
+        // (or a MITM substitution) arrives as an unenrolled identity and takes
+        // the path below, presenting as an unlabeled duplicate contact with
+        // the same SAS prompt as any new pairing. CONTACT_MODEL §9's editor's
+        // note concedes there is no session-layer detection surface, and the
+        // KEYCHANGE_7c3.md it defers to does not exist on disk. Nothing marks
+        // "this looks like an existing contact under a new key."
+        if enrollment.contains(rawKey) {
+            return PairResult(rawKey: rawKey,
+                              hint: String(peer.userIDHex.prefix(6)).uppercased())
         }
 
         // Establish from their bundle + echo back (Nostr-capable for a far peer).
