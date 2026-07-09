@@ -349,7 +349,7 @@ public final class PersistentBeaconStore: IdentityKeyStore, PreKeyStore, SignedP
         } catch {
             // Loud, not silent: a swallowed write here would masquerade as a
             // fresh start on the next launch (sessions appearing not to persist).
-            print("\(Self.logPrefix) ⚠️ persist failed: \(error)")
+            RedactLog.event("\(Self.logPrefix) ⚠️ persist failed", "\(type(of: error))")
             throw PersistentStoreError.writeFailed(underlying: error)
         }
     }
@@ -390,7 +390,7 @@ public final class PersistentBeaconStore: IdentityKeyStore, PreKeyStore, SignedP
             let json = try ChaChaPoly.open(box, using: key, authenticating: snapshotAAD)
             return try JSONDecoder().decode(Snapshot.self, from: json)
         } catch {
-            print("\(logPrefix) snapshot unreadable (\(error)); starting fresh")
+            RedactLog.event("\(logPrefix) snapshot unreadable; starting fresh", "\(type(of: error))")
             return nil
         }
     }

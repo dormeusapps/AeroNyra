@@ -116,7 +116,7 @@ struct VideoBubble: View {
             tempURL = url
             player = AVPlayer(url: url)
         } catch {
-            print("video-bubble: temp stage failed: \(error)")
+            RedactLog.event("video-bubble: temp stage failed", "\(type(of: error))")
             return
         }
         Task {

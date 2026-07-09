@@ -99,7 +99,7 @@ struct SASVerifySheet: View {
             do {
                 try await pairing.markVerified(rawKey)
             } catch {
-                print("SAS: markVerified threw: \(error)")
+                RedactLog.event("SAS: markVerified threw", "\(type(of: error))")
             }
             if pairing.isVerified(rawKey) {
                 dismiss()

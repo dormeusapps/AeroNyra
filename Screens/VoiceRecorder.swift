@@ -77,7 +77,7 @@ final class VoiceRecorder {
             isRecording = true
             startMeterLoop()
         } catch {
-            print("[VoiceRecorder] start failed: \(error)")
+            RedactLog.event("[VoiceRecorder] start failed", "\(type(of: error))")
             deactivateSession()
             reset()
         }

@@ -279,7 +279,7 @@ final class MessageInbox {
         } catch {
             message.deliveryState = .notDelivered
             save()
-            print("inbox: send failed, kept as .notDelivered: \(error)")
+            RedactLog.event("inbox: send failed, kept as .notDelivered", "\(type(of: error))")
         }
     }
 
@@ -336,7 +336,7 @@ final class MessageInbox {
         } catch {
             message.deliveryState = .notDelivered
             save()
-            print("inbox: media send failed, kept as .notDelivered: \(error)")
+            RedactLog.event("inbox: media send failed, kept as .notDelivered", "\(type(of: error))")
         }
     }
 
@@ -427,7 +427,7 @@ final class MessageInbox {
         } catch {
             message.deliveryState = .notDelivered
             save()
-            print("inbox: resend failed, kept .notDelivered: \(error)")
+            RedactLog.event("inbox: resend failed, kept .notDelivered", "\(type(of: error))")
         }
     }
 
@@ -545,7 +545,7 @@ final class MessageInbox {
                 // `.notDelivered` so the ordinary return-to-range flush retries it.
                 message.deliveryState = .notDelivered
                 save()
-                print("inbox: media re-drive failed, marked .notDelivered: \(error)")
+                RedactLog.event("inbox: media re-drive failed, marked .notDelivered", "\(type(of: error))")
             }
         }
     }
@@ -782,6 +782,6 @@ final class MessageInbox {
 
     private func save() {
         do { try modelContext.save() }
-        catch { print("inbox: save failed: \(error)") }
+        catch { RedactLog.event("inbox: save failed", "\(type(of: error))") }
     }
 }

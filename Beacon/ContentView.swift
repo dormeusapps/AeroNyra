@@ -177,7 +177,7 @@ struct ContentView: View {
             do {
                 try await transport.start()
             } catch {
-                print("BLE start failed: \(error)")
+                print("BLE start failed: \(type(of: error))")
             }
             for await ids in transport.reachabilityUpdates {
                 presence.reachableIDs = ids
@@ -396,7 +396,7 @@ struct ContentView: View {
             loadedNostrLedger = try nostrEventLedgerStore.load()
             print("nostr replay ledger loaded \u{00B7} \(loadedNostrLedger.count) id(s)")
         } catch {
-            print("\u{26A0}\u{FE0F} nostr replay ledger load FAILED \u{2014} booting empty: \(error)")
+            RedactLog.event("\u{26A0}\u{FE0F} nostr replay ledger load FAILED \u{2014} booting empty", "\(type(of: error))")
             loadedNostrLedger = ProcessedEventLedger()
         }
         
@@ -416,7 +416,7 @@ struct ContentView: View {
             // reconnect, so an empty seed here does not darken the mesh. When the
             // admission gate is later flipped authoritative, a corrupt load will
             // need a real re-pair recovery path rather than this degrade.
-            print("⚠️ contact allowlist load FAILED — booting with empty set: \(error)")
+            RedactLog.event("⚠️ contact allowlist load FAILED — booting with empty set", "\(type(of: error))")
             loadedAllowlist = ContactAllowlist()
             pairedIdentities = []
         }
@@ -441,7 +441,7 @@ struct ContentView: View {
             loadedPending = try pendingInvitesStore.load()
             print("pending invite ledger loaded · \(loadedPending.count) in flight")
         } catch {
-            print("⚠️ pending invite ledger load FAILED — booting empty: \(error)")
+            RedactLog.event("⚠️ pending invite ledger load FAILED — booting empty", "\(type(of: error))")
             loadedPending = PendingInvites()
         }
         
@@ -576,7 +576,7 @@ struct ContentView: View {
             do {
                 try await mesh.start()   // starts BOTH transports: BLE radio + Nostr relay
             } catch {
-                print("router start failed: \(error)")
+                print("router start failed: \(type(of: error))")
             }
             await coord.onReachable(ids)
         }

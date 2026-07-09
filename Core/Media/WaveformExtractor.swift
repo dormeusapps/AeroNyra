@@ -68,7 +68,7 @@ enum WaveformExtractor {
 
             return normalize(bars)
         } catch {
-            print("[WaveformExtractor] failed: \(error)")
+            RedactLog.event("[WaveformExtractor] failed", "\(type(of: error))")
             return flat(count)
         }
     }

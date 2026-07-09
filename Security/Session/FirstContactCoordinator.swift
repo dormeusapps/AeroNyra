@@ -447,7 +447,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             RedactLog.event("first-contact: INITIATED session", "with \(peer.userIDHex.prefix(16))…")
             return true
         } catch {
-            print("first-contact: initiate failed: \(error)")
+            RedactLog.event("first-contact: initiate failed", "\(type(of: error))")
             return false
         }
     }
@@ -559,7 +559,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 }
             }
         } catch {
-            print("first-contact: invite-echo redeem failed: \(error)")
+            RedactLog.event("first-contact: invite-echo redeem failed", "\(type(of: error))")
         }
     }
     
@@ -658,7 +658,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             try await transport.sendReconnect(frame, toLink: link)
             print("first-contact: sent reconnect beacons (\(plan.emissionSet.count)) → link \(link)")
         } catch {
-            print("first-contact: reconnect beacon send to \(link) failed: \(error)")
+            print("first-contact: reconnect beacon send to \(link) failed: \(type(of: error))")
         }
     }
     
@@ -708,7 +708,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             try await transport.sendReconnect(frame, toLink: link)
             RedactLog.event("first-contact: sent reconnect it's-me · link \(link)", "\(peer.userIDHex.prefix(16))…")
         } catch {
-            print("first-contact: it's-me seal/send failed on link \(link): \(error)")
+            RedactLog.event("first-contact: it's-me seal/send failed on link \(link)", "\(type(of: error))")
         }
     }
     
@@ -747,7 +747,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             RedactLog.event("first-contact: reconnect ADMITTED · link \(link)", "\(peer.userIDHex.prefix(16))…")
         } catch {
             // Stranger / replay / undecodable: admit nothing. Quiet by design.
-            print("first-contact: reconnect it's-me did not open on link \(link): \(error)")
+            RedactLog.event("first-contact: reconnect it's-me did not open on link \(link)", "\(type(of: error))")
         }
     }
     
@@ -1030,7 +1030,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             let sealed = try session.seal(payload.sealedPlaintext())
             await router?.send(Envelope(ciphertext: sealed), tracked: false)
         } catch {
-            print("first-contact: delivery-ack seal/send failed: \(error)")
+            RedactLog.event("first-contact: delivery-ack seal/send failed", "\(type(of: error))")
         }
     }
 
@@ -1272,7 +1272,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
             }
         } catch {
-            print("first-contact: open failed: \(error)")
+            RedactLog.event("first-contact: open failed", "\(type(of: error))")
         }
     }
     

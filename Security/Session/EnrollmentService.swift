@@ -253,7 +253,7 @@ public final class EnrollmentService {
         do {
             try store.save(updated)
         } catch {
-            print("enroll: markVerified PERSIST FAILED: \(error)")
+            RedactLog.event("enroll: markVerified PERSIST FAILED", "\(type(of: error))")
             throw EnrollmentError.persistFailed(underlying: error)
         }
         // Persisted — adopt as the live set, THEN open the verified gate. Order
