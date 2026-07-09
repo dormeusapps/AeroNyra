@@ -57,10 +57,19 @@ struct ContentView: View {
     private enum Phase {
         case launching
         case onboarding(IdentityStore)
+        /// Boot could not reach `.ready`. Carries the store so the door's
+        /// "Erase and start over" can delete the real identity item, and the
+        /// `BootFailure` so the copy can distinguish "identity unreadable" from
+        /// "identity fine, stack broke." Reachable ONLY from `bootstrap()`'s
+        /// route switch and a failed erase — never a catch-all.
+        case bootFailed(IdentityStore, BootFailure)
         case ready(IdentityKeypair, ModelContainer, IdentityStore)
     }
-    
+
     @State private var phase: Phase = .launching
+
+    /// Drives the destructive-confirmation dialog on the `.bootFailed` door.
+    @State private var confirmBootErase = false
     
     /// The single long-lived BLE transport, started at launch.
     @State private var transport = BLEMeshTransport()
@@ -128,7 +137,7 @@ struct ContentView: View {
                     completeOnboarding(identity: identity, store: store)
                 }
                 
-            case .ready(_, let container, _):
+            case .ready(_, let container, let store):
                 // ReadyView owns the main-actor MessageInbox for this phase.
                 // coordinator + router are set together in makeSessionStack, so
                 // unwrapping both here is safe — whenever one is non-nil, so is
@@ -139,9 +148,18 @@ struct ContentView: View {
                               router: router,
                               pairingService: pairingService,
                               pendingInviteURL: $pendingInviteURL)
+                        // The erase action is injected HERE, not on the outer
+                        // body, because only `.ready` has the assembled store in
+                        // scope. SettingsView (reachable only from within
+                        // ReadyView) reads it; the `.bootFailed` door calls
+                        // eraseEverything(store:) directly with its own store.
+                        .environment(\.eraseEverything) { eraseEverything(store: store) }
                 } else {
                     launchScreen   // unreachable: both are set before .ready
                 }
+
+            case .bootFailed(let store, let failure):
+                bootFailedScreen(store: store, failure: failure)
             }
         }
         .preferredColorScheme(.dark)
@@ -151,7 +169,6 @@ struct ContentView: View {
             pendingInviteURL = url
         }
         .environment(presence)
-        .environment(\.eraseEverything) { eraseEverything() }
         .task {
             // Start the radio, then keep presence in sync AND feed the
             // coordinator newly-reachable links. Main-actor isolated, so
@@ -187,7 +204,61 @@ struct ContentView: View {
     private var launchScreen: some View {
         Color.bgApp.ignoresSafeArea()
     }
-    
+
+    // MARK: - Boot-failure door (Fix 1 / Fix 3)
+
+    /// The safe landing when a boot cannot reach `.ready`. DELIBERATELY not
+    /// onboarding: onboarding's four taps end in an identity write, and a device
+    /// that failed to boot may already hold a real identity. Two explicit,
+    /// labelled buttons — Retry (re-run bootstrap) and a destructive,
+    /// confirmation-gated Erase — and nothing that looks like the tap-through
+    /// onboarding flow. Copy differs by cause: only `.stackFailed` may honestly
+    /// promise the identity and contacts are safe.
+    private func bootFailedScreen(store: IdentityStore, failure: BootFailure) -> some View {
+        ZStack {
+            Color.bgApp.ignoresSafeArea()
+            VStack(spacing: 22) {
+                Text("Couldn't open")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(Color.primary)
+
+                Text(failure == .stackFailed
+                     ? "Something went wrong starting the app. Your identity and contacts are safe on this phone — try again."
+                     : "Something went wrong opening this device. Trying again may fix it.")
+                    .font(.callout)
+                    .foregroundStyle(Color.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    bootstrap()
+                } label: {
+                    Text("Try again").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(role: .destructive) {
+                    confirmBootErase = true
+                } label: {
+                    Text("Erase and start over").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(32)
+            .frame(maxWidth: 360)
+        }
+        .confirmationDialog("Erase and start over?",
+                            isPresented: $confirmBootErase,
+                            titleVisibility: .visible) {
+            Button("Erase everything", role: .destructive) {
+                eraseEverything(store: store)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your identity and all data on this device. It cannot be undone, and your contacts will have to re-pair.")
+        }
+    }
+
     // MARK: - Bootstrap
     
     /// Try to load an existing identity. If found, build the persistent
@@ -200,21 +271,32 @@ struct ContentView: View {
             protection: .deviceUnlockOnly,
             wrapper: wrapper
         )
-        
-        do {
-            let identity = try store.load()
-            let container = try makeModelContainer()
-            try makeSessionStack(identity: identity,
-                                 identityStore: store,
-                                 enclaveWrapper: wrapper)
+
+        // The router owns the sequencing: it calls `load`, and `buildStack` ONLY
+        // on a successful load. That split is what makes onboarding reachable
+        // from EXACTLY ONE input — `load()` threw `.notFound`. A device that has
+        // an identity it merely cannot read (dead Enclave key, locked Keychain)
+        // routes to `.bootFailed(.identityUnreadable)`, never onboarding, so the
+        // four-tap overwrite can no longer reach a real identity.
+        let route = BootRouter.route(
+            load: { try store.load() },
+            buildStack: { identity in
+                let container = try makeModelContainer()
+                try makeSessionStack(identity: identity,
+                                     identityStore: store,
+                                     enclaveWrapper: wrapper)
+                return container
+            })
+
+        // EXACTLY ONE `phase =` per route arm. No catch-all.
+        switch route {
+        case .onboarding:
+            phase = .onboarding(store)
+        case .bootFailed(let failure):
+            RedactLog.event("bootstrap: boot failed (\(failure))", "")
+            phase = .bootFailed(store, failure)
+        case .ready(let identity, let container):
             phase = .ready(identity, container, store)
-        } catch IdentityError.notFound {
-            phase = .onboarding(store)
-        } catch {
-            // Any other error (Keychain quirk, container failure, etc.)
-            // falls back to onboarding rather than wedging at launch.
-            // A real error UX comes later.
-            phase = .onboarding(store)
         }
     }
     
@@ -224,20 +306,18 @@ struct ContentView: View {
                                     store: IdentityStore) {
         do {
             try store.save(identity, overwrite: true)
-            let container = try makeModelContainer()
-            // Reconstruct the same Enclave wrapper the store uses, so the wipe's
-            // safety-net Enclave teardown targets the right key. try? mirrors
-            // bootstrap(): absent on the simulator (no Enclave), present on device.
-            let wrapper = try? SecureEnclaveWrapper(service: enclaveService)
-            try makeSessionStack(identity: identity,
-                                 identityStore: store,
-                                 enclaveWrapper: wrapper)
-            phase = .ready(identity, container, store)
         } catch {
-            // Stay in onboarding so the user can tap again. A real UX
-            // would surface the error; logging suffices for now.
+            // Stay in onboarding so the user can tap again. The print → RedactLog
+            // fix is Step 3's concern (logging), not Step 1's (boot routing); it
+            // rides Step 2's completeOnboarding rework. Left as-was here.
             print("Bootstrap save failed: \(error)")
+            return
         }
+        // Single source of phase routing: the just-saved identity now loads, so
+        // `bootstrap()` builds the stack and routes to `.ready` (or `.bootFailed`
+        // if the stack won't build). No `phase =` lives here — it all flows
+        // through bootstrap()'s route switch.
+        bootstrap()
     }
     
     // MARK: - Construction
@@ -515,10 +595,75 @@ struct ContentView: View {
     /// `\.eraseEverything` environment action injected on the body). Matches
     /// `bootstrap()`'s store construction; the wiped identity means onboarding
     /// regenerates a fresh one, and leaving `.ready` tears down the stale stack.
-    private func eraseEverything() {
+    /// Erase everything and route to a clean onboarding. Called from BOTH the
+    /// SettingsView panic-Erase (`.ready`, where `self.emergencyWipe` is
+    /// assembled) and the `.bootFailed` door (where it is NIL — makeSessionStack
+    /// never ran). `store` is the call site's IdentityStore, so this never
+    /// depends on the assembled wipe for the load-bearing step.
+    ///
+    /// GATE + ORDER. The identity item is the loop decider: onboarding is safe
+    /// to reach ONLY once it is confirmed gone (else the next `load()` re-throws
+    /// and we bounce forever). So delete it explicitly and FIRST; on failure,
+    /// stay on the door and let the user retry (delete() succeeds on
+    /// errSecItemNotFound too, and a foreground user-initiated erase clears the
+    /// locked-Keychain status that would fail it at boot). The Enclave key is
+    /// torn down only AFTER the delete succeeds, so a failed delete can never
+    /// strand a blob under a dead key. `EmergencyWipe.perform()` is left
+    /// unchanged — the panic path legitimately wants maximal destruction even on
+    /// partial failure; the door wants fail-safe recoverability. Opposite
+    /// preferences, kept apart.
+    private func eraseEverything(store: IdentityStore) {
         Task { @MainActor in
+            // GATE.
+            do {
+                try store.delete()
+            } catch {
+                RedactLog.event("erase: identity delete FAILED — not routing to onboarding",
+                                "\(type(of: error))")
+                phase = .bootFailed(store, .identityUnreadable)   // stay; Erase-again retries
+                return
+            }
+
+            // Identity gone → no ghost can strand a blob, and the next load()
+            // honestly returns .notFound. Full assembled sweep (contact
+            // allowlist, invite ledger, event ledger, device residue, …) — this
+            // is the `.ready` path; at the door it is a no-op ([], wipe unbuilt).
             _ = await performEmergencyWipe()
-            let wrapper = try? SecureEnclaveWrapper(service: enclaveService)
+
+            // Door sweep. At `.bootFailed` the assembled wipe is nil, so the
+            // SwiftData message store, the session DEK, and the Nostr secret from
+            // a PRIOR good run are intact and about to be orphaned under the
+            // dying Enclave key. Delete them explicitly so onboarding starts
+            // clean, not over a stranger's conversations. Idempotent — no-ops
+            // after performEmergencyWipe already cleared them at `.ready`.
+            // Best-effort: the gate already precludes any loop, but every failure
+            // is logged, never `try?`'d into silence.
+            do { try await SwiftDataStoreWipe().wipe() }
+            catch { RedactLog.event("erase: SwiftData store wipe FAILED", "\(type(of: error))") }
+            do { try await SessionKeyWipe(service: sessionKeyService).wipe() }
+            catch { RedactLog.event("erase: session DEK wipe FAILED", "\(type(of: error))") }
+            do { try await NostrIdentityWipe(service: nostrIdentityService).wipe() }
+            catch { RedactLog.event("erase: Nostr secret wipe FAILED", "\(type(of: error))") }
+
+            // Enclave teardown. Build the wrapper ONCE and reuse it for the
+            // teardown AND the fresh onboarding store. Not gating (the identity
+            // is already gone; nothing can be stranded) but NOT silent —
+            // `try?` is the pattern we are removing. `.unavailable` (simulator /
+            // no Enclave) is an EXPECTED, logged no-op, not an error.
+            let wrapper: SecureEnclaveWrapper?
+            do {
+                let built = try SecureEnclaveWrapper(service: enclaveService)
+                do { try built.deleteEnclaveKey() }
+                catch { RedactLog.event("erase: Enclave key teardown FAILED", "\(type(of: error))") }
+                wrapper = built
+            } catch SecureEnclaveError.unavailable {
+                RedactLog.event("erase: Enclave unavailable — teardown skipped (expected on simulator)", "")
+                wrapper = nil
+            } catch {
+                RedactLog.event("erase: Enclave wrapper construct FAILED", "\(type(of: error))")
+                wrapper = nil
+            }
+
             phase = .onboarding(IdentityStore(service: identityService,
                                               protection: .deviceUnlockOnly,
                                               wrapper: wrapper))
