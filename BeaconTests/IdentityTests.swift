@@ -112,6 +112,31 @@ final class IdentityTests: XCTestCase {
         }
     }
 
+    /// The default (no-overwrite) save not only THROWS on a duplicate — it must
+    /// leave the stored item byte-for-byte unchanged. This is the property
+    /// `completeOnboarding` now relies on: the `false` default is its guard
+    /// against a fresh key clobbering a surviving identity, so a refused save
+    /// must be a true no-op, not a partial write. Digests, never raw key bytes,
+    /// so a failure message can't print private material.
+    func testSaveWithoutOverwriteLeavesStoredBlobIntact() throws {
+        let store = try makeCleanStore()
+        let original = IdentityKeypair.generate()
+        try store.save(original)
+
+        let intruder = IdentityKeypair.generate()
+        XCTAssertThrowsError(try store.save(intruder)) { error in
+            XCTAssertEqual(error as? IdentityError, .alreadyExists)
+        }
+
+        let loaded = try store.load()
+        XCTAssertEqual(SHA256.hash(data: loaded.serializedPrivateBlob()),
+                       SHA256.hash(data: original.serializedPrivateBlob()),
+                       "the ORIGINAL identity must survive a refused save")
+        XCTAssertNotEqual(SHA256.hash(data: loaded.serializedPrivateBlob()),
+                          SHA256.hash(data: intruder.serializedPrivateBlob()),
+                          "the intruder key must NOT have been written")
+    }
+
     func testLoadOrCreateIsStable() throws {
         let store = try makeCleanStore()
 

@@ -322,6 +322,12 @@ public struct IdentityStore {
             return
         case errSecDuplicateItem:
             if overwrite {
+                // As of Step 2 there are ZERO production callers passing
+                // overwrite: true — the only path that replaced an existing
+                // identity item. If one ever reappears, this line makes the
+                // in-place overwrite visible in the log instead of silent.
+                // Label only: no identity, no key bytes.
+                RedactLog.event("identity-store: OVERWRITING existing item (overwrite:true)", "")
                 try update(blob: payload)
             } else {
                 throw IdentityError.alreadyExists

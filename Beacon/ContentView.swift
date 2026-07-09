@@ -305,12 +305,23 @@ struct ContentView: View {
     private func completeOnboarding(identity: IdentityKeypair,
                                     store: IdentityStore) {
         do {
-            try store.save(identity, overwrite: true)
+            try store.save(identity)
+        } catch let error as IdentityError where error == .alreadyExists {
+            // TRIPWIRE — must never fire. After Step 1, onboarding is reachable
+            // ONLY from `.notFound` (no item exists) or a post-Erase route whose
+            // identity delete was gated and confirmed. A surviving, readable
+            // identity cannot reach here. If it does, something upstream is
+            // wrong — STOP, never silently clobber it. Route to the door.
+            RedactLog.event("onboarding: identity ALREADY EXISTS at save — refusing to clobber",
+                            "\(type(of: error))")
+            phase = .bootFailed(store, .identityUnreadable)
+            return
         } catch {
-            // Stay in onboarding so the user can tap again. The print → RedactLog
-            // fix is Step 3's concern (logging), not Step 1's (boot routing); it
-            // rides Step 2's completeOnboarding rework. Left as-was here.
-            print("Bootstrap save failed: \(error)")
+            // Stay in onboarding so the user can tap again. Logged, not printed:
+            // `print` is not stripped in Release and `\(error)` renders payloads
+            // (e.g. EnrollmentError.persistFailed → container paths).
+            RedactLog.event("onboarding: identity save FAILED — staying in onboarding",
+                            "\(type(of: error))")
             return
         }
         // Single source of phase routing: the just-saved identity now loads, so
