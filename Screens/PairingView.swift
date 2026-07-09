@@ -37,8 +37,7 @@ struct PairingView: View {
     @State private var minting = false
     @State private var mintError: String?
 
-    // Redeem-an-invite (7d-3 UI): the pasted/typed string and in-flight flag.
-    @State private var inviteInput = ""
+    // Redeem-an-invite (7d-3 UI): in-flight flag for the paste redeem.
     @State private var redeeming = false
 
     @State private var showScanner = false
@@ -202,39 +201,33 @@ struct PairingView: View {
                 .opacity(pairing == nil ? 0.4 : 1.0)
             }
 
-            // Redeem an incoming invite. PasteButton covers the clean copy
-            // without the iOS "Allow Paste?" alert; the field is for an invite
-            // that arrived hard-wrapped in a plain-text email and needs a
-            // hand-repair before redeeming.
+            // Redeem an incoming invite. The system PasteButton is the ONE
+            // entry: no "Allow Paste?" alert, and no hand-repair field —
+            // normalizeInviteTransportString absorbs the transport mangling
+            // (wraps, soft breaks, smart quotes, encoded schemes) that field
+            // existed for. UIPasteControl enforces its own title and fill
+            // (that guarantee is what suppresses the paste alert), so this
+            // cannot render as an outline pill reading "paste invite" — tint,
+            // shape, and size are the styling surface it offers.
             VStack(spacing: 10) {
-                Text("got an invite? redeem it here")
+                Text("got an invite?")
                     .stillwaterMono(8.5, trackingEm: 0.22)
 
-                HStack(spacing: 10) {
-                    TextField("paste their invite", text: $inviteInput)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(Stillwater.Palette.foam)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .padding(.horizontal, 12)
-                        .frame(height: 40)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(Stillwater.Palette.biolume.opacity(0.25))
-                        )
+                if redeeming {
+                    outlinePill("redeeming…")
+                        .opacity(0.5)
+                } else {
                     PasteButton(payloadType: String.self) { strings in
                         guard let s = strings.first else { return }
                         redeemPasted(s)
                     }
-                    .labelStyle(.iconOnly)
+                    .labelStyle(.titleOnly)
+                    .tint(Stillwater.Palette.biolume)
                     .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                    .disabled(redeeming || pairing == nil)
+                    .opacity(pairing == nil ? 0.4 : 1.0)
                 }
-
-                Button { redeemPasted(inviteInput) } label: {
-                    outlinePill(redeeming ? "redeeming…" : "redeem invite")
-                }
-                .buttonStyle(.plain)
-                .disabled(redeeming || pairing == nil || inviteInput.isEmpty)
             }
             .padding(.top, 14)
 
@@ -344,7 +337,6 @@ struct PairingView: View {
             do {
                 let result = try await pairing.redeemInvite(raw)
                 pairMessage = "invite redeemed · \(result.hint) · now confirm the four words"
-                inviteInput = ""
             } catch PairingService.PairError.expired {
                 pairFailed = "that invite has expired — ask for a fresh one"
                 RedactLog.event("invite-paste: FAILED expired", "")
