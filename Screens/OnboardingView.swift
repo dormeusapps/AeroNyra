@@ -40,7 +40,7 @@ struct OnboardingView: View {
               body: "You add someone by trading a code in person, or a one-time invite you send yourself. Never a phone number, never a lookup — no one can message you just for having the app."),
         Panel(eyebrow: "THE TRADE",
               title: "Your identity lives only here.",
-              body: "No server holds it, so there is no recovery: lose this phone and this identity is gone, and your contacts simply re-pair. Voice notes fade once heard, photos after a day. And anyone can still photograph their own screen — no app can stop that."),
+              body: "No server holds your messages, so nothing syncs and nothing restores: lose this phone and this identity — and its history — are gone, and your contacts simply re-pair. Voice notes fade once heard; photos and videos, after a day. And anyone can still photograph their own screen — no app can stop that."),
     ]
 
     /// Total steps = the intro panels plus the final "begin" panel.
