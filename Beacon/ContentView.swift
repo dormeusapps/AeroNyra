@@ -108,7 +108,14 @@ struct ContentView: View {
     /// mints single-use invites via the enrollment seam. Constructed in
     /// `makeSessionStack`; injected by ReadyView; driven by PairingView. nil until .ready.
     @State private var pairingService: PairingService?
-    
+
+    /// STEP 7d-3 lifecycle: the invite URL, captured at the ROOT — mounted from
+    /// the first frame in every phase. The handler used to live inside
+    /// ReadyView's `if let inbox`, so a cold-launch tap (force-quit, then
+    /// AirDrop/link open) arrived before any handler existed and was silently
+    /// dropped. The root captures; ReadyView consumes once pairingService is live.
+    @State private var pendingInviteURL: URL?
+
     var body: some View {
         Group {
             switch phase {
@@ -130,13 +137,19 @@ struct ContentView: View {
                     ReadyView(container: container,
                               coordinator: coordinator,
                               router: router,
-                              pairingService: pairingService)
+                              pairingService: pairingService,
+                              pendingInviteURL: $pendingInviteURL)
                 } else {
                     launchScreen   // unreachable: both are set before .ready
                 }
             }
         }
         .preferredColorScheme(.dark)
+        .onOpenURL { url in
+            // Capture only — decoding/redeeming waits for ReadyView, the first
+            // phase with a live pairingService. Never dropped, whatever the phase.
+            pendingInviteURL = url
+        }
         .environment(presence)
         .environment(\.eraseEverything) { eraseEverything() }
         .task {
@@ -621,8 +634,28 @@ private struct ReadyView: View {
     let coordinator: FirstContactCoordinator
     let router: MessageRouter
     let pairingService: PairingService
-    
+
+    /// Root-captured invite URL (ContentView.onOpenURL). Consumed exactly once
+    /// below, then cleared — AFTER redeem returns, never before: this is the
+    /// .task(id:) id, and clearing it mid-flight cancels the very task doing
+    /// the redeeming.
+    @Binding var pendingInviteURL: URL?
+
     @State private var inbox: MessageInbox?
+
+    /// STEP 7d-3 outcome surface. The same success/failure pair PairingView
+    /// keeps for scan-to-pair (pairMessage/pairFailed), shown as a transient
+    /// banner over the chats root: a redeem that fails must say so, or the
+    /// invite channel can't be diagnosed in the field.
+    @State private var redeemMessage: String?
+    @State private var redeemFailed: String?
+
+    /// Bumped each time redeem(_:) lands an outcome; keys the banner's
+    /// auto-clear task BELOW so the 6-second timer lives outside redeem(_:).
+    /// Keeping the timer inside redeem held `pendingInviteURL` set for the
+    /// whole window — a second invite then cancelled the in-flight redeem
+    /// mid-enrollment, and an identical re-tap was silently dropped.
+    @State private var redeemBannerToken = 0
 
     /// The shared presence object injected by ContentView. We write its
     /// identity-resolved set from the coordinator's `reachablePeers` stream.
@@ -647,16 +680,37 @@ private struct ReadyView: View {
                     .environment(pairingService)
                     .task { await inbox.run() }
                     .task { await inbox.runDeliveryUpdates(router.deliveryUpdates) }   // 7b.2a
-                    .onOpenURL { url in
-                        // STEP 7d-3: a tapped aeronyra://invite/… link. The
-                        // pairing service decodes, establishes, echoes, and
-                        // enrolls (unverified). Ignored if it isn't an invite.
-                        Task { try? await pairingService.redeemInvite(url.absoluteString) }
-                    }
             } else {
                 Color.bgApp.ignoresSafeArea()
             }
         }
+        // STEP 7d-3: consume the root-captured invite URL. task(id:) covers
+        // both cold launch (fires on mount with the URL already set) and the
+        // warm tap (fires when the id changes). Consumption and the banner sit
+        // HERE — outside `if let inbox` — so an outcome that lands before the
+        // inbox is built still has a surface to show on. Two ordering rules
+        // keep this correct: the id is cleared only AFTER the await, because
+        // mutating this task's own id cancels it at the next suspension point;
+        // and redeem(_:) returns as soon as the outcome is set, because the
+        // 6-second banner timer lives in the separate token-keyed task below —
+        // so the id clears promptly and a follow-up invite, identical or not,
+        // gets a fresh run instead of cancelling an in-flight enrollment.
+        .task(id: pendingInviteURL) {
+            guard let url = pendingInviteURL else { return }
+            await redeem(url)
+            pendingInviteURL = nil
+        }
+        // Banner auto-clear, keyed on its own token so it never holds
+        // redeem(_:) open: a fresh outcome bumps the token, which cancels the
+        // previous timer and starts a new 6-second window. On cancellation we
+        // must NOT clear — the newer outcome owns the surface now.
+        .task(id: redeemBannerToken) {
+            guard redeemBannerToken > 0 else { return }
+            do { try await Task.sleep(nanoseconds: 6_000_000_000) } catch { return }
+            redeemMessage = nil
+            redeemFailed = nil
+        }
+        .overlay(alignment: .top) { redeemBanner }
         .modelContainer(container)
         .task {
             if inbox == nil {
@@ -729,6 +783,61 @@ private struct ReadyView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Invite redeem outcome (7d-3)
+
+    /// The transient outcome banner, styled after PairingView's outcome lines
+    /// (biolume success · mist failure) so redeem and scan speak in one voice.
+    @ViewBuilder
+    private var redeemBanner: some View {
+        if let text = redeemMessage ?? redeemFailed {
+            Text(text)
+                .stillwaterMono(9, trackingEm: 0.2,
+                                color: redeemMessage != nil
+                                    ? Stillwater.Palette.biolume
+                                    : Stillwater.Palette.mistDim)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Capsule().fill(Stillwater.Palette.abyssDeep.opacity(0.92)))
+                .padding(.top, 6)
+                .transition(.opacity)
+        }
+    }
+
+    /// Redeem a tapped invite URL and surface the outcome. Error strings mirror
+    /// PairingView.handleScan. Logging goes through RedactLog on FAILURE only,
+    /// and the detail carries the error TYPE, never `\(error)`: default error
+    /// interpolation renders associated values, and the layers under redeem
+    /// (SignalError, EnrollmentError.persistFailed) hold peer-identity and
+    /// path material there. The invite string / URL never reaches any argument.
+    private func redeem(_ url: URL) async {
+        redeemMessage = nil
+        redeemFailed = nil
+        do {
+            let result = try await pairingService.redeemInvite(url.absoluteString)
+            redeemMessage = "invite redeemed · \(result.hint) · now confirm the four words"
+        } catch PairingService.PairError.expired {
+            redeemFailed = "that invite has expired — ask for a fresh one"
+            RedactLog.event("invite-redeem: FAILED expired", "")
+        } catch PairingService.PairError.unrecognized {
+            // Covers both wrong-link AND transport-damaged: .malformed is
+            // unreachable on this path (a bad payload dies inside Invite(wire:)).
+            redeemFailed = "couldn't read that invite — check it copied in full"
+            RedactLog.event("invite-redeem: FAILED unrecognized", "")
+        } catch PairingService.PairError.malformed {
+            redeemFailed = "that invite was damaged — ask for a fresh one"
+            RedactLog.event("invite-redeem: FAILED malformed", "")
+        } catch PairingService.PairError.selfScan {
+            redeemFailed = "that's your own invite"
+            RedactLog.event("invite-redeem: FAILED self", "")
+        } catch {
+            redeemFailed = "couldn't redeem the invite — try again"
+            RedactLog.event("invite-redeem: FAILED downstream", "\(type(of: error))")
+        }
+        // Return immediately — the auto-clear timer is the token-keyed task on
+        // the view, so this function never outlives the redemption itself.
+        redeemBannerToken += 1
     }
 
     /// N1 — the permission moment. Ask for notification authorization only once
