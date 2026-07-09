@@ -706,9 +706,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             let sealed = try session.seal(MessagePayload.reconnectHelloV1().sealedPlaintext())
             let frame = Self.reconnectFrame(Self.reconnectItsMe, sealed)
             try await transport.sendReconnect(frame, toLink: link)
-            RedactLog.event("first-contact: sent reconnect it's-me · link \(link)", "\(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: sent reconnect it's-me", "link \(link) · \(peer.userIDHex.prefix(16))…")
         } catch {
-            RedactLog.event("first-contact: it's-me seal/send failed on link \(link)", "\(type(of: error))")
+            RedactLog.event("first-contact: it's-me seal/send failed", "link \(link) · \(type(of: error))")
         }
     }
     
@@ -744,10 +744,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // peer just reconnected so it can hold that peer's auto-retry briefly
             // and extend its live delivery timeouts (A / STEP 0b) — per-peer.
             eventsContinuation.yield(.reconnected(peerKey: store.rawPublicKey(of: peer)))
-            RedactLog.event("first-contact: reconnect ADMITTED · link \(link)", "\(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: reconnect ADMITTED", "link \(link) · \(peer.userIDHex.prefix(16))…")
         } catch {
             // Stranger / replay / undecodable: admit nothing. Quiet by design.
-            RedactLog.event("first-contact: reconnect it's-me did not open on link \(link)", "\(type(of: error))")
+            RedactLog.event("first-contact: reconnect it's-me did not open", "link \(link) · \(type(of: error))")
         }
     }
     
@@ -1012,7 +1012,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             await router?.commitToRelay(mediaWireID)
         }
         let via = goingOverBLE ? "BLE" : (redrive ? "Nostr (re-drive)" : "Nostr")
-        RedactLog.event("first-contact: SENT media \(blob.count)B as \(chunks.count) chunks over \(via)", "→ \(peer.userIDHex.prefix(16))…")
+        RedactLog.event("first-contact: SENT media over \(via)", "\(chunks.count) chunks · \(blob.count)B → \(peer.userIDHex.prefix(16))…")
         return mediaWireID
     }
     

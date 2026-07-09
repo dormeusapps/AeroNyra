@@ -19,6 +19,15 @@ enum RedactLog {
     private static let log = Logger(subsystem: "com.aeronyra.app", category: "redacted")
 
     /// Emit `label` publicly; include `detail` only in DEBUG (redacted `.private`).
+    ///
+    /// LEVEL: `.notice`, not `.debug`. `.debug` messages are not persisted, are
+    /// hidden in Console by default, and never reach a sysdiagnose — so the
+    /// release-visible labels were, in practice, invisible in the field. `.notice`
+    /// is captured in the on-disk log store and appears in a sysdiagnose, which is
+    /// the point: the redacted labels are the field-diagnostic surface. This is
+    /// only safe because every label is `.public` AND carries no sensitive
+    /// material — sizes, per-peer link ids, and identity hex all live in the
+    /// DEBUG-only `.private` `detail`, which the `#else` branch omits entirely.
     static func event(_ label: String, _ detail: @autoclosure () -> String) {
         #if DEBUG
         // Evaluate the autoclosure into a local first: the os.Logger string
@@ -26,9 +35,9 @@ enum RedactLog {
         // non-escaping parameter can't be forwarded into directly. In release the
         // autoclosure is never invoked, so no identifier is ever computed.
         let detail = detail()
-        log.debug("\(label, privacy: .public) · \(detail, privacy: .private)")
+        log.notice("\(label, privacy: .public) · \(detail, privacy: .private)")
         #else
-        log.debug("\(label, privacy: .public)")
+        log.notice("\(label, privacy: .public)")
         #endif
     }
 }
