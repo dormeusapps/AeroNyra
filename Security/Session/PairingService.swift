@@ -177,7 +177,10 @@ final class PairingService {
     /// defense; the TTL is only a blast-radius bound (per Invite.swift).
     @discardableResult
     func redeemInvite(_ string: String) async throws -> PairResult {
-        guard let b64 = Self.parseInviteScheme(string),
+        // Human-transport tolerance lives HERE and only here — the binary
+        // layer (Invite / PairingPayload init?(wire:)) stays byte-strict.
+        let cleaned = Self.normalizeInviteTransportString(string)
+        guard let b64 = Self.parseInviteScheme(cleaned),
               let wire = Self.base64URLDecode(b64),
               let invite = Invite(wire: wire) else {
             throw PairError.unrecognized
@@ -206,15 +209,69 @@ final class PairingService {
 
     // MARK: - base64url + scheme helpers
 
+    /// Undo what email/text transports provably DO to a pasted invite — and
+    /// nothing more: edge whitespace, one wrapping quote pair (incl. smart
+    /// quotes), a percent-encoded scheme PREFIX, quoted-printable `=\r\n`
+    /// soft breaks, and hard-wrap whitespace. Anything else left in the body
+    /// is REJECTED downstream, never filtered: silently rewriting malformed
+    /// input into well-formed different bytes would hand the structure checks
+    /// input they were never meant to bless. Internal (not private) so the
+    /// external KAT vectors drive this exact function.
+    nonisolated static func normalizeInviteTransportString(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let quotePairs: [(Character, Character)] =
+            [("\"", "\""), ("'", "'"), ("\u{201C}", "\u{201D}"), ("\u{2018}", "\u{2019}")]
+        for (open, close) in quotePairs
+        where s.count >= 2 && s.first == open && s.last == close {
+            s = String(s.dropFirst().dropLast())
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            break
+        }
+        s = Self.percentDecodeSchemePrefixOnly(s)
+        // Quoted-printable soft breaks BEFORE bare-whitespace removal — the
+        // `=` is only removable as part of the `=\r\n` sequence.
+        s = s.replacingOccurrences(of: "=\r\n", with: "")
+             .replacingOccurrences(of: "=\n", with: "")
+        // Scalar-level, not Character-level: a mid-string CRLF is ONE grapheme
+        // cluster equal to neither "\r" nor "\n", so a per-Character filter
+        // walks right past a hard-wrapped line break.
+        s.unicodeScalars.removeAll(where: {
+            $0 == " " || $0 == "\t" || $0 == "\r" || $0 == "\n"
+        })
+        return s
+    }
+
+    /// Percent-decode ONLY a percent-encoded scheme prefix
+    /// ("aeronyra%3A%2F%2Finvite%2F…") and splice the body on VERBATIM. Never
+    /// decode the body: a %XX escape mid-body must reach base64URLDecode's
+    /// alphabet gate and reject there — decoding it would rewrite malformed
+    /// input into different well-formed bytes. If the string already starts
+    /// with the plain scheme, nothing is decoded at all.
+    nonisolated private static func percentDecodeSchemePrefixOnly(_ s: String) -> String {
+        let target = "aeronyra://invite/"
+        guard !s.lowercased().hasPrefix(target),
+              s.contains("%"),
+              s.count >= target.count else { return s }
+        for n in target.count...min(target.count * 3, s.count) {
+            let head = String(s.prefix(n))
+            guard head.contains("%"),
+                  let decoded = head.removingPercentEncoding,
+                  decoded.lowercased() == target else { continue }
+            return decoded + String(s.dropFirst(n))
+        }
+        return s
+    }
+
     private static func parsePairScheme(_ s: String) -> String? {
         let prefix = "aeronyra://pair/"
         guard s.hasPrefix(prefix) else { return nil }
         return String(s.dropFirst(prefix.count))
     }
 
-    private static func parseInviteScheme(_ s: String) -> String? {
+    nonisolated static func parseInviteScheme(_ s: String) -> String? {
         let prefix = "aeronyra://invite/"
-        guard s.hasPrefix(prefix) else { return nil }
+        guard s.count > prefix.count,
+              s.prefix(prefix.count).lowercased() == prefix else { return nil }
         return String(s.dropFirst(prefix.count))
     }
 
@@ -225,7 +282,13 @@ final class PairingService {
             .replacingOccurrences(of: "=", with: "")
     }
 
-    private static func base64URLDecode(_ s: String) -> Data? {
+    nonisolated static func base64URLDecode(_ s: String) -> Data? {
+        // Strict alphabet gate, BEFORE the re-pad loop: normalization removes
+        // known transport artifacts; anything else must fail loudly here —
+        // filtering at this layer would silently rewrite corrupt input.
+        guard !s.isEmpty, s.allSatisfy({ ch in
+            ch.isASCII && (ch.isLetter || ch.isNumber || ch == "-" || ch == "_")
+        }) else { return nil }
         var b = s.replacingOccurrences(of: "-", with: "+")
                  .replacingOccurrences(of: "_", with: "/")
         while b.count % 4 != 0 { b.append("=") }
