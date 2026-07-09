@@ -30,9 +30,16 @@ struct PairingView: View {
 
     @State private var qrImage: UIImage?
     @State private var qrUnavailable = false
+    @State private var qrText: String?          // the ONE fresh-payload string per open
+    @State private var qrExpanded = false
+    @State private var savedBrightness: CGFloat?
     @State private var inviteString: String?
     @State private var minting = false
     @State private var mintError: String?
+
+    // Redeem-an-invite (7d-3 UI): the pasted/typed string and in-flight flag.
+    @State private var inviteInput = ""
+    @State private var redeeming = false
 
     @State private var showScanner = false
     @State private var pairMessage: String?
@@ -72,6 +79,7 @@ struct PairingView: View {
         .background(Stillwater.Palette.abyss)
         .task { buildQR() }
         .fullScreenCover(isPresented: $showScanner) { scannerCover }
+        .fullScreenCover(isPresented: $qrExpanded) { expandedQRCover }
     }
 
     // MARK: Header
@@ -112,10 +120,13 @@ struct PairingView: View {
                     }
                 }
                 .shadow(color: Stillwater.Palette.biolume.opacity(0.14), radius: 15)
+                .onTapGesture {
+                    if qrImage != nil { qrExpanded = true }
+                }
 
             Text(qrUnavailable
                  ? "key too large for one code · use an invite below"
-                 : "your key, drawn fresh · have them scan it")
+                 : "your key, drawn fresh · tap to enlarge for scanning")
                 .stillwaterMono(8.5, trackingEm: 0.24)
 
             Button { openScanner() } label: {
@@ -160,8 +171,16 @@ struct PairingView: View {
 
             if let invite = inviteString {
                 VStack(spacing: 10) {
-                    ShareLink(item: invite) {
-                        pill("share your invite")
+                    // Share as a URL item, not a String: Mail then renders a
+                    // tappable anchor (the custom scheme survives), AirDrop
+                    // keeps its open-in-app behavior. String fallback if URL
+                    // init refuses — never force-unwrap.
+                    Group {
+                        if let url = URL(string: invite) {
+                            ShareLink(item: url) { pill("share your invite") }
+                        } else {
+                            ShareLink(item: invite) { pill("share your invite") }
+                        }
                     }
                     .buttonStyle(.plain)
 
@@ -182,6 +201,42 @@ struct PairingView: View {
                 .disabled(minting || pairing == nil)
                 .opacity(pairing == nil ? 0.4 : 1.0)
             }
+
+            // Redeem an incoming invite. PasteButton covers the clean copy
+            // without the iOS "Allow Paste?" alert; the field is for an invite
+            // that arrived hard-wrapped in a plain-text email and needs a
+            // hand-repair before redeeming.
+            VStack(spacing: 10) {
+                Text("got an invite? redeem it here")
+                    .stillwaterMono(8.5, trackingEm: 0.22)
+
+                HStack(spacing: 10) {
+                    TextField("paste their invite", text: $inviteInput)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Stillwater.Palette.foam)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .padding(.horizontal, 12)
+                        .frame(height: 40)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(Stillwater.Palette.biolume.opacity(0.25))
+                        )
+                    PasteButton(payloadType: String.self) { strings in
+                        guard let s = strings.first else { return }
+                        redeemPasted(s)
+                    }
+                    .labelStyle(.iconOnly)
+                    .buttonBorderShape(.capsule)
+                }
+
+                Button { redeemPasted(inviteInput) } label: {
+                    outlinePill(redeeming ? "redeeming…" : "redeem invite")
+                }
+                .buttonStyle(.plain)
+                .disabled(redeeming || pairing == nil || inviteInput.isEmpty)
+            }
+            .padding(.top, 14)
 
             if let mintError {
                 Text(mintError)
@@ -277,11 +332,92 @@ struct PairingView: View {
         }
     }
 
+    /// Redeem a pasted/typed invite. Same presentation pair as handleScan
+    /// (pairMessage/pairFailed); RedactLog on failure only, discriminant-label
+    /// only — never the invite string, never any bytes of it.
+    private func redeemPasted(_ raw: String) {
+        guard let pairing, !redeeming else { return }
+        redeeming = true
+        pairMessage = nil
+        pairFailed = nil
+        Task {
+            do {
+                let result = try await pairing.redeemInvite(raw)
+                pairMessage = "invite redeemed · \(result.hint) · now confirm the four words"
+                inviteInput = ""
+            } catch PairingService.PairError.expired {
+                pairFailed = "that invite has expired — ask for a fresh one"
+                RedactLog.event("invite-paste: FAILED expired", "")
+            } catch PairingService.PairError.unrecognized {
+                // Covers wrong-link AND transport-damaged: .malformed is
+                // unreachable here (a bad payload dies inside Invite(wire:)).
+                pairFailed = "couldn't read that invite — check it copied in full"
+                RedactLog.event("invite-paste: FAILED unrecognized", "")
+            } catch PairingService.PairError.malformed {
+                pairFailed = "that invite was damaged — ask for a fresh one"
+                RedactLog.event("invite-paste: FAILED malformed", "")
+            } catch PairingService.PairError.selfScan {
+                pairFailed = "that's your own invite"
+                RedactLog.event("invite-paste: FAILED self", "")
+            } catch {
+                pairFailed = "couldn't redeem — try again"
+                RedactLog.event("invite-paste: FAILED downstream", "\(type(of: error))")
+            }
+            redeeming = false
+        }
+    }
+
+    // MARK: Expanded QR (scan-size render)
+    /// Full-width, pure black-on-white, brightness pinned: the 200 pt themed
+    /// tile is a decorative preview at this payload's density. This is the
+    /// render the other phone actually reads. The bitmap is 1 px/module and
+    /// only ever UPSCALED (nearest-neighbor keeps modules crisp); downscaling
+    /// a pre-scaled bitmap decimates modules and kills the scan.
+    private var expandedQRCover: some View {
+        ZStack {
+            Color.white.ignoresSafeArea()
+            VStack(spacing: 26) {
+                if let qrText,
+                   let img = Self.makeQRImage(from: qrText, dark: .black, light: .white) {
+                    Image(uiImage: img)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(24)          // extra quiet zone
+                }
+                Text("have them scan · tap anywhere to close")
+                    .stillwaterMono(9, trackingEm: 0.24, color: .black.opacity(0.55))
+            }
+        }
+        .onAppear {
+            savedBrightness = UIScreen.main.brightness
+            UIScreen.main.brightness = 1.0
+        }
+        .onDisappear {
+            if let savedBrightness { UIScreen.main.brightness = savedBrightness }
+        }
+        .onTapGesture { qrExpanded = false }
+    }
+
     private func buildQR() {
         guard qrImage == nil, !qrUnavailable, let pairing else { return }
         do {
             let text = try pairing.makeOurQRString()
-            if let img = Self.makeQRImage(from: text) {
+            // Growth guard, not a scannability promise: CIFilter's byte-mode
+            // ceiling at level L is 2,953 encoded chars (2,190 wire bytes +
+            // the 16-char prefix ≈ 2,937). Past this the filter refuses and
+            // the tile silently blanks; refuse first with honest copy. Today's
+            // ~1,881-byte payload passes — and is still DENSE (version ≈37);
+            // this guard does not make it scannable, the expanded render does.
+            let approxWireBytes = (text.utf8.count - "aeronyra://pair/".count) * 3 / 4
+            guard approxWireBytes <= 2_190 else {
+                qrUnavailable = true
+                return
+            }
+            qrText = text
+            if let img = Self.makeQRImage(from: text,
+                                          dark: UIColor(Stillwater.Palette.abyss),
+                                          light: UIColor(Stillwater.Palette.foam)) {
                 qrImage = img
             } else {
                 qrUnavailable = true
@@ -302,22 +438,25 @@ struct PairingView: View {
         }
     }
 
-    /// Render `text` as a QR: abyss modules on a foam ground. `L` correction
-    /// maximizes capacity for the dense pairing string; returns nil if it still
-    /// overflows one code.
-    private static func makeQRImage(from text: String) -> UIImage? {
+    /// Render `text` as a QR at 1 px/module. `L` correction maximizes capacity
+    /// for the dense pairing string; returns nil if it overflows one code.
+    /// NO pre-scale: the old 12× transform produced a ~2,000 px bitmap that
+    /// every on-screen size then DOWNSCALED with nearest-neighbor, decimating
+    /// modules. At scale 1 the view layer only ever upscales, which is lossless
+    /// for a module grid.
+    private static func makeQRImage(from text: String,
+                                    dark: UIColor, light: UIColor) -> UIImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(text.utf8)
         filter.correctionLevel = "L"
         guard let output = filter.outputImage else { return nil }
 
         let colored = output.applyingFilter("CIFalseColor", parameters: [
-            "inputColor0": CIColor(color: UIColor(Stillwater.Palette.abyss)),
-            "inputColor1": CIColor(color: UIColor(Stillwater.Palette.foam)),
+            "inputColor0": CIColor(color: dark),
+            "inputColor1": CIColor(color: light),
         ])
-        let scaled = colored.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
         let ctx = CIContext()
-        guard let cg = ctx.createCGImage(scaled, from: scaled.extent) else { return nil }
+        guard let cg = ctx.createCGImage(colored, from: colored.extent) else { return nil }
         return UIImage(cgImage: cg)
     }
 }
