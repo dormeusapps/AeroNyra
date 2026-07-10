@@ -10,9 +10,15 @@
 //  expiry, and the bubble never learn there was an editing layer. Every
 //  future tool (text next; more later) is a composer-side change only.
 //
-//  STAGE d: photo AND video, no text tools yet. The canvas is a plain
-//  aspect-fit preview this stage; the fractional-geometry overlay model lands
-//  with the text engine (stage e).
+//  TEXT (E2, sticker model): one text block on the PHOTO canvas — tap to
+//  add/edit, drag ANYWHERE (the block is the text's measured bounds, clamped
+//  on-frame by the engine), two-finger rotate, left/center/right alignment.
+//  Geometry is the ENGINE's (StoryTextEngine): the preview calls the same
+//  transform/clampedCenter/measuredBlockSize the burn uses, with the preview
+//  frame instead of source pixels — fractions make them the same place. On
+//  post the canvas is flattened at source resolution and rides the proven
+//  photo path. Text-on-video waits for the burn stage (f); the video canvas
+//  has no text affordance yet.
 //
 //  The composer owns compose + send, nothing downstream: photos take the
 //  SAME `StreamView.meshSizedJPEG` downscale the chat path ships, videos the
@@ -56,6 +62,17 @@ struct StoryComposerView: View {
     @State private var videoDuration: Double = 0
     @State private var videoThumbs: [UIImage] = []
     @State private var trimSelection: ClosedRange<Double> = 0...0
+
+    /// E2 — the text overlay. ONE block this stage (the appearance stage
+    /// adds more). Geometry lives in the overlay's FRACTIONS; every
+    /// placement/clamp call below is the engine's, never local math.
+    @State private var overlay: StoryTextOverlay?
+    @State private var editingText = false
+    @State private var draftText = ""
+    @FocusState private var textFieldFocused: Bool
+    /// Gesture baselines: fractional center / rotation at gesture start.
+    @State private var dragStartCenter: CGPoint?
+    @State private var rotationStart: CGFloat?
     /// Double-tap guard on the post pill. A photo post dismisses immediately
     /// (fire-and-forget, the optimistic row is the progress UI); a video post
     /// holds the sheet through the transcode so a gate refusal can surface
@@ -88,12 +105,25 @@ struct StoryComposerView: View {
                         .disabled(posting)
                 }
 
+                if case .photo = media {
+                    if overlay != nil {
+                        alignmentControl
+                            .padding(.top, 14)
+                    } else {
+                        Text("tap the photo to add text")
+                            .stillwaterMono(8, trackingEm: 0.22, color: Stillwater.Palette.mistDimmest)
+                            .padding(.top, 14)
+                    }
+                }
+
                 Spacer(minLength: 16)
 
                 footer
                     .padding(.horizontal, 30)
                     .padding(.bottom, 30)
             }
+
+            if editingText { textEditor }
         }
         .onChange(of: pickedItem) { _, item in
             guard let item else { return }
@@ -136,8 +166,16 @@ struct StoryComposerView: View {
             Image(uiImage: image)
                 .resizable()
                 .scaledToFit()
+                .overlay {
+                    // Preview overlay INSIDE the fitted image's own frame, so
+                    // fractions here are fractions of the burn frame.
+                    GeometryReader { geo in
+                        overlayPreview(frame: geo.size)
+                    }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onTapGesture { beginTextEdit() }
         case .video(_, let thumb):
             ZStack {
                 if let thumb {
@@ -217,6 +255,7 @@ struct StoryComposerView: View {
             discardVideoIfAny()
             let thumb = await Self.firstFrame(of: picked.url)
             media = .video(url: picked.url, thumb: thumb)
+            overlay = nil                      // fresh canvas; no text-on-video until f
             // TRIM inputs: duration + filmstrip, and a LEGAL default window.
             let seconds = (try? await AVURLAsset(url: picked.url).load(.duration).seconds) ?? 0
             videoDuration = seconds
@@ -226,7 +265,12 @@ struct StoryComposerView: View {
             guard let raw = try? await item.loadTransferable(type: Data.self),
                   let image = UIImage(data: raw) else { return }
             discardVideoIfAny()
-            media = .photo(raw: raw, image: image)
+            // EXIF-normalize at LOAD: a camera portrait arrives as landscape
+            // pixels + an orientation flag; the engine flattens in raw pixel
+            // space, so the canvas image (preview frame AND burn base) must
+            // be .up at scale 1 or the burn would land on rotated pixels.
+            media = .photo(raw: raw, image: Self.normalizedUp(image))
+            overlay = nil
             videoDuration = 0
             videoThumbs = []
             trimSelection = 0...0
@@ -261,9 +305,19 @@ struct StoryComposerView: View {
         guard let media, !posting else { return }
         posting = true
         switch media {
-        case .photo(let raw, _):
+        case .photo(let raw, let image):
             Task { @MainActor in
-                guard let jpeg = StreamView.meshSizedJPEG(from: raw) else { return }
+                // E2: flatten via the ENGINE at source resolution, then the
+                // proven downscale. No overlay → the raw bytes ride exactly
+                // the stage-b path. With an overlay: PNG into the downscale
+                // (lossless intermediate, ONE JPEG at the end — the fidelity
+                // suite's Case 4 path), flattened on the SAME normalized
+                // image the preview framed.
+                let sendData = overlay.map {
+                    StoryTextEngine.flatten(base: image, overlays: [$0]).pngData()
+                } ?? raw
+                guard let sendData,
+                      let jpeg = StreamView.meshSizedJPEG(from: sendData) else { return }
                 await inbox.sendMedia(jpeg, mime: .jpeg, in: conversation, isStory: true)
             }
             dismiss()
@@ -348,6 +402,175 @@ struct StoryComposerView: View {
             }
         }
         return out
+    }
+
+    // MARK: Text overlay (E2)
+
+    /// The live preview of the text block: the ENGINE's transform with the
+    /// preview frame, framed to the ENGINE's measured block so wraps match
+    /// the burn. `.position` takes the transform's translation — no placement
+    /// is computed here.
+    @ViewBuilder
+    private func overlayPreview(frame: CGSize) -> some View {
+        if let overlay, !editingText {
+            let t = StoryTextEngine.transform(center: overlay.center,
+                                              rotation: overlay.rotation,
+                                              in: frame)
+            let block = StoryTextEngine.measuredBlockSize(of: overlay, in: frame)
+            Text(overlay.string)
+                .font(Font(StoryTextEngine.referenceFont(
+                    pointSize: overlay.height * frame.height) as CTFont))
+                .foregroundStyle(Color.white)
+                .shadow(color: .black.opacity(0.8), radius: 1)
+                .multilineTextAlignment(swiftUITextAlignment)
+                .frame(width: block.width * frame.width,
+                       height: block.height * frame.height,
+                       alignment: blockAlignment)
+                .rotationEffect(.radians(Double(overlay.rotation)))
+                .position(x: t.tx, y: t.ty)
+                .gesture(dragGesture(frame: frame).simultaneously(with: rotateGesture()))
+                .onTapGesture { beginTextEdit() }
+        }
+    }
+
+    private func dragGesture(frame: CGSize) -> some Gesture {
+        DragGesture()
+            .onChanged { value in
+                guard var o = overlay else { return }
+                let start = dragStartCenter ?? o.center
+                dragStartCenter = start
+                // The ONLY arithmetic the composer adds: gesture points →
+                // fraction deltas (the INPUT direction). The clamp is the
+                // engine's, against the MEASURED text block — free drag on
+                // both axes, the real block held fully on-frame.
+                let proposed = CGPoint(
+                    x: start.x + value.translation.width / frame.width,
+                    y: start.y + value.translation.height / frame.height)
+                o.center = StoryTextEngine.clampedCenter(
+                    proposed,
+                    blockSize: StoryTextEngine.measuredBlockSize(of: o, in: frame),
+                    rotation: o.rotation,
+                    in: frame)
+                overlay = o
+            }
+            .onEnded { _ in dragStartCenter = nil }
+    }
+
+    private func rotateGesture() -> some Gesture {
+        RotateGesture()
+            .onChanged { value in
+                guard var o = overlay else { return }
+                let start = rotationStart ?? o.rotation
+                rotationStart = start
+                o.rotation = start + CGFloat(value.rotation.radians)
+                overlay = o
+            }
+            .onEnded { _ in rotationStart = nil }
+    }
+
+    /// Full-screen edit scrim: type, "done" (or tap away) commits; an empty
+    /// commit removes the block. 80-char cap, ≤3 lines.
+    private var textEditor: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture { commitText() }
+            VStack(spacing: 16) {
+                TextField("say it", text: $draftText, axis: .vertical)
+                    .lineLimit(1...3)
+                    .focused($textFieldFocused)
+                    .multilineTextAlignment(.center)
+                    .font(Font(StoryTextEngine.referenceFont(pointSize: 22) as CTFont))
+                    .foregroundStyle(Color.white)
+                    .tint(Stillwater.Palette.biolume)
+                    .padding(.horizontal, 30)
+                    .onChange(of: draftText) { _, new in
+                        if new.count > Self.maxTextLength {
+                            draftText = String(new.prefix(Self.maxTextLength))
+                        }
+                    }
+                Button { commitText() } label: {
+                    Text("done")
+                        .stillwaterMono(9, trackingEm: 0.24, color: Stillwater.Palette.biolume)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private static let maxTextLength = 80
+    /// E1's ONE reference size: glyph height 5% of frame height.
+    private static let referenceTextHeight: CGFloat = 0.05
+
+    private func beginTextEdit() {
+        guard case .photo = media, !editingText else { return }  // no text-on-video until f
+        draftText = overlay?.string ?? ""
+        editingText = true
+        textFieldFocused = true
+    }
+
+    private func commitText() {
+        editingText = false
+        textFieldFocused = false
+        let text = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { overlay = nil; return }
+        if var o = overlay {
+            o.string = text
+            overlay = o
+        } else {
+            overlay = StoryTextOverlay(string: text,
+                                       center: CGPoint(x: 0.5, y: 0.5),
+                                       height: Self.referenceTextHeight,
+                                       rotation: 0,
+                                       alignment: .center)
+        }
+    }
+
+    private var alignmentControl: some View {
+        HStack(spacing: 22) {
+            alignButton(.left, "text.alignleft")
+            alignButton(.center, "text.aligncenter")
+            alignButton(.right, "text.alignright")
+        }
+    }
+
+    private func alignButton(_ a: NSTextAlignment, _ symbol: String) -> some View {
+        Button { overlay?.alignment = a } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(overlay?.alignment == a
+                                 ? Stillwater.Palette.biolume
+                                 : Stillwater.Palette.mistDim)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var swiftUITextAlignment: TextAlignment {
+        switch overlay?.alignment {
+        case .left: return .leading
+        case .right: return .trailing
+        default: return .center
+        }
+    }
+
+    private var blockAlignment: Alignment {
+        switch overlay?.alignment {
+        case .left: return .leading
+        case .right: return .trailing
+        default: return .center
+        }
+    }
+
+    /// EXIF-normalize a picked photo to .up at scale 1 (one renderer pass) —
+    /// see the loadPicked comment. The fidelity tests couldn't catch this:
+    /// their bases are renderer-made and always .up.
+    private static func normalizedUp(_ image: UIImage) -> UIImage {
+        if image.imageOrientation == .up && image.scale == 1 { return image }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
     }
 
     /// Delete the picker's temp copy of a canvas video (replacement, dismiss,
