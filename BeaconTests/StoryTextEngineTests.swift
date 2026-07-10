@@ -2,11 +2,20 @@
 //  StoryTextEngineTests.swift
 //  BeaconTests
 //
-//  Fidelity suite for the story text engine's fraction→pixel geometry (E1).
+//  Fidelity suite for the story text engine's fraction→pixel geometry
+//  (E1 + E1-redux sticker model).
 //
 //  REFERENCE-FIRST: every expected pixel below is a HAND-COMPUTED literal from
 //  the approved plan — never produced by the conversion function under test.
 //  If the engine's math is wrong, these tests can disagree with it.
+//
+//  E1-REDUX (sticker block): the block is sized to the MEASURED text, not a
+//  fixed frame fraction, so text drags anywhere. Cases 1–4 and the two clamp
+//  literals are KEPT VERBATIM — they pin transform/flatten/clampedCenter,
+//  which the model change does not touch (operator-reviewed ruling). New:
+//  Case 5 (a formerly-unreachable position), the clamp identity, the
+//  measurement relations, the text-extent bound; the alignment test moves to
+//  its real sticker meaning (seating a short line in a multi-line block).
 //
 //  Solid marker blocks (injected through the flatten's content seam) carry the
 //  exact-pixel assertions; text gets a smoke test and an alignment-centroid
@@ -191,6 +200,26 @@ final class StoryTextEngineTests: XCTestCase {
         assertBlack(b, 320, 350)
     }
 
+    // MARK: - Case 5 · free placement at a formerly-unreachable position (E1-redux)
+    // Frame 2000×1000; marker (0.10, 0.10) → 200×100; center (0.15, 0.80).
+    // Old composer clamp (0.9-wide block) confined fx to [0.45, 0.55] — 0.15
+    // was unreachable. Hand math: center = (300, 800); x∈[200,400], y∈[750,850].
+    func testCase5_freePlacementAtFormerlyUnreachablePosition() throws {
+        let flat = StoryTextEngine.flatten(
+            base: solidBlackBase(width: 2000, height: 1000),
+            overlays: [overlay(fx: 0.15, fy: 0.80)],
+            drawContent: Self.marker(fw: 0.10, fh: 0.10))
+        let b = try Bitmap(flat)
+
+        assertWhite(b, 300, 800)                  // center
+        assertWhite(b, 215, 765)                  // inside corners, ≥10 px margin
+        assertWhite(b, 385, 835)
+        assertBlack(b, 185, 800)                  // 15 px outside left/right
+        assertBlack(b, 415, 800)
+        assertBlack(b, 300, 740)                  // 10 px outside top/bottom
+        assertBlack(b, 300, 860)
+    }
+
     // MARK: - Clamp (pure math, plan literals)
     // Frame 1000×1000, block (0.10, 0.05).
     // θ = 0:   fx clamps to 1 − 0.10/2 = 0.95.
@@ -216,40 +245,92 @@ final class StoryTextEngineTests: XCTestCase {
         XCTAssertEqual(c.y, 0.5, accuracy: 1e-9)
     }
 
-    // MARK: - Text smoke test (reference style, not pixel-exact)
-    // Bright glyph pixels must exist near the block, and none out at the
-    // frame margins.
-    func testTextSmoke_referenceStyleRendersInsideBlockRegion() throws {
+    // E1-redux semantic pin: a real (small) block passes a formerly
+    // unreachable position through UNCHANGED — legal band fx ∈ [0.05, 0.95]
+    // contains 0.15, so the clamp is the identity there.
+    func testClamp_smallBlockPermitsFreeHorizontalPlacement() {
+        let c = StoryTextEngine.clampedCenter(
+            CGPoint(x: 0.15, y: 0.5),
+            blockSize: CGSize(width: 0.10, height: 0.05),
+            rotation: 0,
+            in: CGSize(width: 1000, height: 1000))
+        XCTAssertEqual(c.x, 0.15, accuracy: 1e-9)
+        XCTAssertEqual(c.y, 0.5, accuracy: 1e-9)
+    }
+
+    // MARK: - Measurement (E1-redux; relational — glyph metrics aren't
+    // hand-computable, so these pin RELATIONS, never fake literals)
+    private let squareFrame = CGSize(width: 1000, height: 1000)
+
+    func testMeasurement_widerStringMeasuresWider() {
+        let short = StoryTextEngine.measuredBlockSize(
+            of: overlay(fx: 0.5, fy: 0.5, string: "AA"), in: squareFrame)
+        let long = StoryTextEngine.measuredBlockSize(
+            of: overlay(fx: 0.5, fy: 0.5, string: "AAAA"), in: squareFrame)
+        XCTAssertGreaterThan(long.width, short.width)
+    }
+
+    func testMeasurement_twoLinesMeasureRoughlyTwiceOne() {
+        let one = StoryTextEngine.measuredBlockSize(
+            of: overlay(fx: 0.5, fy: 0.5, string: "A"), in: squareFrame)
+        let two = StoryTextEngine.measuredBlockSize(
+            of: overlay(fx: 0.5, fy: 0.5, string: "A\nA"), in: squareFrame)
+        XCTAssertGreaterThanOrEqual(two.height, one.height * 1.7,
+                                    "second line collapsed — not a real two-line layout")
+    }
+
+    func testMeasurement_shortStringIsTextSizedNotFrameSized() {
+        let size = StoryTextEngine.measuredBlockSize(
+            of: overlay(fx: 0.5, fy: 0.5, string: "AB"), in: squareFrame)
+        XCTAssertGreaterThan(size.width, 0)
+        XCTAssertLessThan(size.width, 0.5,
+                          "two glyphs at 5% frame height cannot span half the frame — fixed-width block is back?")
+    }
+
+    // MARK: - Text extent (E1-redux; replaces the old smoke test)
+    // A short string's glyphs must exist near center AND stay inside the
+    // middle half of the frame in BOTH axes. Under the old fixed-width model
+    // the drawn rect spanned x ∈ [50, 950]; two glyphs at 5% height live
+    // comfortably inside [250, 750]. Pixel-level proof the block is
+    // text-sized.
+    func testTextExtent_blockIsTextSizedNotFixedWidth() throws {
         let flat = StoryTextEngine.flatten(
             base: solidBlackBase(width: 1000, height: 1000),
-            overlays: [overlay(fx: 0.5, fy: 0.5, string: "AERONYRA")])
+            overlays: [overlay(fx: 0.5, fy: 0.5, string: "AB")])
         let b = try Bitmap(flat)
 
         var lit = 0
-        for y in stride(from: 400, through: 600, by: 4) {
-            for x in stride(from: 100, through: 900, by: 4) where b.red(x, y) > 100 {
+        var minX = Int.max, maxX = Int.min
+        var minY = Int.max, maxY = Int.min
+        for y in stride(from: 0, through: 999, by: 2) {
+            for x in stride(from: 0, through: 999, by: 2) where b.red(x, y) > 100 {
                 lit += 1
+                minX = min(minX, x); maxX = max(maxX, x)
+                minY = min(minY, y); maxY = max(maxY, y)
             }
         }
-        XCTAssertGreaterThan(lit, 0, "no glyph pixels rendered in the block region")
-
-        assertBlack(b, 50, 50)                    // frame margins stay clean
-        assertBlack(b, 950, 950)
-        assertBlack(b, 50, 950)
-        assertBlack(b, 950, 50)
+        XCTAssertGreaterThan(lit, 0, "no glyph pixels rendered")
+        XCTAssertGreaterThan(minX, 250, "glyphs leaked left — fixed-width block is back?")
+        XCTAssertLessThan(maxX, 750, "glyphs leaked right — fixed-width block is back?")
+        XCTAssertGreaterThan(minY, 250, "glyphs leaked above the text-sized block")
+        XCTAssertLessThan(maxY, 750, "glyphs leaked below the text-sized block")
     }
 
-    // MARK: - Alignment (robust centroid comparison, not pixel-exact)
-    // Same short string, same block: .left's bright-pixel centroid must sit
-    // left of .right's. Proves the alignment wire-up without glyph assertions.
-    func testAlignment_leftCentroidSitsLeftOfRightCentroid() throws {
-        func centroidX(_ alignment: NSTextAlignment) throws -> Double {
+    // MARK: - Alignment (E1-redux: its real sticker meaning)
+    // In a text-width block, alignment seats SHORTER lines within a
+    // multi-line block (width = the longest line). Centroid of the short
+    // second line's bright pixels: .left sits left of .right. Relational —
+    // glyph pixels can't be asserted exactly.
+    func testAlignment_shortLineSeatsWithinTextWidthBlock() throws {
+        func lowerHalfCentroidX(_ alignment: NSTextAlignment) throws -> Double {
             let flat = StoryTextEngine.flatten(
                 base: solidBlackBase(width: 1000, height: 1000),
-                overlays: [overlay(fx: 0.5, fy: 0.5, string: "AA", alignment: alignment)])
+                overlays: [overlay(fx: 0.5, fy: 0.5,
+                                   string: "AAAAAAAA\nAA",
+                                   alignment: alignment)])
             let b = try Bitmap(flat)
             var sum = 0.0, count = 0.0
-            for y in stride(from: 350, through: 650, by: 2) {
+            for y in stride(from: 500, through: 700, by: 2) {   // the short second line
                 for x in stride(from: 0, through: 999, by: 2) where b.red(x, y) > 100 {
                     sum += Double(x)
                     count += 1
@@ -259,9 +340,9 @@ final class StoryTextEngineTests: XCTestCase {
             return sum / max(count, 1)
         }
 
-        let left = try centroidX(.left)
-        let right = try centroidX(.right)
-        XCTAssertLessThan(left, right - 50,
-                          "left centroid (\(left)) not meaningfully left of right (\(right))")
+        let left = try lowerHalfCentroidX(.left)
+        let right = try lowerHalfCentroidX(.right)
+        XCTAssertLessThan(left, right - 20,
+                          "short line's left centroid (\(left)) not left of right (\(right))")
     }
 }

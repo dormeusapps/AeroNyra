@@ -28,6 +28,12 @@
 //  E1 ships ONE reference style (Newsreader serif, white fill, dark stroke).
 //  Color/font/size-styling and multiple blocks are a later appearance stage.
 //
+//  E1-REDUX (sticker model): the block is sized to the MEASURED text — not a
+//  fixed frame fraction — so a caption drags anywhere the clamp allows.
+//  `measuredBlockSize` is the one new surface; transform/clampedCenter/
+//  flatten and the DrawContent seam are unchanged (the kept fidelity
+//  literals prove it).
+//
 
 import UIKit
 
@@ -128,15 +134,60 @@ enum StoryTextEngine {
         return UIFont(descriptor: serif, size: pointSize)
     }
 
+    /// STICKER MODEL (E1-redux): the block is the text's own measured
+    /// bounds — text can sit anywhere the clamp allows, at any rotation.
+    /// The only frame-relative bound left is the wrap ceiling: text longer
+    /// than this fraction of the frame's width wraps.
+    static let wrapWidthFraction: CGFloat = 0.9
+
+    /// The measured text block, in FRACTIONS of the frame: width is the
+    /// widest laid-out line (≤ the wrap ceiling), height the laid-out text
+    /// height. This is what callers pass to `clampedCenter` so the REAL
+    /// block — not a fixed frame fraction — stays on-frame. Shares the
+    /// attributed-string builder with `drawText`, so measurement and drawing
+    /// cannot drift.
+    static func measuredBlockSize(of overlay: StoryTextOverlay,
+                                  in frame: CGSize) -> CGSize {
+        guard !overlay.string.isEmpty else { return .zero }
+        let bounds = attributedString(for: overlay, in: frame).boundingRect(
+            with: CGSize(width: frame.width * wrapWidthFraction,
+                         height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin],
+            context: nil)
+        return CGSize(width: bounds.width / frame.width,
+                      height: bounds.height / frame.height)
+    }
+
     /// The production drawer: white fill with a dark stroke (legible on any
-    /// footage), laid out in a block 90% of the frame's width so `alignment`
-    /// has room to mean something, centered on the transformed origin.
+    /// footage), drawn in a rect of exactly the MEASURED text size, centered
+    /// on the transformed origin. `alignment` seats shorter lines within a
+    /// multi-line block (whose width is the longest line) — on a single line
+    /// it is a visual no-op, correctly.
     static func drawText(_ overlay: StoryTextOverlay, in frame: CGSize,
                          context: CGContext) {
         guard !overlay.string.isEmpty else { return }
+        let attributed = attributedString(for: overlay, in: frame)
+        let bounds = attributed.boundingRect(
+            with: CGSize(width: frame.width * wrapWidthFraction,
+                         height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin],
+            context: nil)
+        attributed.draw(
+            with: CGRect(x: -bounds.width / 2,
+                         y: -bounds.height / 2,
+                         width: ceil(bounds.width),
+                         height: ceil(bounds.height)),
+            options: [.usesLineFragmentOrigin],
+            context: nil)
+    }
+
+    /// ONE builder for measurement and drawing — the reference style lives
+    /// here and nowhere else.
+    private static func attributedString(for overlay: StoryTextOverlay,
+                                         in frame: CGSize) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = overlay.alignment
-        let attributed = NSAttributedString(
+        return NSAttributedString(
             string: overlay.string,
             attributes: [
                 .font: referenceFont(pointSize: overlay.height * frame.height),
@@ -145,18 +196,5 @@ enum StoryTextEngine {
                 .strokeWidth: -3,   // negative: stroke AND fill
                 .paragraphStyle: paragraph,
             ])
-
-        let blockWidth = frame.width * 0.9
-        let bounds = attributed.boundingRect(
-            with: CGSize(width: blockWidth, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin],
-            context: nil)
-        attributed.draw(
-            with: CGRect(x: -blockWidth / 2,
-                         y: -bounds.height / 2,
-                         width: blockWidth,
-                         height: ceil(bounds.height)),
-            options: [.usesLineFragmentOrigin],
-            context: nil)
     }
 }
