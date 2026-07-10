@@ -713,19 +713,27 @@ struct StreamView: View {
                                 wipe: { wipeMedia(m) })
         case .some(.mp4):
             // v1 video: inline player over the persisted blob. A reaped row
-            // (blob gone, mime stamp survives) renders the same tombstone as
-            // any expired media.
+            // (blob gone, mime stamp survives) renders a tombstone — a
+            // STORY's says so, in the same voice as the photo tombstone.
             if let data = m.mediaData {
                 VideoBubble(data: data, isOutbound: m.isOutbound)
+            } else if m.isStory {
+                Text("story · gone")
+                    .stillwaterMono(8.5, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
             } else {
                 Text("— media —")
                     .font(Stillwater.Serif.italic(15))
                     .foregroundColor(Stillwater.Palette.mistDim)
             }
         default:
-            Text("— media —")
-                .font(Stillwater.Serif.italic(15))
-                .foregroundColor(Stillwater.Palette.mistDim)
+            if m.isStory {
+                Text("story · gone")
+                    .stillwaterMono(8.5, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
+            } else {
+                Text("— media —")
+                    .font(Stillwater.Serif.italic(15))
+                    .foregroundColor(Stillwater.Palette.mistDim)
+            }
         }
     }
 
@@ -968,7 +976,39 @@ private struct StillwaterVoiceNote: View {
     }
 }
 
-// MARK: - Stillwater photo (inline · inbound self-destructs after 24h)
+// MARK: - Story mark (badge + countdown · both directions)
+/// The one line under a live story bubble: "story · disappears in Xh".
+/// Both directions on purpose — `reapExpiredMedia` admits OUTBOUND stories,
+/// so the sender's own copy vanishes at 8h; unmarked, that reads as data
+/// loss. Counts down from the same anchor the reaper uses
+/// (`sentAt ?? timestamp` + `storyWindow`), refreshed each minute; the
+/// composer never learns this view exists.
+private struct StoryCaption: View {
+    let message: Message
+
+    private var expiry: Date {
+        (message.sentAt ?? message.timestamp)
+            .addingTimeInterval(MediaEphemeralityPolicy.storyWindow)
+    }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            Text("story · disappears in \(Self.remaining(to: expiry, from: context.date))")
+                .stillwaterMono(8, trackingEm: 0.2, color: Stillwater.Palette.biolume.opacity(0.8))
+        }
+    }
+
+    /// Coarse on purpose — a story clock, not a stopwatch: hours while ≥1h
+    /// remains (rounded up, so a fresh story says "8h"), then minutes.
+    private static func remaining(to expiry: Date, from now: Date) -> String {
+        let s = expiry.timeIntervalSince(now)
+        if s >= 3600 { return "\(Int((s / 3600).rounded(.up)))h" }
+        if s >= 60 { return "\(Int((s / 60).rounded(.up)))m" }
+        return "moments"
+    }
+}
+
+// MARK: - Stillwater photo (inline · inbound self-destructs after 24h · story 8h BOTH ways)
 private struct StillwaterPhoto: View {
     let message: Message
     let isOutbound: Bool
@@ -980,10 +1020,23 @@ private struct StillwaterPhoto: View {
     /// Inbound photos disappear 24h after they arrive (received-time, no view
     /// tracking) — the window is MediaEphemeralityPolicy.photoWindow, shared
     /// with the MessageInbox reaper (SEC-6) so view and reaper can't drift.
-    /// Outbound photos you sent are never expired here.
+    /// Outbound photos you sent are never expired here — EXCEPT stories,
+    /// which die `storyWindow` after the send anchor on BOTH ends (the
+    /// stories-only SEC-6 reversal).
     private static var photoWindow: TimeInterval { MediaEphemeralityPolicy.photoWindow }
 
     private var expired: Bool {
+        if message.isStory {
+            // STORIES: one rule, BOTH directions — literally the reaper's own
+            // pure decision, so view and reaper cannot drift.
+            if expiredNow || message.mediaData == nil { return true }
+            return MediaEphemeralityPolicy.isExpired(isStory: true,
+                                                     mime: message.mediaMime,
+                                                     timestamp: message.timestamp,
+                                                     sentAt: message.sentAt,
+                                                     listenedAt: message.listenedAt,
+                                                     now: .now)
+        }
         guard !isOutbound else { return false }
         if expiredNow || message.mediaData == nil { return true }
         return Date.now.timeIntervalSince(message.timestamp) >= Self.photoWindow
@@ -992,10 +1045,19 @@ private struct StillwaterPhoto: View {
     var body: some View {
         Group {
             if expired {
-                Text("photo · gone")
+                Text(message.isStory ? "story · gone" : "photo · gone")
                     .stillwaterMono(8.5, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
             } else if let data = message.mediaData, let image = UIImage(data: data) {
-                photo(image)
+                if message.isStory {
+                    // The mark that makes a story READ as a story: without it,
+                    // the sender's own 8h disappearance looks like data loss.
+                    VStack(alignment: isOutbound ? .trailing : .leading, spacing: 5) {
+                        photo(image)
+                        StoryCaption(message: message)
+                    }
+                } else {
+                    photo(image)
+                }
             } else {
                 Text("— photo unavailable —")
                     .font(Stillwater.Serif.italic(15))
@@ -1005,8 +1067,10 @@ private struct StillwaterPhoto: View {
         // Past the window already: wipe the bytes now (the render is gated on
         // `expired`, so it's a tombstone regardless). Otherwise schedule the
         // boundary wipe for the REMAINING interval, so a conversation left open
-        // across the 24h mark tombstones without needing a re-render (the same
-        // treatment the voice note's scheduleWipe gives its 2-min window).
+        // across the window's edge tombstones without needing a re-render (the
+        // same treatment the voice note's scheduleWipe gives its 2-min window).
+        // Stories schedule from the SEND anchor, both directions; non-story
+        // photos keep the inbound-only 24h-from-arrival rule.
         // Riding the view's own .task means the sleep is cancelled on
         // disappear — the isCancelled guard stops a cancellation from wiping
         // EARLY; an off-screen row is the reaper's job instead.
@@ -1016,8 +1080,14 @@ private struct StillwaterPhoto: View {
                 expiredNow = true
                 return
             }
-            guard !isOutbound else { return }
-            let remaining = Self.photoWindow - Date.now.timeIntervalSince(message.timestamp)
+            let remaining: TimeInterval
+            if message.isStory {
+                remaining = MediaEphemeralityPolicy.storyWindow
+                    - Date.now.timeIntervalSince(message.sentAt ?? message.timestamp)
+            } else {
+                guard !isOutbound else { return }
+                remaining = Self.photoWindow - Date.now.timeIntervalSince(message.timestamp)
+            }
             try? await Task.sleep(for: .seconds(remaining))
             guard !Task.isCancelled else { return }
             wipe()
