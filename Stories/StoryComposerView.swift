@@ -47,6 +47,15 @@ struct StoryComposerView: View {
 
     @State private var pickedItem: PhotosPickerItem?
     @State private var media: CanvasMedia?
+
+    /// TRIM (T1): the scrubber's inputs + selection, populated on video load.
+    /// Defaults keep the clip LEGAL — in = 0, out = min(duration, cap) — so a
+    /// ≤60s source opens fully selected and posts exactly like stage d.
+    /// Selecting past the cap is allowed; it only disables post + turns the
+    /// readout (the transcoder's gates stay the backstop on the real bytes).
+    @State private var videoDuration: Double = 0
+    @State private var videoThumbs: [UIImage] = []
+    @State private var trimSelection: ClosedRange<Double> = 0...0
     /// Double-tap guard on the post pill. A photo post dismisses immediately
     /// (fire-and-forget, the optimistic row is the progress UI); a video post
     /// holds the sheet through the transcode so a gate refusal can surface
@@ -68,6 +77,16 @@ struct StoryComposerView: View {
 
                 canvas
                     .padding(.horizontal, 24)
+
+                if case .video = media, videoDuration > 0 {
+                    StoryTrimScrubber(thumbnails: videoThumbs,
+                                      duration: videoDuration,
+                                      legalCap: VideoTranscoder.maxClipSeconds,
+                                      selection: $trimSelection)
+                        .padding(.horizontal, 30)
+                        .padding(.top, 14)
+                        .disabled(posting)
+                }
 
                 Spacer(minLength: 16)
 
@@ -165,7 +184,8 @@ struct StoryComposerView: View {
                     pill(posting ? "posting…" : "post story")
                 }
                 .buttonStyle(.plain)
-                .disabled(posting)
+                .disabled(posting || selectionOverCap)
+                .opacity(selectionOverCap ? 0.4 : 1.0)
 
                 PhotosPicker(selection: $pickedItem,
                              matching: .any(of: [.images, .videos]),
@@ -197,12 +217,29 @@ struct StoryComposerView: View {
             discardVideoIfAny()
             let thumb = await Self.firstFrame(of: picked.url)
             media = .video(url: picked.url, thumb: thumb)
+            // TRIM inputs: duration + filmstrip, and a LEGAL default window.
+            let seconds = (try? await AVURLAsset(url: picked.url).load(.duration).seconds) ?? 0
+            videoDuration = seconds
+            trimSelection = 0...min(seconds, VideoTranscoder.maxClipSeconds)
+            videoThumbs = await Self.filmstrip(of: picked.url)
         } else {
             guard let raw = try? await item.loadTransferable(type: Data.self),
                   let image = UIImage(data: raw) else { return }
             discardVideoIfAny()
             media = .photo(raw: raw, image: image)
+            videoDuration = 0
+            videoThumbs = []
+            trimSelection = 0...0
         }
+    }
+
+    /// TRIM pre-gate, display/gating only: post is disabled while the
+    /// selected window exceeds the transcoder's duration cap. The gates
+    /// themselves are untouched and still run on the trimmed file's bytes.
+    private var selectionOverCap: Bool {
+        guard case .video = media else { return false }
+        return (trimSelection.upperBound - trimSelection.lowerBound)
+            > VideoTranscoder.maxClipSeconds
     }
 
     /// First frame for the canvas preview. `appliesPreferredTrackTransform`
@@ -233,7 +270,19 @@ struct StoryComposerView: View {
         case .video(let url, _):
             Task { @MainActor in
                 do {
-                    let mp4 = try await VideoTranscoder.transcodeToMP4(from: url)
+                    // TRIM: a full-clip selection skips the trim pass and
+                    // posts exactly like stage d; a real trim is a LOSSLESS
+                    // passthrough export of the selected range (no re-encode;
+                    // the in-point snaps back to the previous keyframe),
+                    // handed to the UNTOUCHED transcoder, whose gates fire on
+                    // the trimmed file's true bytes.
+                    let fullClip = trimSelection.lowerBound < 0.01
+                        && trimSelection.upperBound > videoDuration - 0.01
+                    let sendURL = fullClip
+                        ? url
+                        : try await Self.exportTrimmed(url: url, range: trimSelection)
+                    let mp4 = try await VideoTranscoder.transcodeToMP4(from: sendURL)
+                    if sendURL != url { try? FileManager.default.removeItem(at: sendURL) }
                     try? FileManager.default.removeItem(at: url)
                     Task { await inbox.sendMedia(mp4, mime: .mp4, in: conversation, isStory: true) }
                     dismiss()
@@ -249,6 +298,56 @@ struct StoryComposerView: View {
                 }
             }
         }
+    }
+
+    /// Lossless container-level trim of the selected range — passthrough
+    /// preset, so nothing is re-encoded and the composer pays no generation
+    /// loss ahead of the transcoder's one real encode. Own error type on
+    /// purpose: this is composer plumbing, not the transcoder's.
+    private enum TrimError: Error { case exportFailed }
+
+    private static func exportTrimmed(url: URL, range: ClosedRange<Double>) async throws -> URL {
+        let asset = AVURLAsset(url: url)
+        guard let session = AVAssetExportSession(
+            asset: asset, presetName: AVAssetExportPresetPassthrough) else {
+            throw TrimError.exportFailed
+        }
+        let out = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mov")
+        session.outputURL = out
+        session.outputFileType = .mov
+        session.timeRange = CMTimeRange(
+            start: CMTime(seconds: range.lowerBound, preferredTimescale: 600),
+            end: CMTime(seconds: range.upperBound, preferredTimescale: 600))
+
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            session.exportAsynchronously { cont.resume() }
+        }
+        guard session.status == .completed else {
+            try? FileManager.default.removeItem(at: out)
+            throw TrimError.exportFailed
+        }
+        return out
+    }
+
+    /// Evenly spaced frames for the scrubber strip, small on purpose (memory)
+    /// and transform-applied so a portrait clip's strip reads upright.
+    private static func filmstrip(of url: URL, count: Int = 8) async -> [UIImage] {
+        let asset = AVURLAsset(url: url)
+        guard let seconds = try? await asset.load(.duration).seconds, seconds > 0 else { return [] }
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 0, height: 120)
+        var out: [UIImage] = []
+        for i in 0..<count {
+            let t = seconds * (Double(i) + 0.5) / Double(count)
+            if let cg = try? await generator.image(
+                at: CMTime(seconds: t, preferredTimescale: 600)).image {
+                out.append(UIImage(cgImage: cg))
+            }
+        }
+        return out
     }
 
     /// Delete the picker's temp copy of a canvas video (replacement, dismiss,
