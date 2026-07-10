@@ -10,15 +10,17 @@
 //  expiry, and the bubble never learn there was an editing layer. Every
 //  future tool (text next; more later) is a composer-side change only.
 //
-//  TEXT (E2, sticker model): one text block on the PHOTO canvas — tap to
-//  add/edit, drag ANYWHERE (the block is the text's measured bounds, clamped
-//  on-frame by the engine), two-finger rotate, left/center/right alignment.
-//  Geometry is the ENGINE's (StoryTextEngine): the preview calls the same
-//  transform/clampedCenter/measuredBlockSize the burn uses, with the preview
-//  frame instead of source pixels — fractions make them the same place. On
-//  post the canvas is flattened at source resolution and rides the proven
-//  photo path. Text-on-video waits for the burn stage (f); the video canvas
-//  has no text affordance yet.
+//  TEXT (E2 + h1, sticker model): the editor. A tool rail over the PHOTO
+//  canvas — T adds a text block; MULTIPLE blocks, each independently
+//  selectable (tap; ring is view-only, never burned), draggable ANYWHERE
+//  (measured bounds clamped on-frame by the engine), two-finger rotatable,
+//  alignable, deletable. Tap a selected block to edit its text; tap the
+//  canvas to deselect. Geometry is the ENGINE's (StoryTextEngine): the
+//  preview calls the same transform/clampedCenter/measuredBlockSize the burn
+//  uses, with the preview frame instead of source pixels — fractions make
+//  them the same place. On post ALL blocks are flattened at source
+//  resolution and ride the proven photo path. Text-on-video waits for the
+//  burn stage (f); the video canvas has no text tools yet.
 //
 //  The composer owns compose + send, nothing downstream: photos take the
 //  SAME `StreamView.meshSizedJPEG` downscale the chat path ships, videos the
@@ -63,10 +65,14 @@ struct StoryComposerView: View {
     @State private var videoThumbs: [UIImage] = []
     @State private var trimSelection: ClosedRange<Double> = 0...0
 
-    /// E2 — the text overlay. ONE block this stage (the appearance stage
-    /// adds more). Geometry lives in the overlay's FRACTIONS; every
-    /// placement/clamp call below is the engine's, never local math.
-    @State private var overlay: StoryTextOverlay?
+    /// h1 — the text blocks. Geometry lives in each overlay's FRACTIONS;
+    /// every placement/clamp call below is the engine's, never local math.
+    /// `selectedOverlay` drives the per-block panel + selection ring (a view
+    /// artifact — never burned); `editingIndex` is the block whose text is
+    /// in the editor (nil = the T tool is adding a new one).
+    @State private var overlays: [StoryTextOverlay] = []
+    @State private var selectedOverlay: Int?
+    @State private var editingIndex: Int?
     @State private var editingText = false
     @State private var draftText = ""
     @FocusState private var textFieldFocused: Bool
@@ -92,8 +98,15 @@ struct StoryComposerView: View {
 
                 Spacer(minLength: 16)
 
-                canvas
-                    .padding(.horizontal, 24)
+                ZStack(alignment: .topTrailing) {
+                    canvas
+                    if case .photo = media, !editingText {
+                        toolRail
+                            .padding(.top, 12)
+                            .padding(.trailing, 12)
+                    }
+                }
+                .padding(.horizontal, 24)
 
                 if case .video = media, videoDuration > 0 {
                     StoryTrimScrubber(thumbnails: videoThumbs,
@@ -105,15 +118,10 @@ struct StoryComposerView: View {
                         .disabled(posting)
                 }
 
-                if case .photo = media {
-                    if overlay != nil {
-                        alignmentControl
-                            .padding(.top, 14)
-                    } else {
-                        Text("tap the photo to add text")
-                            .stillwaterMono(8, trackingEm: 0.22, color: Stillwater.Palette.mistDimmest)
-                            .padding(.top, 14)
-                    }
+                if case .photo = media, let sel = selectedOverlay,
+                   overlays.indices.contains(sel) {
+                    selectedBlockPanel(sel)
+                        .padding(.top, 14)
                 }
 
                 Spacer(minLength: 16)
@@ -170,12 +178,12 @@ struct StoryComposerView: View {
                     // Preview overlay INSIDE the fitted image's own frame, so
                     // fractions here are fractions of the burn frame.
                     GeometryReader { geo in
-                        overlayPreview(frame: geo.size)
+                        overlayLayer(frame: geo.size)
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .onTapGesture { beginTextEdit() }
+                .onTapGesture { selectedOverlay = nil }   // canvas tap = deselect
         case .video(_, let thumb):
             ZStack {
                 if let thumb {
@@ -255,7 +263,8 @@ struct StoryComposerView: View {
             discardVideoIfAny()
             let thumb = await Self.firstFrame(of: picked.url)
             media = .video(url: picked.url, thumb: thumb)
-            overlay = nil                      // fresh canvas; no text-on-video until f
+            overlays = []                      // fresh canvas; no text-on-video until f
+            selectedOverlay = nil
             // TRIM inputs: duration + filmstrip, and a LEGAL default window.
             let seconds = (try? await AVURLAsset(url: picked.url).load(.duration).seconds) ?? 0
             videoDuration = seconds
@@ -270,7 +279,8 @@ struct StoryComposerView: View {
             // space, so the canvas image (preview frame AND burn base) must
             // be .up at scale 1 or the burn would land on rotated pixels.
             media = .photo(raw: raw, image: Self.normalizedUp(image))
-            overlay = nil
+            overlays = []
+            selectedOverlay = nil
             videoDuration = 0
             videoThumbs = []
             trimSelection = 0...0
@@ -313,9 +323,9 @@ struct StoryComposerView: View {
                 // (lossless intermediate, ONE JPEG at the end — the fidelity
                 // suite's Case 4 path), flattened on the SAME normalized
                 // image the preview framed.
-                let sendData = overlay.map {
-                    StoryTextEngine.flatten(base: image, overlays: [$0]).pngData()
-                } ?? raw
+                let sendData = overlays.isEmpty
+                    ? raw
+                    : StoryTextEngine.flatten(base: image, overlays: overlays).pngData()
                 guard let sendData,
                       let jpeg = StreamView.meshSizedJPEG(from: sendData) else { return }
                 await inbox.sendMedia(jpeg, mime: .jpeg, in: conversation, isStory: true)
@@ -404,39 +414,82 @@ struct StoryComposerView: View {
         return out
     }
 
-    // MARK: Text overlay (E2)
+    // MARK: Text editor (E2 + h1)
 
-    /// The live preview of the text block: the ENGINE's transform with the
+    /// The T tool: adds a text block. First (and only, this stage) entry on
+    /// the rail; more tools land in later versions without touching the
+    /// pipeline.
+    private var toolRail: some View {
+        Button { beginTextEdit(index: nil) } label: {
+            Text("T")
+                .stillwaterSerif(20, color: Stillwater.Palette.foam)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Color.black.opacity(0.35)))
+                .overlay(Circle().strokeBorder(Stillwater.Palette.biolume.opacity(0.4)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// All blocks, each its own sticker: the ENGINE's transform with the
     /// preview frame, framed to the ENGINE's measured block so wraps match
     /// the burn. `.position` takes the transform's translation — no placement
-    /// is computed here.
+    /// is computed here. The block being text-edited is hidden (the editor
+    /// scrim shows it); the others stay put.
     @ViewBuilder
-    private func overlayPreview(frame: CGSize) -> some View {
-        if let overlay, !editingText {
-            let t = StoryTextEngine.transform(center: overlay.center,
-                                              rotation: overlay.rotation,
-                                              in: frame)
-            let block = StoryTextEngine.measuredBlockSize(of: overlay, in: frame)
-            Text(overlay.string)
-                .font(Font(StoryTextEngine.referenceFont(
-                    pointSize: overlay.height * frame.height) as CTFont))
-                .foregroundStyle(Color.white)
-                .shadow(color: .black.opacity(0.8), radius: 1)
-                .multilineTextAlignment(swiftUITextAlignment)
-                .frame(width: block.width * frame.width,
-                       height: block.height * frame.height,
-                       alignment: blockAlignment)
-                .rotationEffect(.radians(Double(overlay.rotation)))
-                .position(x: t.tx, y: t.ty)
-                .gesture(dragGesture(frame: frame).simultaneously(with: rotateGesture()))
-                .onTapGesture { beginTextEdit() }
+    private func overlayLayer(frame: CGSize) -> some View {
+        ForEach(overlays.indices, id: \.self) { i in
+            if !(editingText && editingIndex == i) {
+                blockView(i, frame: frame)
+            }
         }
     }
 
-    private func dragGesture(frame: CGSize) -> some Gesture {
+    private func blockView(_ i: Int, frame: CGSize) -> some View {
+        let o = overlays[i]
+        let t = StoryTextEngine.transform(center: o.center,
+                                          rotation: o.rotation,
+                                          in: frame)
+        let block = StoryTextEngine.measuredBlockSize(of: o, in: frame)
+        return Text(o.string)
+            .font(Font(StoryTextEngine.referenceFont(
+                pointSize: o.height * frame.height) as CTFont))
+            .foregroundStyle(Color.white)
+            .shadow(color: .black.opacity(0.8), radius: 1)
+            .multilineTextAlignment(textAlignment(o.alignment))
+            .frame(width: block.width * frame.width,
+                   height: block.height * frame.height,
+                   alignment: frameAlignment(o.alignment))
+            .overlay {
+                // Selection ring — a view artifact only; the burn never
+                // sees it.
+                if selectedOverlay == i {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Stillwater.Palette.biolume.opacity(0.6), lineWidth: 1)
+                        .padding(-6)
+                }
+            }
+            .rotationEffect(.radians(Double(o.rotation)))
+            .position(x: t.tx, y: t.ty)
+            .gesture(dragGesture(index: i, frame: frame)
+                .simultaneously(with: rotateGesture(index: i)))
+            .onTapGesture { tapBlock(i) }
+    }
+
+    /// Tap once to select; tap the selected block to edit its text.
+    private func tapBlock(_ i: Int) {
+        if selectedOverlay == i {
+            beginTextEdit(index: i)
+        } else {
+            selectedOverlay = i
+        }
+    }
+
+    private func dragGesture(index: Int, frame: CGSize) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                guard var o = overlay else { return }
+                guard overlays.indices.contains(index) else { return }
+                selectedOverlay = index          // dragging selects
+                var o = overlays[index]
                 let start = dragStartCenter ?? o.center
                 dragStartCenter = start
                 // The ONLY arithmetic the composer adds: gesture points →
@@ -451,19 +504,21 @@ struct StoryComposerView: View {
                     blockSize: StoryTextEngine.measuredBlockSize(of: o, in: frame),
                     rotation: o.rotation,
                     in: frame)
-                overlay = o
+                overlays[index] = o
             }
             .onEnded { _ in dragStartCenter = nil }
     }
 
-    private func rotateGesture() -> some Gesture {
+    private func rotateGesture(index: Int) -> some Gesture {
         RotateGesture()
             .onChanged { value in
-                guard var o = overlay else { return }
+                guard overlays.indices.contains(index) else { return }
+                selectedOverlay = index
+                var o = overlays[index]
                 let start = rotationStart ?? o.rotation
                 rotationStart = start
                 o.rotation = start + CGFloat(value.rotation.radians)
-                overlay = o
+                overlays[index] = o
             }
             .onEnded { _ in rotationStart = nil }
     }
@@ -502,9 +557,12 @@ struct StoryComposerView: View {
     /// E1's ONE reference size: glyph height 5% of frame height.
     private static let referenceTextHeight: CGFloat = 0.05
 
-    private func beginTextEdit() {
+    /// Open the editor for block `index`, or for a NEW block (nil — the T
+    /// tool's path).
+    private func beginTextEdit(index: Int?) {
         guard case .photo = media, !editingText else { return }  // no text-on-video until f
-        draftText = overlay?.string ?? ""
+        editingIndex = index
+        draftText = index.flatMap { overlays.indices.contains($0) ? overlays[$0].string : nil } ?? ""
         editingText = true
         textFieldFocused = true
     }
@@ -512,49 +570,78 @@ struct StoryComposerView: View {
     private func commitText() {
         editingText = false
         textFieldFocused = false
+        defer { editingIndex = nil }
         let text = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { overlay = nil; return }
-        if var o = overlay {
-            o.string = text
-            overlay = o
+        if let i = editingIndex, overlays.indices.contains(i) {
+            if text.isEmpty {
+                overlays.remove(at: i)
+                selectedOverlay = nil
+            } else {
+                overlays[i].string = text
+                selectedOverlay = i
+            }
         } else {
-            overlay = StoryTextOverlay(string: text,
-                                       center: CGPoint(x: 0.5, y: 0.5),
-                                       height: Self.referenceTextHeight,
-                                       rotation: 0,
-                                       alignment: .center)
+            guard !text.isEmpty else { return }
+            // Stagger fresh blocks down the middle so a second add doesn't
+            // land invisibly on the first.
+            let y = 0.42 + 0.08 * CGFloat(overlays.count % 4)
+            overlays.append(StoryTextOverlay(string: text,
+                                             center: CGPoint(x: 0.5, y: y),
+                                             height: Self.referenceTextHeight,
+                                             rotation: 0,
+                                             alignment: .center))
+            selectedOverlay = overlays.count - 1
         }
     }
 
-    private var alignmentControl: some View {
+    /// The per-block panel: alignment + delete for the SELECTED block.
+    /// (h2 adds color, font, and size here.)
+    private func selectedBlockPanel(_ i: Int) -> some View {
         HStack(spacing: 22) {
-            alignButton(.left, "text.alignleft")
-            alignButton(.center, "text.aligncenter")
-            alignButton(.right, "text.alignright")
+            alignButton(i, .left, "text.alignleft")
+            alignButton(i, .center, "text.aligncenter")
+            alignButton(i, .right, "text.alignright")
+
+            Rectangle()
+                .fill(Stillwater.Palette.biolume.opacity(0.15))
+                .frame(width: 1, height: 18)
+
+            Button {
+                overlays.remove(at: i)
+                selectedOverlay = nil
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Stillwater.Palette.mistDim)
+            }
+            .buttonStyle(.plain)
         }
     }
 
-    private func alignButton(_ a: NSTextAlignment, _ symbol: String) -> some View {
-        Button { overlay?.alignment = a } label: {
+    private func alignButton(_ i: Int, _ a: NSTextAlignment, _ symbol: String) -> some View {
+        Button {
+            guard overlays.indices.contains(i) else { return }
+            overlays[i].alignment = a
+        } label: {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(overlay?.alignment == a
+                .foregroundStyle(overlays.indices.contains(i) && overlays[i].alignment == a
                                  ? Stillwater.Palette.biolume
                                  : Stillwater.Palette.mistDim)
         }
         .buttonStyle(.plain)
     }
 
-    private var swiftUITextAlignment: TextAlignment {
-        switch overlay?.alignment {
+    private func textAlignment(_ a: NSTextAlignment) -> TextAlignment {
+        switch a {
         case .left: return .leading
         case .right: return .trailing
         default: return .center
         }
     }
 
-    private var blockAlignment: Alignment {
-        switch overlay?.alignment {
+    private func frameAlignment(_ a: NSTextAlignment) -> Alignment {
+        switch a {
         case .left: return .leading
         case .right: return .trailing
         default: return .center
