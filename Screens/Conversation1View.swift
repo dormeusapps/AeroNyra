@@ -379,7 +379,11 @@ struct StreamView: View {
             Task { await sendPicked(item) }
         }
         .fullScreenCover(isPresented: $showStoryComposer) {
-            StoryComposerView()
+            // The composer owns compose + send for ONE peer's conversation;
+            // it can't exist without a live inbox (nil only in previews).
+            if let inbox {
+                StoryComposerView(inbox: inbox, conversation: currentConversation())
+            }
         }
         .alert("can't carry this clip", isPresented: Binding(
             get: { videoSendNotice != nil },
@@ -617,7 +621,9 @@ struct StreamView: View {
     /// renderer pinned to scale 1 (points == pixels) so a Pro-Motion screen scale
     /// can't balloon the blob into thousands of BLE chunks. (Same discipline the
     /// old composer used — this is the SEND size, not the 256px avatar size.)
-    private static func meshSizedJPEG(from data: Data,
+    /// Internal, not private: the story composer sends photos through this SAME
+    /// downscale — one implementation, not a fork that could drift.
+    static func meshSizedJPEG(from data: Data,
                                       maxDimension: CGFloat = 1280,
                                       quality: CGFloat = 0.7) -> Data? {
         guard let image = UIImage(data: data) else { return nil }
