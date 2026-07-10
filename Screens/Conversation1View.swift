@@ -47,6 +47,13 @@ struct StreamView: View {
     @State private var recorder = VoiceRecorder()
     @State private var pickedItem: PhotosPickerItem?
 
+    /// Plus-button intents: a plain tap presents the chat picker (the send
+    /// path is unchanged); the long-press menu can instead open the story
+    /// composer. The picker is presented programmatically so the tap and the
+    /// "Send in chat" menu item share ONE picker + ONE routing path.
+    @State private var showChatPicker = false
+    @State private var showStoryComposer = false
+
     /// v1 video messages: the human-readable reason a picked clip was refused
     /// (length / weight), shown as an alert on the composer's picker.
     @State private var videoSendNotice: String?
@@ -346,21 +353,33 @@ struct StreamView: View {
     }
 
     private var photoButton: some View {
-        // ONE attach point: the plus opens the library for photos AND videos;
-        // the picked item's content type routes it below.
-        PhotosPicker(selection: $pickedItem,
-                     matching: .any(of: [.images, .videos]),
-                     photoLibrary: .shared()) {
+        // ONE attach point, two intents: a plain TAP is the Menu's
+        // primaryAction and opens the library for photos AND videos exactly
+        // as before (the picked item's content type routes it below); a
+        // LONG-PRESS opens the send-in-chat / post-as-story menu.
+        Menu {
+            Button("Send in chat") { showChatPicker = true }
+            Button("Post as story") { showStoryComposer = true }
+        } label: {
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(Stillwater.Palette.mist)
                 .frame(width: 34, height: 34)
                 .overlay(Circle().strokeBorder(Stillwater.Palette.biolume.opacity(0.25)))
                 .contentShape(Circle())
+        } primaryAction: {
+            showChatPicker = true
         }
+        .photosPicker(isPresented: $showChatPicker,
+                      selection: $pickedItem,
+                      matching: .any(of: [.images, .videos]),
+                      photoLibrary: .shared())
         .onChange(of: pickedItem) { _, item in
             guard let item else { return }
             Task { await sendPicked(item) }
+        }
+        .fullScreenCover(isPresented: $showStoryComposer) {
+            StoryComposerView()
         }
         .alert("can't carry this clip", isPresented: Binding(
             get: { videoSendNotice != nil },
