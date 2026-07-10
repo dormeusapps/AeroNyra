@@ -203,6 +203,11 @@
 			path = Notifications;
 			sourceTree = "<group>";
 		};
+		7CD41F0B2FFB01AB00C4113A /* Stories */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Stories;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -245,6 +250,7 @@
 				7C3450E42FF6D54600148C83 /* SplineSansMono-Medium.ttf */,
 				7C3450E32FF6D54600148C83 /* SplineSansMono-Regular.ttf */,
 				7CE0C88A2FEF4D2900151314 /* Screens */,
+				7CD41F0B2FFB01AB00C4113A /* Stories */,
 				7CE0C8712FEF287A00151314 /* DesignSystem */,
 				7CE0C85E2FEF209B00151314 /* Resource_Fonts */,
 				7C3B09852FEDA0B400AE9EC1 /* Security */,
@@ -396,6 +402,7 @@
 				7CAEDF7D2FF158A60084A5C4 /* Media */,
 				7CCA110A2FF9000000C4113A /* Calls */,
 				7CD41F0A2FFB01AB00C4113A /* Notifications */,
+				7CD41F0B2FFB01AB00C4113A /* Stories */,
 			);
 			name = Beacon;
 			productName = Beacon;
