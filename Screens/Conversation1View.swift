@@ -716,7 +716,27 @@ struct StreamView: View {
             // (blob gone, mime stamp survives) renders a tombstone — a
             // STORY's says so, in the same voice as the photo tombstone.
             if let data = m.mediaData {
-                VideoBubble(data: data, isOutbound: m.isOutbound)
+                if m.isStory {
+                    // Live video story: the same mark + in-view boundary wipe
+                    // the photo story gets (StillwaterPhoto's .task); the
+                    // reaper covers off-screen rows. Wiping the blob flips
+                    // this render to the tombstone branch below.
+                    VStack(alignment: m.isOutbound ? .trailing : .leading, spacing: 5) {
+                        VideoBubble(data: data, isOutbound: m.isOutbound)
+                        StoryCaption(message: m)
+                    }
+                    .task {
+                        let remaining = MediaEphemeralityPolicy.storyWindow
+                            - Date.now.timeIntervalSince(m.sentAt ?? m.timestamp)
+                        if remaining > 0 {
+                            try? await Task.sleep(for: .seconds(remaining))
+                            guard !Task.isCancelled else { return }
+                        }
+                        wipeMedia(m)
+                    }
+                } else {
+                    VideoBubble(data: data, isOutbound: m.isOutbound)
+                }
             } else if m.isStory {
                 Text("story · gone")
                     .stillwaterMono(8.5, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)

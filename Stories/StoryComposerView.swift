@@ -10,19 +10,22 @@
 //  expiry, and the bubble never learn there was an editing layer. Every
 //  future tool (text next; more later) is a composer-side change only.
 //
-//  STAGE b: photo only, no text tools. The canvas is a plain aspect-fit
-//  preview this stage; the fractional-geometry overlay model lands with the
-//  text engine (stage e). Video routes in at stage d.
+//  STAGE d: photo AND video, no text tools yet. The canvas is a plain
+//  aspect-fit preview this stage; the fractional-geometry overlay model lands
+//  with the text engine (stage e).
 //
-//  The composer owns compose + send, nothing downstream: the downscale is the
-//  SAME `StreamView.meshSizedJPEG` the chat photo path ships (one
-//  implementation, not a fork), and everything below `sendMedia` is the
-//  shipped SEC-6 machinery, untouched.
+//  The composer owns compose + send, nothing downstream: photos take the
+//  SAME `StreamView.meshSizedJPEG` downscale the chat path ships, videos the
+//  SAME `VideoTranscoder.transcodeToMP4` with its two gates (≤60s checked
+//  before the encode, ≤16MiB on the exported bytes) surfaced here as the
+//  chat path's own alert copy. One implementation each, not forks; everything
+//  below `sendMedia` is the shipped SEC-6 machinery, untouched.
 //
 
 import SwiftUI
 import UIKit
 import PhotosUI
+import AVFoundation
 
 struct StoryComposerView: View {
 
@@ -34,14 +37,24 @@ struct StoryComposerView: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// What sits on the canvas. A video keeps its picker temp URL (the
+    /// transcoder reads from disk) + a first-frame thumb for the preview;
+    /// the URL is deleted on post, on replacement, and on dismiss.
+    private enum CanvasMedia {
+        case photo(raw: Data, image: UIImage)
+        case video(url: URL, thumb: UIImage?)
+    }
+
     @State private var pickedItem: PhotosPickerItem?
-    /// The picked photo, held as raw bytes (what `meshSizedJPEG` takes) plus
-    /// the decoded image for the canvas preview.
-    @State private var photoData: Data?
-    @State private var photoImage: UIImage?
-    /// Double-tap guard on the post pill; the sheet dismisses right after the
-    /// send Task is spawned, mirroring the chat path's fire-and-forget.
+    @State private var media: CanvasMedia?
+    /// Double-tap guard on the post pill. A photo post dismisses immediately
+    /// (fire-and-forget, the optimistic row is the progress UI); a video post
+    /// holds the sheet through the transcode so a gate refusal can surface
+    /// here, then dismisses.
     @State private var posting = false
+    /// The human-readable reason a picked clip was refused — the chat path's
+    /// exact copy (`clipTooLong` / `overBudget` / export failure).
+    @State private var videoNotice: String?
 
     var body: some View {
         ZStack {
@@ -67,6 +80,14 @@ struct StoryComposerView: View {
             guard let item else { return }
             Task { await loadPicked(item) }
         }
+        .onDisappear { discardVideoIfAny() }   // idempotent: try? on a gone file
+        .alert("can't carry this clip", isPresented: Binding(
+            get: { videoNotice != nil },
+            set: { if !$0 { videoNotice = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(videoNotice ?? "")
+        }
     }
 
     // MARK: Header
@@ -87,21 +108,42 @@ struct StoryComposerView: View {
     }
 
     // MARK: Canvas
-    /// The editing canvas. Stage b renders the media alone; the text overlay
+    /// The editing canvas. Stage d renders the media alone; the text overlay
     /// layer (fractional geometry) grows HERE in stage e.
     @ViewBuilder
     private var canvas: some View {
-        if let photoImage {
-            Image(uiImage: photoImage)
+        switch media {
+        case .photo(_, let image):
+            Image(uiImage: image)
                 .resizable()
                 .scaledToFit()
                 .clipShape(RoundedRectangle(cornerRadius: 18))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
+        case .video(_, let thumb):
+            ZStack {
+                if let thumb {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                } else {
+                    RoundedRectangle(cornerRadius: 18)
+                        .strokeBorder(Stillwater.Palette.biolume.opacity(0.25))
+                        .overlay {
+                            Text("video ready")
+                                .stillwaterMono(9, trackingEm: 0.24, color: Stillwater.Palette.mistDimmest)
+                        }
+                }
+                Image(systemName: "play.fill")
+                    .font(.system(size: 30, weight: .medium))
+                    .foregroundStyle(Stillwater.Palette.foam.opacity(0.85))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case nil:
             RoundedRectangle(cornerRadius: 18)
                 .strokeBorder(Stillwater.Palette.biolume.opacity(0.25))
                 .overlay {
-                    Text("pick a photo to begin")
+                    Text("pick a photo or video to begin")
                         .stillwaterMono(9, trackingEm: 0.24, color: Stillwater.Palette.mistDimmest)
                 }
         }
@@ -110,11 +152,11 @@ struct StoryComposerView: View {
     // MARK: Footer
     @ViewBuilder
     private var footer: some View {
-        if photoImage == nil {
+        if media == nil {
             PhotosPicker(selection: $pickedItem,
-                         matching: .images,
+                         matching: .any(of: [.images, .videos]),
                          photoLibrary: .shared()) {
-                outlinePill("pick a photo")
+                outlinePill("pick a photo or video")
             }
             .buttonStyle(.plain)
         } else {
@@ -126,7 +168,7 @@ struct StoryComposerView: View {
                 .disabled(posting)
 
                 PhotosPicker(selection: $pickedItem,
-                             matching: .images,
+                             matching: .any(of: [.images, .videos]),
                              photoLibrary: .shared()) {
                     Text("choose another")
                         .stillwaterMono(8, trackingEm: 0.22, color: Stillwater.Palette.mistDim)
@@ -145,27 +187,76 @@ struct StoryComposerView: View {
     private static let windowHours = Int(MediaEphemeralityPolicy.storyWindow / 3600)
 
     // MARK: Actions
+    /// Route the picked item by content type — the same predicate the chat
+    /// attach point uses (`StreamView.sendPicked`).
     @MainActor
     private func loadPicked(_ item: PhotosPickerItem) async {
         defer { pickedItem = nil }
-        guard let raw = try? await item.loadTransferable(type: Data.self),
-              let image = UIImage(data: raw) else { return }
-        photoData = raw
-        photoImage = image
+        if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+            guard let picked = try? await item.loadTransferable(type: PickedVideo.self) else { return }
+            discardVideoIfAny()
+            let thumb = await Self.firstFrame(of: picked.url)
+            media = .video(url: picked.url, thumb: thumb)
+        } else {
+            guard let raw = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: raw) else { return }
+            discardVideoIfAny()
+            media = .photo(raw: raw, image: image)
+        }
     }
 
-    /// Post the canvas as a story: the chat path's proven downscale, then the
-    /// shipped story-capable send seam. Fire-and-forget like the chat sends —
-    /// the optimistic row (with its delivery state) is the progress UI, so the
-    /// sheet dismisses immediately.
+    /// First frame for the canvas preview. `appliesPreferredTrackTransform`
+    /// so a portrait clip previews upright — the same trap the stage-f burn
+    /// pass handles in the export path.
+    private static func firstFrame(of url: URL) async -> UIImage? {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        guard let cg = try? await generator.image(at: .zero).image else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
+    /// Post the canvas as a story through the proven paths. Photo: downscale +
+    /// fire-and-forget, dismiss immediately (the optimistic row is the
+    /// progress UI). Video: hold the sheet through the transcode so the two
+    /// gates can refuse HERE with the chat path's copy, then hand the wire
+    /// bytes to a detached send and dismiss.
     private func post() {
-        guard let photoData, !posting else { return }
+        guard let media, !posting else { return }
         posting = true
-        Task { @MainActor in
-            guard let jpeg = StreamView.meshSizedJPEG(from: photoData) else { return }
-            await inbox.sendMedia(jpeg, mime: .jpeg, in: conversation, isStory: true)
+        switch media {
+        case .photo(let raw, _):
+            Task { @MainActor in
+                guard let jpeg = StreamView.meshSizedJPEG(from: raw) else { return }
+                await inbox.sendMedia(jpeg, mime: .jpeg, in: conversation, isStory: true)
+            }
+            dismiss()
+        case .video(let url, _):
+            Task { @MainActor in
+                do {
+                    let mp4 = try await VideoTranscoder.transcodeToMP4(from: url)
+                    try? FileManager.default.removeItem(at: url)
+                    Task { await inbox.sendMedia(mp4, mime: .mp4, in: conversation, isStory: true) }
+                    dismiss()
+                } catch VideoTranscoderError.clipTooLong(let seconds) {
+                    videoNotice = "that clip runs \(Int(seconds))s — the water carries up to \(Int(VideoTranscoder.maxClipSeconds))s"
+                    posting = false
+                } catch VideoTranscoderError.overBudget {
+                    videoNotice = "that clip is too heavy to carry, even compressed"
+                    posting = false
+                } catch {
+                    videoNotice = "the clip couldn't be prepared"
+                    posting = false
+                }
+            }
         }
-        dismiss()
+    }
+
+    /// Delete the picker's temp copy of a canvas video (replacement, dismiss,
+    /// or after a successful transcode). `try?` — a second call is a no-op.
+    private func discardVideoIfAny() {
+        if case .video(let url, _) = media {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     // MARK: Pills (Stillwater house shapes)
