@@ -15,6 +15,7 @@
 
 import SwiftUI
 import UIKit
+import AVFoundation
 
 struct StoryTrimScrubber: View {
 
@@ -25,6 +26,13 @@ struct StoryTrimScrubber: View {
     /// transcoder's own constant — read, never restated).
     let legalCap: Double
     @Binding var selection: ClosedRange<Double>
+
+    /// trim-preview: the playhead to draw + playback state, and the two
+    /// callbacks up to the owner — the control never owns the AVPlayer.
+    var playhead: Double? = nil
+    var isPlaying: Bool = false
+    var onScrub: ((Double) -> Void)? = nil
+    var onPlayToggle: (() -> Void)? = nil
 
     private static let stripHeight: CGFloat = 44
     private static let handleWidth: CGFloat = 14
@@ -40,18 +48,41 @@ struct StoryTrimScrubber: View {
 
                 ZStack(alignment: .leading) {
                     filmstrip(width: width)
+                        // trim-preview: dragging the strip scrubs (the
+                        // handles sit on top and win their own touches).
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    guard duration > 0 else { return }
+                                    let sec = (Double(value.location.x / width) * duration)
+                                        .clamped(to: selection)
+                                    onScrub?(sec)
+                                }
+                        )
 
                     // Dim what's outside the window, on top of the strip.
                     Color.black.opacity(0.6)
                         .frame(width: max(0, inX))
+                        .allowsHitTesting(false)
                     Color.black.opacity(0.6)
                         .frame(width: max(0, width - outX))
                         .offset(x: outX)
+                        .allowsHitTesting(false)
 
                     RoundedRectangle(cornerRadius: 6)
                         .strokeBorder(Stillwater.Palette.biolume.opacity(0.85), lineWidth: 2)
                         .frame(width: max(0, outX - inX))
                         .offset(x: inX)
+                        .allowsHitTesting(false)
+
+                    if let playhead {
+                        Rectangle()
+                            .fill(Stillwater.Palette.foam)
+                            .frame(width: 2, height: Self.stripHeight + 6)
+                            .position(x: x(of: playhead, in: width),
+                                      y: Self.stripHeight / 2)
+                            .allowsHitTesting(false)
+                    }
 
                     handle(atX: inX, in: width, isIn: true)
                     handle(atX: outX, in: width, isIn: false)
@@ -59,7 +90,17 @@ struct StoryTrimScrubber: View {
             }
             .frame(height: Self.stripHeight)
 
-            readout
+            HStack(spacing: 14) {
+                if let onPlayToggle {
+                    Button(action: onPlayToggle) {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Stillwater.Palette.biolume)
+                    }
+                    .buttonStyle(.plain)
+                }
+                readout
+            }
         }
     }
 
@@ -136,5 +177,29 @@ struct StoryTrimScrubber: View {
 private extension Double {
     func clamped(to range: ClosedRange<Double>) -> Double {
         Swift.min(range.upperBound, Swift.max(range.lowerBound, self))
+    }
+}
+
+// MARK: - Player surface (trim-preview)
+
+/// Bare AVPlayerLayer host — the canvas preview the scrubber drives. The
+/// composer owns the AVPlayer and its observers; this is only the glass.
+struct StoryPlayerSurface: UIViewRepresentable {
+    let player: AVPlayer
+
+    final class PlayerView: UIView {
+        override static var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    }
+
+    func makeUIView(context: Context) -> PlayerView {
+        let view = PlayerView()
+        view.playerLayer.videoGravity = .resizeAspect
+        view.playerLayer.player = player
+        return view
+    }
+
+    func updateUIView(_ view: PlayerView, context: Context) {
+        view.playerLayer.player = player
     }
 }

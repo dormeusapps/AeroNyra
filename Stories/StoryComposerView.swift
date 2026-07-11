@@ -68,6 +68,13 @@ struct StoryComposerView: View {
     @State private var videoThumbs: [UIImage] = []
     @State private var trimSelection: ClosedRange<Double> = 0...0
 
+    /// trim-preview: the composer owns the player + its periodic observer;
+    /// the scrubber only draws the playhead and sends scrub/play intents.
+    @State private var player: AVPlayer?
+    @State private var playhead: Double?
+    @State private var isPlaying = false
+    @State private var timeObserver: Any?
+
     /// h1 — the text blocks. Geometry lives in each overlay's FRACTIONS;
     /// every placement/clamp call below is the engine's, never local math.
     /// `selectedOverlay` drives the per-block panel + selection ring (a view
@@ -115,7 +122,11 @@ struct StoryComposerView: View {
                     StoryTrimScrubber(thumbnails: videoThumbs,
                                       duration: videoDuration,
                                       legalCap: VideoTranscoder.maxClipSeconds,
-                                      selection: $trimSelection)
+                                      selection: $trimSelection,
+                                      playhead: playhead,
+                                      isPlaying: isPlaying,
+                                      onScrub: { scrub(to: $0) },
+                                      onPlayToggle: { togglePlay() })
                         .padding(.horizontal, 30)
                         .padding(.top, 14)
                         .disabled(posting)
@@ -188,7 +199,21 @@ struct StoryComposerView: View {
                 .onTapGesture { selectedOverlay = nil }   // canvas tap = deselect
         case .video(_, let thumb):
             ZStack {
-                if let thumb {
+                if let player, let thumb {
+                    // trim-preview: the live player, constrained to the
+                    // thumb's (transform-applied) aspect so the surface's
+                    // frame IS the display frame — text fractions previewed
+                    // here land where the burn puts them.
+                    StoryPlayerSurface(player: player)
+                        .aspectRatio(thumb.size.width / thumb.size.height,
+                                     contentMode: .fit)
+                        .overlay {
+                            GeometryReader { geo in
+                                overlayLayer(frame: geo.size)
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                } else if let thumb {
                     // The thumb is transform-APPLIED (firstFrame), so its
                     // frame IS the display frame the burn renders — text
                     // fractions previewed here land where the burn puts them.
@@ -209,10 +234,12 @@ struct StoryComposerView: View {
                                 .stillwaterMono(9, trackingEm: 0.24, color: Stillwater.Palette.mistDimmest)
                         }
                 }
-                Image(systemName: "play.fill")
-                    .font(.system(size: 30, weight: .medium))
-                    .foregroundStyle(Stillwater.Palette.foam.opacity(0.85))
-                    .allowsHitTesting(false)   // text taps go to the blocks
+                if !isPlaying {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 30, weight: .medium))
+                        .foregroundStyle(Stillwater.Palette.foam.opacity(0.85))
+                        .allowsHitTesting(false)   // text taps go to the blocks
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onTapGesture { selectedOverlay = nil }   // canvas tap = deselect
@@ -282,6 +309,7 @@ struct StoryComposerView: View {
             videoDuration = seconds
             trimSelection = 0...min(seconds, VideoTranscoder.maxClipSeconds)
             videoThumbs = await Self.filmstrip(of: picked.url)
+            setupPlayer(url: picked.url)
         } else {
             guard let raw = try? await item.loadTransferable(type: Data.self),
                   let image = UIImage(data: raw) else { return }
@@ -740,10 +768,73 @@ struct StoryComposerView: View {
     }
 
     /// Delete the picker's temp copy of a canvas video (replacement, dismiss,
-    /// or after a successful transcode). `try?` — a second call is a no-op.
+    /// or after a successful transcode) and tear down its preview player.
+    /// `try?` — a second call is a no-op.
     private func discardVideoIfAny() {
+        teardownPlayer()
         if case .video(let url, _) = media {
             try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    // MARK: Trim preview (playhead scrub + play the selection)
+
+    @MainActor
+    private func setupPlayer(url: URL) {
+        teardownPlayer()
+        let p = AVPlayer(url: url)
+        // 30 Hz playhead; auto-pause at the OUT handle so play previews
+        // exactly the segment that posts.
+        timeObserver = p.addPeriodicTimeObserver(
+            forInterval: CMTime(value: 1, timescale: 30), queue: .main) { time in
+            playhead = time.seconds
+            if isPlaying, time.seconds >= trimSelection.upperBound {
+                p.pause()
+                isPlaying = false
+                playhead = trimSelection.upperBound
+            }
+        }
+        player = p
+        playhead = 0
+    }
+
+    private func teardownPlayer() {
+        if let timeObserver, let player { player.removeTimeObserver(timeObserver) }
+        player?.pause()
+        player = nil
+        timeObserver = nil
+        playhead = nil
+        isPlaying = false
+    }
+
+    /// Strip drag: pause and show that exact frame (zero-tolerance seek).
+    private func scrub(to seconds: Double) {
+        guard let player else { return }
+        player.pause()
+        isPlaying = false
+        let clamped = min(max(seconds, trimSelection.lowerBound), trimSelection.upperBound)
+        playhead = clamped
+        player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    /// Play the SELECTED segment: from the playhead if it sits inside the
+    /// window, else from the IN handle; the periodic observer stops at OUT.
+    private func togglePlay() {
+        guard let player else { return }
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+            return
+        }
+        let start = playhead ?? trimSelection.lowerBound
+        let from = (start < trimSelection.lowerBound || start >= trimSelection.upperBound - 0.05)
+            ? trimSelection.lowerBound : start
+        playhead = from
+        isPlaying = true
+        player.seek(to: CMTime(seconds: from, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            player.play()
         }
     }
 
