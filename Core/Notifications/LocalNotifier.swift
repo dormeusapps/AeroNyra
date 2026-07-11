@@ -67,14 +67,18 @@ final class LocalNotifier: NSObject, UNUserNotificationCenterDelegate {
     /// is the one on screen. `conversationID` is the peer's raw 32-byte identity
     /// key (the receive-path thread key, used ONLY for the on-screen suppression
     /// check); `threadKey` is the Conversation's random UUID, used for grouping.
-    func messageArrived(conversationID: Data, threadKey: UUID, unreadTotal: Int) async {
+    /// `isStory` picks the copy only — "New story" vs "New message". One bit
+    /// of KIND on the lock screen, still content-free (no plaintext, no
+    /// petname); consistent with the N1 stance above.
+    func messageArrived(conversationID: Data, threadKey: UUID, unreadTotal: Int,
+                        isStory: Bool) async {
         guard conversationID != activeConversationID else { return }
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized else { return }
 
         let content = UNMutableNotificationContent()
         content.title = "AeroNyra"
-        content.body = "New message"
+        content.body = isStory ? "New story" : "New message"
         content.sound = .default
         content.badge = NSNumber(value: unreadTotal)
         // Same-thread banners group together in Notification Center. Keyed by the
