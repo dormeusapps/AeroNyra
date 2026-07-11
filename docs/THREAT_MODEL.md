@@ -273,6 +273,25 @@ error, `bootstrap()`'s catch-all routes to `.onboarding`, and one tap runs
 unrecoverably.** See `BLE_BACKGROUND_WAKE_DESIGN.md`. **This must be checked
 before any archive.**
 
+> **CLOSED (verified against source, this cannot occur).** The catch-all this
+> entry feared no longer exists. Three facts, each in source: (1) state
+> restoration is not armed — `CBCentralManagerOptionRestoreIdentifierKey` and
+> `willRestoreState` appear nowhere, so the trigger is absent regardless; (2)
+> `IdentityStore.load()` maps a locked Keychain (`errSecInteractionNotAllowed`)
+> to `.keychain(status)`, NOT `.notFound`
+> (`Security/Identity/IdentityKeypair.swift:269-273`) — "locked" and "absent"
+> are distinct errors; (3) `BootRouter.route` sends ONLY `.notFound` to
+> `.onboarding`, every other throw to `.bootFailed(.identityUnreadable)`, and
+> runs `buildStack` only after a successful load (`Beacon/BootRouter.swift:60-63`),
+> which `bootstrap()` consumes one-arm-per-route with no catch-all
+> (`Beacon/ContentView.swift:278-291`). So a locked-Keychain relaunch routes to
+> `.bootFailed(.identityUnreadable)`, never destructive onboarding. Regression-
+> locked: `BootRouterTests.testLockedKeychainRoutesToBootFailedUnreadable` asserts
+> `.bootFailed(.identityUnreadable)` with `buildStackCalls == 0`. The original
+> risk text above is kept as the historical record. (`BLE_BACKGROUND_WAKE_DESIGN.md`
+> is currently missing from disk — flagged for restoration; not load-bearing for
+> this closure, which rests on source + tests.)
+
 ### 9.4 Current disposition
 
 | Exposure | Adversary | Disposition |
@@ -287,4 +306,4 @@ before any archive.**
 | BLE service UUID / local name / CB id linkability | A, B | **Open** — advertisement local name unstripped |
 | Identity in app logs | local | **Closed** — `RedactLog`, Release-verified |
 | Identity in OS URL-router logs | local | **Accepted/documented** (§9.3) |
-| Locked-Keychain identity overwrite via BLE restoration | — | **Unverified — gates the archive** (§9.3) |
+| Locked-Keychain identity overwrite via BLE restoration | — | **Closed** — `BootRouter` single-preimage routing + `load()` error taxonomy, regression-tested (§9.3) |
