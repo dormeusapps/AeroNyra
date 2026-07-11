@@ -79,6 +79,10 @@ final class MessageInbox {
 
     // MARK: - Inbound event loop
 
+    /// FaceTime v1 (P3): the call layer's tap on the events stream. Set by
+    /// the composition root; nil (frames silently ignored) until calls wire.
+    var onCallSignal: ((CallSignal, _ peerKey: Data) -> Void)?
+
     /// Consume coordinator events for the app's lifetime, writing SwiftData on
     /// the main actor. Started once from the composition root (a `.task`).
     /// `events` is unbounded-buffered, so anything emitted before this starts
@@ -97,11 +101,11 @@ final class MessageInbox {
                 handleLearnedNostrIdentity(peerKey: key, nostrPubkey: nostrPubkey)
             case .reconnected(let key):
                 await handleReconnected(peerKey: key)
-            case .callSignal:
-                // FaceTime v1: consumed by the call layer, not persisted.
-                // CallController wiring arrives with the in-chat UI step;
-                // until then a stray frame is deliberately ignored here.
-                break
+            case .callSignal(let key, let signal):
+                // FaceTime v1 (P3): forwarded to the call layer, never
+                // persisted. The inbox stays the events stream's SINGLE
+                // consumer; CallEngine hangs off this hook.
+                onCallSignal?(signal, key)
             }
         }
     }
@@ -730,6 +734,29 @@ final class MessageInbox {
                                              threadKey: conversationKey,
                                              unreadTotal: unread,
                                              isStory: isStory) }
+    }
+
+    /// FaceTime v1 (P3): the missed-call transcript row. LOCAL-ONLY — nothing
+    /// rides the wire (both ends run their own ring clock and write their
+    /// own row, per the committed no-server design). Rendered as an ordinary
+    /// inbound text line; unread, so the chat surfaces it.
+    func recordMissedCall(peerKey: Data) {
+        let peer = peer(forRawKey: peerKey)
+        let conversation = conversation(for: peer)
+        let message = Message(content: "missed call",
+                              isOutbound: false,
+                              deliveryState: .delivered,
+                              isRead: false)
+        modelContext.insert(message)
+        message.conversation = conversation
+        conversation.lastActivity = .now
+        save()
+    }
+
+    /// FaceTime v1 (P3): the peer's Nostr key for internet-relayed signaling
+    /// (the same Tier-2 fallback target every send path reads).
+    func nostrKey(forRawKey rawKey: Data) -> Data? {
+        peer(forRawKey: rawKey).nostrPubkey
     }
 
     /// Re-sync the app-icon badge to the store's true unread total. Called by

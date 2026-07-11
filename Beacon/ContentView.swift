@@ -798,6 +798,9 @@ private struct ReadyView: View {
     @Binding var pendingInviteURL: URL?
 
     @State private var inbox: MessageInbox?
+    /// FaceTime v1 (P3): app-wide call layer — a ring must reach the user on
+    /// any screen, so it lives beside the inbox, not in a chat view.
+    @State private var callEngine: CallEngine?
 
     /// STEP 7d-3 outcome surface. The same success/failure pair PairingView
     /// keeps for scan-to-pair (pairMessage/pairFailed), shown as a transient
@@ -834,6 +837,7 @@ private struct ReadyView: View {
                 ChatsRootView()
                     .environment(inbox)
                     .environment(pairingService)
+                    .environment(callEngine)
                     .task { await inbox.run() }
                     .task { await inbox.runDeliveryUpdates(router.deliveryUpdates) }   // 7b.2a
             } else {
@@ -867,6 +871,13 @@ private struct ReadyView: View {
             redeemFailed = nil
         }
         .overlay(alignment: .top) { redeemBanner }
+        // FaceTime v1 (P4): the call surface, app-wide — a ring reaches the
+        // user on any screen. Renders nothing while idle.
+        .overlay {
+            if let callEngine, callEngine.state != .idle {
+                CallOverlayView(engine: callEngine)
+            }
+        }
         .modelContainer(container)
         .task {
             if inbox == nil {
@@ -876,6 +887,24 @@ private struct ReadyView: View {
                                          isVerified: { pairingService.isVerified($0) },
                                          notifier: notifier)   // N2 — banner at the persist seams
                 inbox = built
+                // FaceTime v1 (P3): the call layer. Signals ride the EXISTING
+                // sealer (kinds 8-10, 7f-gated); inbound frames arrive via the
+                // inbox's forward hook (single events consumer); the missed-
+                // call row is the inbox's. Engine lives app-wide so a ring
+                // reaches the user on any screen (the overlay renders it).
+                let engine = CallEngine(
+                    sendSignal: { [weak built] signal, key in
+                        try await coordinator.sendCallSignal(
+                            signal, toRawKey: key,
+                            nostrRecipient: built?.nostrKey(forRawKey: key))
+                    },
+                    onMissedCall: { [weak built] key in
+                        built?.recordMissedCall(peerKey: key)
+                    })
+                built.onCallSignal = { [weak engine] signal, key in
+                    Task { await engine?.handleInbound(signal, from: key) }
+                }
+                callEngine = engine
                 // Ephemeral media reaper (SEC-6 / P3), boot pass: wipe inbound
                 // media that crossed its window while the app was closed — the
                 // render-time wipes only cover rows that get drawn, so a

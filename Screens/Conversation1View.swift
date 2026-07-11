@@ -30,6 +30,9 @@ struct StreamView: View {
     /// `activeConversationID`, so a message for the chat you are already
     /// reading never banners. Optional (like inbox/pairing) so previews render.
     @Environment(LocalNotifier.self) private var notifier: LocalNotifier?
+    /// FaceTime v1 (P4): the app-wide call layer; nil until the boot task
+    /// builds it (and in previews).
+    @Environment(CallEngine.self) private var callEngine: CallEngine?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -170,6 +173,27 @@ struct StreamView: View {
             }
             .buttonStyle(.plain)
             Spacer()
+
+            // FaceTime v1 (P4): voice + video call. Same wire either way —
+            // always audio+video; the camera just starts off for voice.
+            if let callEngine {
+                Button {
+                    Task { await callEngine.startVoiceCall(peerKey: peer.publicKeyData) }
+                } label: {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Stillwater.Palette.biolume)
+                }
+                .buttonStyle(.plain)
+                Button {
+                    Task { await callEngine.startVideoCall(peerKey: peer.publicKeyData) }
+                } label: {
+                    Image(systemName: "video.fill")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Stillwater.Palette.biolume)
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.bottom, 16)
         .overlay(alignment: .bottom) {
