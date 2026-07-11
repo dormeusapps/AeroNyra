@@ -36,6 +36,53 @@
 //
 
 import UIKit
+import SwiftUI   // h2: UIColor(_ color: Color) bridging for the palette
+
+// MARK: - Appearance (h2 — fills and sizes glyphs, never moves them)
+
+/// The curated story-text palette. Content colors, not chrome: foam (the
+/// house near-white), abyss (the house dark), and biolume (the one accent).
+enum StoryTextColor: CaseIterable {
+    case foam, abyss, biolume
+
+    var uiColor: UIColor {
+        switch self {
+        case .foam: return UIColor(Stillwater.Palette.foam)
+        case .abyss: return UIColor(Stillwater.Palette.abyss)
+        case .biolume: return UIColor(Stillwater.Palette.biolume)
+        }
+    }
+
+    /// The stroke that keeps this fill legible on any footage: dark behind
+    /// light fills, light behind the dark one.
+    var strokeUIColor: UIColor {
+        switch self {
+        case .abyss: return UIColor.white.withAlphaComponent(0.8)
+        case .foam, .biolume: return UIColor.black.withAlphaComponent(0.8)
+        }
+    }
+}
+
+/// The curated story-text faces — the two house voices plus the serif's
+/// italic. PostScript names per the design system (no hyphen after the
+/// Newsreader family); system-design fallbacks if registration ever fails.
+enum StoryTextFont: CaseIterable {
+    case serif, serifItalic, mono
+
+    func uiFont(pointSize: CGFloat) -> UIFont {
+        let name: String
+        switch self {
+        case .serif: name = "Newsreader14pt-Medium"
+        case .serifItalic: name = "Newsreader14pt-Italic"
+        case .mono: name = "SplineSansMono-Regular"
+        }
+        if let font = UIFont(name: name, size: pointSize) { return font }
+        let design: UIFontDescriptor.SystemDesign = (self == .mono) ? .monospaced : .serif
+        let system = UIFont.systemFont(ofSize: pointSize, weight: .medium)
+        guard let fallback = system.fontDescriptor.withDesign(design) else { return system }
+        return UIFont(descriptor: fallback, size: pointSize)
+    }
+}
 
 // MARK: - StoryTextOverlay
 
@@ -50,6 +97,10 @@ struct StoryTextOverlay {
     var rotation: CGFloat
     /// Line alignment INSIDE the block — never moves the block itself.
     var alignment: NSTextAlignment
+    /// Appearance (h2). Defaults keep every pre-h2 call site — including the
+    /// fidelity suite's literals — byte-identical.
+    var color: StoryTextColor = .foam
+    var font: StoryTextFont = .serif
 }
 
 // MARK: - StoryTextEngine
@@ -122,16 +173,10 @@ enum StoryTextEngine {
 
     // MARK: Reference style (E1: the ONE style)
 
-    /// Newsreader medium (the app's human voice; PostScript name has no
-    /// hyphen after the family), with a serif-design system fallback so the
-    /// engine still renders if the custom font ever fails to register.
+    /// The default face — h2 moved the lookup into `StoryTextFont`; this
+    /// stays as the serif shorthand (editor chrome, pre-h2 call sites).
     static func referenceFont(pointSize: CGFloat) -> UIFont {
-        if let newsreader = UIFont(name: "Newsreader14pt-Medium", size: pointSize) {
-            return newsreader
-        }
-        let system = UIFont.systemFont(ofSize: pointSize, weight: .medium)
-        guard let serif = system.fontDescriptor.withDesign(.serif) else { return system }
-        return UIFont(descriptor: serif, size: pointSize)
+        StoryTextFont.serif.uiFont(pointSize: pointSize)
     }
 
     /// STICKER MODEL (E1-redux): the block is the text's own measured
@@ -181,8 +226,10 @@ enum StoryTextEngine {
             context: nil)
     }
 
-    /// ONE builder for measurement and drawing — the reference style lives
-    /// here and nowhere else.
+    /// ONE builder for measurement and drawing — the text style lives here
+    /// and nowhere else. h2: fill/face come from the overlay's appearance
+    /// fields; the stroke flips dark↔light with the fill so any color stays
+    /// legible on any footage.
     private static func attributedString(for overlay: StoryTextOverlay,
                                          in frame: CGSize) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
@@ -190,9 +237,9 @@ enum StoryTextEngine {
         return NSAttributedString(
             string: overlay.string,
             attributes: [
-                .font: referenceFont(pointSize: overlay.height * frame.height),
-                .foregroundColor: UIColor.white,
-                .strokeColor: UIColor.black.withAlphaComponent(0.8),
+                .font: overlay.font.uiFont(pointSize: overlay.height * frame.height),
+                .foregroundColor: overlay.color.uiColor,
+                .strokeColor: overlay.color.strokeUIColor,
                 .strokeWidth: -3,   // negative: stroke AND fill
                 .paragraphStyle: paragraph,
             ])

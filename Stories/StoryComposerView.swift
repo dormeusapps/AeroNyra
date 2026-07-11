@@ -451,10 +451,9 @@ struct StoryComposerView: View {
                                           in: frame)
         let block = StoryTextEngine.measuredBlockSize(of: o, in: frame)
         return Text(o.string)
-            .font(Font(StoryTextEngine.referenceFont(
-                pointSize: o.height * frame.height) as CTFont))
-            .foregroundStyle(Color.white)
-            .shadow(color: .black.opacity(0.8), radius: 1)
+            .font(Font(o.font.uiFont(pointSize: o.height * frame.height) as CTFont))
+            .foregroundStyle(Color(o.color.uiColor))
+            .shadow(color: Color(o.color.strokeUIColor), radius: 1)
             .multilineTextAlignment(textAlignment(o.alignment))
             .frame(width: block.width * frame.width,
                    height: block.height * frame.height,
@@ -594,28 +593,90 @@ struct StoryComposerView: View {
         }
     }
 
-    /// The per-block panel: alignment + delete for the SELECTED block.
-    /// (h2 adds color, font, and size here.)
+    /// The per-block panel for the SELECTED block. Two rows: appearance
+    /// (color · font · delete) and layout (alignment · size). Appearance
+    /// fills and sizes glyphs — it never moves them; placement stays the
+    /// engine's.
     private func selectedBlockPanel(_ i: Int) -> some View {
-        HStack(spacing: 22) {
-            alignButton(i, .left, "text.alignleft")
-            alignButton(i, .center, "text.aligncenter")
-            alignButton(i, .right, "text.alignright")
+        VStack(spacing: 10) {
+            HStack(spacing: 18) {
+                ForEach(Array(StoryTextColor.allCases.enumerated()), id: \.offset) { _, c in
+                    colorSwatch(i, c)
+                }
 
-            Rectangle()
-                .fill(Stillwater.Palette.biolume.opacity(0.15))
-                .frame(width: 1, height: 18)
+                panelDivider
 
-            Button {
-                overlays.remove(at: i)
-                selectedOverlay = nil
-            } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Stillwater.Palette.mistDim)
+                ForEach(Array(StoryTextFont.allCases.enumerated()), id: \.offset) { _, f in
+                    fontButton(i, f)
+                }
+
+                panelDivider
+
+                Button {
+                    overlays.remove(at: i)
+                    selectedOverlay = nil
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Stillwater.Palette.mistDim)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+
+            HStack(spacing: 18) {
+                alignButton(i, .left, "text.alignleft")
+                alignButton(i, .center, "text.aligncenter")
+                alignButton(i, .right, "text.alignright")
+
+                panelDivider
+
+                Slider(value: Binding(
+                    get: { overlays.indices.contains(i) ? overlays[i].height : Self.referenceTextHeight },
+                    set: { if overlays.indices.contains(i) { overlays[i].height = $0 } }
+                ), in: 0.03...0.12)
+                .tint(Stillwater.Palette.biolume)
+                .frame(maxWidth: 150)
+            }
         }
+    }
+
+    private var panelDivider: some View {
+        Rectangle()
+            .fill(Stillwater.Palette.biolume.opacity(0.15))
+            .frame(width: 1, height: 18)
+    }
+
+    private func colorSwatch(_ i: Int, _ c: StoryTextColor) -> some View {
+        Button {
+            guard overlays.indices.contains(i) else { return }
+            overlays[i].color = c
+        } label: {
+            Circle()
+                .fill(Color(c.uiColor))
+                .frame(width: 20, height: 20)
+                .overlay(
+                    Circle().strokeBorder(
+                        overlays.indices.contains(i) && overlays[i].color == c
+                            ? Stillwater.Palette.biolume
+                            : Stillwater.Palette.mistDimmest.opacity(0.5),
+                        lineWidth: overlays.indices.contains(i) && overlays[i].color == c ? 2 : 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func fontButton(_ i: Int, _ f: StoryTextFont) -> some View {
+        Button {
+            guard overlays.indices.contains(i) else { return }
+            overlays[i].font = f
+        } label: {
+            Text("Aa")
+                .font(Font(f.uiFont(pointSize: 15) as CTFont))
+                .foregroundStyle(overlays.indices.contains(i) && overlays[i].font == f
+                                 ? Stillwater.Palette.biolume
+                                 : Stillwater.Palette.mistDim)
+        }
+        .buttonStyle(.plain)
     }
 
     private func alignButton(_ i: Int, _ a: NSTextAlignment, _ symbol: String) -> some View {
