@@ -669,20 +669,16 @@ struct StoryComposerView: View {
                 .buttonStyle(.plain)
             }
 
-            HStack(spacing: 18) {
-                alignButton(i, .left, "text.alignleft")
-                alignButton(i, .center, "text.aligncenter")
-                alignButton(i, .right, "text.alignright")
-
-                panelDivider
-
-                Slider(value: Binding(
-                    get: { overlays.indices.contains(i) ? overlays[i].height : Self.referenceTextHeight },
-                    set: { if overlays.indices.contains(i) { overlays[i].height = $0 } }
-                ), in: 0.03...0.12)
-                .tint(Stillwater.Palette.biolume)
-                .frame(maxWidth: 150)
-            }
+            // Alignment buttons removed (operator call): a no-op for
+            // single-line text, the common case. The overlay model keeps its
+            // `alignment` field — blocks default to .center; the engine and
+            // its fidelity tests are untouched.
+            Slider(value: Binding(
+                get: { overlays.indices.contains(i) ? overlays[i].height : Self.referenceTextHeight },
+                set: { if overlays.indices.contains(i) { overlays[i].height = $0 } }
+            ), in: 0.03...0.12)
+            .tint(Stillwater.Palette.biolume)
+            .frame(maxWidth: 200)
         }
     }
 
@@ -719,20 +715,6 @@ struct StoryComposerView: View {
             Text("Aa")
                 .font(Font(f.uiFont(pointSize: 15) as CTFont))
                 .foregroundStyle(overlays.indices.contains(i) && overlays[i].font == f
-                                 ? Stillwater.Palette.biolume
-                                 : Stillwater.Palette.mistDim)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func alignButton(_ i: Int, _ a: NSTextAlignment, _ symbol: String) -> some View {
-        Button {
-            guard overlays.indices.contains(i) else { return }
-            overlays[i].alignment = a
-        } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(overlays.indices.contains(i) && overlays[i].alignment == a
                                  ? Stillwater.Palette.biolume
                                  : Stillwater.Palette.mistDim)
         }
