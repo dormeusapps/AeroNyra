@@ -19,8 +19,11 @@
 //  preview calls the same transform/clampedCenter/measuredBlockSize the burn
 //  uses, with the preview frame instead of source pixels — fractions make
 //  them the same place. On post ALL blocks are flattened at source
-//  resolution and ride the proven photo path. Text-on-video waits for the
-//  burn stage (f); the video canvas has no text tools yet.
+//  resolution and ride the proven photo path — or, for video (stage f),
+//  burned by StoryVideoBurner (composite-THEN-transcode: trim → burn →
+//  the untouched transcoder, gates on the true final bytes). The video
+//  preview frames fractions against the transform-applied thumbnail, the
+//  burn against the transform-applied render frame — the same frame.
 //
 //  The composer owns compose + send, nothing downstream: photos take the
 //  SAME `StreamView.meshSizedJPEG` downscale the chat path ships, videos the
@@ -100,7 +103,7 @@ struct StoryComposerView: View {
 
                 ZStack(alignment: .topTrailing) {
                     canvas
-                    if case .photo = media, !editingText {
+                    if media != nil, !editingText {
                         toolRail
                             .padding(.top, 12)
                             .padding(.trailing, 12)
@@ -118,8 +121,7 @@ struct StoryComposerView: View {
                         .disabled(posting)
                 }
 
-                if case .photo = media, let sel = selectedOverlay,
-                   overlays.indices.contains(sel) {
+                if let sel = selectedOverlay, overlays.indices.contains(sel) {
                     selectedBlockPanel(sel)
                         .padding(.top, 14)
                 }
@@ -187,9 +189,17 @@ struct StoryComposerView: View {
         case .video(_, let thumb):
             ZStack {
                 if let thumb {
+                    // The thumb is transform-APPLIED (firstFrame), so its
+                    // frame IS the display frame the burn renders — text
+                    // fractions previewed here land where the burn puts them.
                     Image(uiImage: thumb)
                         .resizable()
                         .scaledToFit()
+                        .overlay {
+                            GeometryReader { geo in
+                                overlayLayer(frame: geo.size)
+                            }
+                        }
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                 } else {
                     RoundedRectangle(cornerRadius: 18)
@@ -202,8 +212,10 @@ struct StoryComposerView: View {
                 Image(systemName: "play.fill")
                     .font(.system(size: 30, weight: .medium))
                     .foregroundStyle(Stillwater.Palette.foam.opacity(0.85))
+                    .allowsHitTesting(false)   // text taps go to the blocks
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onTapGesture { selectedOverlay = nil }   // canvas tap = deselect
         case nil:
             RoundedRectangle(cornerRadius: 18)
                 .strokeBorder(Stillwater.Palette.biolume.opacity(0.25))
@@ -342,11 +354,17 @@ struct StoryComposerView: View {
                     // the trimmed file's true bytes.
                     let fullClip = trimSelection.lowerBound < 0.01
                         && trimSelection.upperBound > videoDuration - 0.01
-                    let sendURL = fullClip
+                    let trimmedURL = fullClip
                         ? url
                         : try await Self.exportTrimmed(url: url, range: trimSelection)
+                    // f: burn text into the TRIMMED source (trim → burn →
+                    // transcode), so the gates fire on the true final bytes.
+                    let sendURL = overlays.isEmpty
+                        ? trimmedURL
+                        : try await StoryVideoBurner.burn(url: trimmedURL, overlays: overlays)
                     let mp4 = try await VideoTranscoder.transcodeToMP4(from: sendURL)
-                    if sendURL != url { try? FileManager.default.removeItem(at: sendURL) }
+                    if sendURL != trimmedURL { try? FileManager.default.removeItem(at: sendURL) }
+                    if trimmedURL != url { try? FileManager.default.removeItem(at: trimmedURL) }
                     try? FileManager.default.removeItem(at: url)
                     Task { await inbox.sendMedia(mp4, mime: .mp4, in: conversation, isStory: true) }
                     dismiss()
@@ -557,9 +575,9 @@ struct StoryComposerView: View {
     private static let referenceTextHeight: CGFloat = 0.05
 
     /// Open the editor for block `index`, or for a NEW block (nil — the T
-    /// tool's path).
+    /// tool's path). Photo AND video canvases (stage f).
     private func beginTextEdit(index: Int?) {
-        guard case .photo = media, !editingText else { return }  // no text-on-video until f
+        guard media != nil, !editingText else { return }
         editingIndex = index
         draftText = index.flatMap { overlays.indices.contains($0) ? overlays[$0].string : nil } ?? ""
         editingText = true
