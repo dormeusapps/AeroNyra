@@ -87,9 +87,11 @@ enum Stillwater {
         /// (name, hex) presets shown as swatches in Settings.
         static let presets: [(name: String, hex: UInt)] = [
             ("teal",   0x7FF3C8),   // the default
+            ("cyan",   0x7FF3F3),   // hue 180°, between teal and aqua — min7F/maxF3, teal's exact L/S
             ("aqua",   0x7FD8F3),
             ("violet", 0xB69BF3),
             ("rose",   0xF39BB5),
+            ("coral",  0xF39C7F),   // hue 15°, warm, between rose and amber — min7F/maxF3, same L/S
             ("amber",  0xF3CE7F),
             ("lime",   0xB6F37F),
         ]

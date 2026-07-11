@@ -236,12 +236,14 @@ struct SettingsView: View {
             footer: "The single light the whole app breathes with. Brightness still shows who's near — only the hue changes."
         ) {
             SettingsRow {
-                HStack(spacing: 14) {
+                // 8 swatches: tightened from 34/14 so the row fits the 375pt
+                // phone floor without wrapping (8×30 + 7×8 = 296 ≤ 311 avail).
+                HStack(spacing: 8) {
                     ForEach(Stillwater.Accent.presets, id: \.hex) { preset in
                         Button { accentHex = Int(preset.hex) } label: {
                             Circle()
                                 .fill(Stillwater.Palette.hex(preset.hex))
-                                .frame(width: 34, height: 34)
+                                .frame(width: 30, height: 30)
                                 .overlay(
                                     Circle().strokeBorder(
                                         Stillwater.Palette.foam.opacity(accentHex == Int(preset.hex) ? 0.9 : 0),
