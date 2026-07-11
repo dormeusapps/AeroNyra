@@ -45,6 +45,17 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
 
     // MARK: Process-wide factory
     private static let factory: RTCPeerConnectionFactory = {
+        // MANUAL AUDIO (must be set BEFORE the factory's audio device module
+        // initializes): in the default non-manual mode WebRTC's ADM
+        // auto-configures and activates the SHARED AVAudioSession the moment
+        // its audio unit warms — which stops the user's music even with no
+        // call. Manual mode hands that trigger to us: WebRTC touches the
+        // session only while `isAudioEnabled == true`, which we set true at
+        // call start (`configureAudioSession`) and false on teardown
+        // (`close`). Same guard the loopback test needed; production had none.
+        let audio = RTCAudioSession.sharedInstance()
+        audio.useManualAudio = true
+        audio.isAudioEnabled = false
         RTCInitializeSSL()
         return RTCPeerConnectionFactory(
             encoderFactory: RTCDefaultVideoEncoderFactory(),
@@ -94,6 +105,14 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
     /// Which camera feeds the call. Flipping swaps the CAPTURE device only —
     /// the video track, sender, and SDP are untouched (no wire change).
     public private(set) var cameraPosition: AVCaptureDevice.Position = .front
+
+    /// Whether this session drives the SHARED audio session — its category,
+    /// active state, and the WebRTC audio unit (via `isAudioEnabled`). ALWAYS
+    /// true in the app. The loopback unit test sets it false so the
+    /// simulator's audio unit never starts under parallel test clones (the
+    /// same hermetic-audio need that makes the test set `useManualAudio`); the
+    /// test verifies ICE/DTLS connect, not real audio output.
+    var managesAudioSession = true
 
     // MARK: Internals
     private let config: CallICEConfig
@@ -245,6 +264,7 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
         remoteVideoTrack?.remove(remoteFrameMonitor)
         remoteVideoTrack = nil
         videoSource = nil
+        deactivateAudioSession()   // hand audio back so other apps resume
     }
 
     // MARK: - In-band controls (never the wire)
@@ -387,14 +407,36 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
 
     /// Voice-chat audio session; video calls prefer the speaker. Full
     /// interruption/route handling is P5 — this is just "sound works".
+    /// Interrupting other audio HERE (call start) is expected. `isAudioEnabled
+    /// = true` is what actually lets WebRTC's audio unit run under manual mode
+    /// (see the factory); `close()` sets it false and hands audio back.
     private func configureAudioSession() {
+        guard managesAudioSession else { return }
         let session = RTCAudioSession.sharedInstance()
         session.lockForConfiguration()
         try? session.setCategory(.playAndRecord,
                                  mode: cameraEnabled ? .videoChat : .voiceChat,
                                  options: [.defaultToSpeaker, .allowBluetoothHFP])
         try? session.setActive(true)
+        session.isAudioEnabled = true
         session.unlockForConfiguration()
+    }
+
+    /// Release the call's hold on the shared audio session and, crucially,
+    /// notify other apps so their music/podcast RESUMES — the same
+    /// `.notifyOthersOnDeactivation` signal VoicePlayer/VoiceRecorder use.
+    /// Idempotent and safe to call when audio was never activated (a call that
+    /// ended before connecting): disabling and deactivating an inactive
+    /// session is a no-op.
+    private func deactivateAudioSession() {
+        guard managesAudioSession else { return }
+        let session = RTCAudioSession.sharedInstance()
+        session.lockForConfiguration()
+        session.isAudioEnabled = false
+        try? session.setActive(false)
+        session.unlockForConfiguration()
+        try? AVAudioSession.sharedInstance()
+            .setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
     // MARK: - Non-trickle gathering wait

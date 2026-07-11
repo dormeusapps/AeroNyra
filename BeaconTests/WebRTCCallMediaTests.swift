@@ -123,6 +123,11 @@ final class WebRTCCallMediaTests: XCTestCase {
     func testLoopbackConnect_offerAnswerConnectsBothEnds() async throws {
         let caller = WebRTCCallMedia(config: CallICEConfig())
         let callee = WebRTCCallMedia(config: CallICEConfig())
+        // Hermetic audio: never start the WebRTC audio unit under parallel
+        // test clones (same reason setUp sets useManualAudio). This test
+        // verifies ICE/DTLS connect, not real audio output.
+        caller.managesAudioSession = false
+        callee.managesAudioSession = false
         defer { caller.close(); callee.close() }
 
         let callerConnected = expectation(description: "caller connected")
@@ -169,6 +174,7 @@ final class WebRTCCallMediaTests: XCTestCase {
     @MainActor
     func testControls_cameraAndMuteFlipTrackStateInBand() async throws {
         let media = WebRTCCallMedia(config: CallICEConfig(), cameraInitiallyEnabled: false)
+        media.managesAudioSession = false   // hermetic (see loopback test)
         defer { media.close() }
         _ = try await media.makeOffer()   // tracks exist after assembly
 
