@@ -7,6 +7,12 @@ target 'Beacon' do
       git: 'https://github.com/signalapp/libsignal.git',
       tag: 'v0.96.4'
 
+  # FaceTime v1 media (P1): stasel/WebRTC prebuilt libwebrtc, EXACT-version
+  # pinned (spec checksum recorded in Podfile.lock, same posture as the
+  # LibSignalClient tag+checksum pin). Media only — signaling stays on the
+  # existing sealed channel (kinds 8-10).
+  pod 'WebRTC-lib', '= 149.0.0'
+
   target 'BeaconTests' do
     inherit! :search_paths
   end

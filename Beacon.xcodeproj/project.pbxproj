@@ -460,8 +460,6 @@
 			);
 			mainGroup = 7C3B09432FED902E00AE9EC1;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7C3B094D2FED902E00AE9EC1 /* Products */;
 			projectDirPath = "";
@@ -780,8 +778,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = AeroNyra;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and relay your messages directly between phones. No servers, no internet.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "AeroNyra uses the camera to scan a contact's pairing code.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AeroNyra uses the microphone to record voice notes you send in a chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "AeroNyra uses the camera to scan a contact's pairing code and for video calls.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AeroNyra uses the microphone to record voice notes and for calls.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -845,8 +843,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = AeroNyra;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and relay your messages directly between phones. No servers, no internet.";
-				INFOPLIST_KEY_NSCameraUsageDescription = "AeroNyra uses the camera to scan a contact's pairing code.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AeroNyra uses the microphone to record voice notes you send in a chat.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "AeroNyra uses the camera to scan a contact's pairing code and for video calls.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AeroNyra uses the microphone to record voice notes and for calls.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

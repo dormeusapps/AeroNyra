@@ -1,8 +1,14 @@
 PODS:
   - LibSignalClient (0.96.4)
+  - WebRTC-lib (149.0.0)
 
 DEPENDENCIES:
   - LibSignalClient (from `https://github.com/signalapp/libsignal.git`, tag `v0.96.4`)
+  - WebRTC-lib (= 149.0.0)
+
+SPEC REPOS:
+  trunk:
+    - WebRTC-lib
 
 EXTERNAL SOURCES:
   LibSignalClient:
@@ -16,7 +22,8 @@ CHECKOUT OPTIONS:
 
 SPEC CHECKSUMS:
   LibSignalClient: 3f510b4274fccf02d365f51c3e06d18725d9fba1
+  WebRTC-lib: be609ee198a0a9cf02d497dad5b9d298860de47b
 
-PODFILE CHECKSUM: 25a7f2f7677cf07d43d77fe867f86a4182636d1c
+PODFILE CHECKSUM: 173d3813aaed206cc46774992d63c49ee524b4b6
 
 COCOAPODS: 1.16.2

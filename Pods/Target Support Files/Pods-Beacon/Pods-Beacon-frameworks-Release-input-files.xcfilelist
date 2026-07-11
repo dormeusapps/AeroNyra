@@ -1,2 +1,3 @@
 ${PODS_ROOT}/Target Support Files/Pods-Beacon/Pods-Beacon-frameworks.sh
 ${BUILT_PRODUCTS_DIR}/LibSignalClient/LibSignalClient.framework
+${PODS_XCFRAMEWORKS_BUILD_DIR}/WebRTC-lib/WebRTC.framework/WebRTC
