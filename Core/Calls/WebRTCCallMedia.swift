@@ -392,7 +392,7 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
         session.lockForConfiguration()
         try? session.setCategory(.playAndRecord,
                                  mode: cameraEnabled ? .videoChat : .voiceChat,
-                                 options: [.defaultToSpeaker, .allowBluetooth])
+                                 options: [.defaultToSpeaker, .allowBluetoothHFP])
         try? session.setActive(true)
         session.unlockForConfiguration()
     }
