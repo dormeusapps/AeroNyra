@@ -313,7 +313,10 @@ struct StoryComposerView: View {
             videoDuration = seconds
             trimSelection = 0...min(seconds, VideoTranscoder.maxClipSeconds)
             videoThumbs = await Self.filmstrip(of: picked.url)
-            setupPlayer(url: picked.url)
+            // Only manage the audio session for a clip that actually HAS
+            // sound — a silent video must never interrupt the user's music.
+            let hasAudio = await Self.hasAudioTrack(picked.url)
+            setupPlayer(url: picked.url, hasAudio: hasAudio)
         } else {
             guard let raw = try? await item.loadTransferable(type: Data.self),
                   let image = UIImage(data: raw) else { return }
@@ -348,6 +351,14 @@ struct StoryComposerView: View {
         generator.appliesPreferredTrackTransform = true
         guard let cg = try? await generator.image(at: .zero).image else { return nil }
         return UIImage(cgImage: cg)
+    }
+
+    /// Whether the clip carries any audio track — decides if the trim preview
+    /// manages the shared audio session at all. A load failure returns false
+    /// (treat as silent → never interrupt other apps' audio).
+    private static func hasAudioTrack(_ url: URL) async -> Bool {
+        let tracks = try? await AVURLAsset(url: url).loadTracks(withMediaType: .audio)
+        return tracks?.isEmpty == false
     }
 
     /// Post the canvas as a story through the proven paths. Photo: downscale +
@@ -766,11 +777,13 @@ struct StoryComposerView: View {
     // MARK: Trim preview (playhead scrub + play the selection)
 
     @MainActor
-    private func setupPlayer(url: URL) {
+    private func setupPlayer(url: URL, hasAudio: Bool) {
         teardownPlayer()
         let p = AVPlayer(url: url)
         p.actionAtItemEnd = .none   // we handle the boundary ourselves
-        activatePreviewAudio()      // hear the clip while trimming (managed session)
+        // Managed audio only for a clip with sound; a silent clip stays out of
+        // the shared session entirely (never interrupts other apps' audio).
+        if hasAudio { activatePreviewAudio() }
         // 30 Hz playhead; LOOP the selected [in, out] window — at OUT, seek
         // back to IN and keep playing so the user always sees exactly the
         // segment that will post. Scrubbing a handle just moves the bounds.
