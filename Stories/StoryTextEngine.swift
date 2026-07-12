@@ -40,47 +40,115 @@ import SwiftUI   // h2: UIColor(_ color: Color) bridging for the palette
 
 // MARK: - Appearance (h2 — fills and sizes glyphs, never moves them)
 
-/// The curated story-text palette. Content colors, not chrome: foam (the
-/// house near-white), abyss (the house dark), and biolume (the one accent).
+/// The story-text palette. White + black are the legibility essentials over
+/// varied media; the house tones (foam/abyss/biolume) and the app's accent
+/// hues fill out the brights. The hue set is REUSED from `Stillwater.Accent`
+/// — one source of truth, no duplicated hex. Stored on the block as a stable
+/// enum id (never a raw color on the wire — flatten bakes it).
 enum StoryTextColor: CaseIterable {
-    case foam, abyss, biolume
+    case white, black, foam, abyss, biolume, cyan, aqua, violet, rose, coral, amber, lime
 
     var uiColor: UIColor {
         switch self {
-        case .foam: return UIColor(Stillwater.Palette.foam)
-        case .abyss: return UIColor(Stillwater.Palette.abyss)
+        case .white:   return .white
+        case .black:   return .black
+        case .foam:    return UIColor(Stillwater.Palette.foam)
+        case .abyss:   return UIColor(Stillwater.Palette.abyss)
         case .biolume: return UIColor(Stillwater.Palette.biolume)
+        case .cyan:    return Self.accent("cyan")
+        case .aqua:    return Self.accent("aqua")
+        case .violet:  return Self.accent("violet")
+        case .rose:    return Self.accent("rose")
+        case .coral:   return Self.accent("coral")
+        case .amber:   return Self.accent("amber")
+        case .lime:    return Self.accent("lime")
         }
     }
 
-    /// The stroke that keeps this fill legible on any footage: dark behind
-    /// light fills, light behind the dark one.
-    var strokeUIColor: UIColor {
-        switch self {
-        case .abyss: return UIColor.white.withAlphaComponent(0.8)
-        case .foam, .biolume: return UIColor.black.withAlphaComponent(0.8)
+    /// A hue from the app's accent presets (DesignSystem) by name — the ONE
+    /// place these hexes live; falls back to biolume if a name ever drifts.
+    private static func accent(_ name: String) -> UIColor {
+        if let hex = Stillwater.Accent.presets.first(where: { $0.name == name })?.hex {
+            return UIColor(Stillwater.Palette.hex(hex))
         }
+        return UIColor(Stillwater.Palette.biolume)
+    }
+
+    /// Legibility stroke DERIVED from the fill's luminance — dark stroke behind
+    /// a light fill, light stroke behind a dark one — so it scales to every
+    /// color without a per-case table.
+    var strokeUIColor: UIColor {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        uiColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b
+        return luminance > 0.5
+            ? UIColor.black.withAlphaComponent(0.8)
+            : UIColor.white.withAlphaComponent(0.8)
     }
 }
 
-/// The curated story-text faces — the two house voices plus the serif's
-/// italic. PostScript names per the design system (no hyphen after the
-/// Newsreader family); system-design fallbacks if registration ever fails.
+/// The story-text faces — 8 visually DISTINCT looks, all on-device (no
+/// bundled/custom fonts beyond the two house voices, zero licensing). Stored
+/// on the block as a stable enum id (never a raw font name on the wire —
+/// flatten bakes it), so it renders identically on send/receive. Every case
+/// falls back to a system face if its named font is ever unavailable, so
+/// there is no crash and no invisible text. `.serif` stays the default.
 enum StoryTextFont: CaseIterable {
-    case serif, serifItalic, mono
+    case serif      // Newsreader (house serif)
+    case sans       // San Francisco (system)
+    case heavy      // system black weight
+    case rounded    // SF Rounded
+    case mono       // SplineSansMono (house mono / typewriter)
+    case script     // Snell Roundhand (handwriting)
+    case marker     // Marker Felt
+    case condensed  // narrow heavy face
 
     func uiFont(pointSize: CGFloat) -> UIFont {
-        let name: String
         switch self {
-        case .serif: name = "Newsreader14pt-Medium"
-        case .serifItalic: name = "Newsreader14pt-Italic"
-        case .mono: name = "SplineSansMono-Regular"
+        case .serif:
+            return Self.named("Newsreader14pt-Medium", pointSize, fallback: .serif)
+        case .sans:
+            return UIFont.systemFont(ofSize: pointSize, weight: .medium)
+        case .heavy:
+            return UIFont.systemFont(ofSize: pointSize, weight: .black)
+        case .rounded:
+            return Self.designed(.rounded, pointSize, weight: .semibold)
+        case .mono:
+            return Self.named("SplineSansMono-Regular", pointSize, fallback: .monospaced)
+        case .script:
+            return Self.named("SnellRoundhand-Bold", pointSize, fallback: .serif)
+        case .marker:
+            return Self.named("MarkerFelt-Wide", pointSize, fallback: .rounded)
+        case .condensed:
+            return Self.condensed(pointSize)
         }
-        if let font = UIFont(name: name, size: pointSize) { return font }
-        let design: UIFontDescriptor.SystemDesign = (self == .mono) ? .monospaced : .serif
-        let system = UIFont.systemFont(ofSize: pointSize, weight: .medium)
-        guard let fallback = system.fontDescriptor.withDesign(design) else { return system }
-        return UIFont(descriptor: fallback, size: pointSize)
+    }
+
+    /// A named face, falling back to a system-design face (never nil, never
+    /// invisible).
+    private static func named(_ name: String, _ size: CGFloat,
+                              fallback design: UIFontDescriptor.SystemDesign) -> UIFont {
+        if let font = UIFont(name: name, size: size) { return font }
+        return designed(design, size, weight: .medium)
+    }
+
+    private static func designed(_ design: UIFontDescriptor.SystemDesign, _ size: CGFloat,
+                                 weight: UIFont.Weight) -> UIFont {
+        let system = UIFont.systemFont(ofSize: size, weight: weight)
+        guard let d = system.fontDescriptor.withDesign(design) else { return system }
+        return UIFont(descriptor: d, size: size)
+    }
+
+    /// A real condensed face if present, else system-bold squeezed via the
+    /// width trait — always resolves.
+    private static func condensed(_ size: CGFloat) -> UIFont {
+        for name in ["HelveticaNeue-CondensedBold", "AvenirNextCondensed-Bold"] {
+            if let font = UIFont(name: name, size: size) { return font }
+        }
+        let base = UIFont.systemFont(ofSize: size, weight: .bold)
+        let desc = base.fontDescriptor.addingAttributes(
+            [.traits: [UIFontDescriptor.TraitKey.width: -0.35]])
+        return UIFont(descriptor: desc, size: size)
     }
 }
 

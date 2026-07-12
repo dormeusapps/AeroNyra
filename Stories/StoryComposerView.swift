@@ -733,18 +733,35 @@ struct StoryComposerView: View {
     /// engine's.
     private func selectedBlockPanel(_ i: Int) -> some View {
         VStack(spacing: 10) {
-            HStack(spacing: 18) {
-                ForEach(Array(StoryTextColor.allCases.enumerated()), id: \.offset) { _, c in
-                    colorSwatch(i, c)
+            // Colors — scrollable strip (white/black + house tones + accent
+            // hues), so a fuller palette never crowds the row.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(Array(StoryTextColor.allCases.enumerated()), id: \.offset) { _, c in
+                        colorSwatch(i, c)
+                    }
                 }
+                .padding(.horizontal, 2)
+            }
 
-                panelDivider
-
-                ForEach(Array(StoryTextFont.allCases.enumerated()), id: \.offset) { _, f in
-                    fontButton(i, f)
+            // Fonts — scrollable strip, each previewed in its own face.
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 16) {
+                    ForEach(Array(StoryTextFont.allCases.enumerated()), id: \.offset) { _, f in
+                        fontButton(i, f)
+                    }
                 }
+                .padding(.horizontal, 2)
+            }
 
-                panelDivider
+            // Size + delete. Alignment buttons removed earlier (operator call):
+            // the overlay keeps its `alignment` field, blocks default .center.
+            HStack(spacing: 16) {
+                Slider(value: Binding(
+                    get: { overlays.indices.contains(i) ? overlays[i].height : Self.referenceTextHeight },
+                    set: { if overlays.indices.contains(i) { overlays[i].height = $0 } }
+                ), in: 0.03...0.12)
+                .tint(Stillwater.Palette.biolume)
 
                 Button {
                     overlays.remove(at: i)
@@ -756,24 +773,8 @@ struct StoryComposerView: View {
                 }
                 .buttonStyle(.plain)
             }
-
-            // Alignment buttons removed (operator call): a no-op for
-            // single-line text, the common case. The overlay model keeps its
-            // `alignment` field — blocks default to .center; the engine and
-            // its fidelity tests are untouched.
-            Slider(value: Binding(
-                get: { overlays.indices.contains(i) ? overlays[i].height : Self.referenceTextHeight },
-                set: { if overlays.indices.contains(i) { overlays[i].height = $0 } }
-            ), in: 0.03...0.12)
-            .tint(Stillwater.Palette.biolume)
-            .frame(maxWidth: 200)
+            .frame(maxWidth: 260)
         }
-    }
-
-    private var panelDivider: some View {
-        Rectangle()
-            .fill(Stillwater.Palette.biolume.opacity(0.15))
-            .frame(width: 1, height: 18)
     }
 
     private func colorSwatch(_ i: Int, _ c: StoryTextColor) -> some View {
