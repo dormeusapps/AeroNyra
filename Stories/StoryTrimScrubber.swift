@@ -94,8 +94,10 @@ struct StoryTrimScrubber: View {
                 if let onPlayToggle {
                     Button(action: onPlayToggle) {
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 19, weight: .semibold))
                             .foregroundStyle(Stillwater.Palette.biolume)
+                            .frame(width: 44, height: 44)   // comfortable tap target
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
