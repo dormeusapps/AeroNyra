@@ -18,6 +18,7 @@ import SwiftUI
 import SwiftData
 import UIKit
 import PhotosUI
+import AVFoundation   // Item 2: full-screen story viewer (AVPlayer / AVPlayerLayer)
 
 struct StreamView: View {
 
@@ -727,53 +728,36 @@ struct StreamView: View {
 
     @ViewBuilder
     private func mediaContent(_ m: Message) -> some View {
-        switch m.mediaMime {
-        case .some(.jpeg):
-            StillwaterPhoto(message: m, isOutbound: m.isOutbound, wipe: { wipeMedia(m) })
-        case .some(.m4a):
-            StillwaterVoiceNote(message: m,
-                                isOutbound: m.isOutbound,
-                                stampListened: { stampListened(m) },
-                                wipe: { wipeMedia(m) })
-        case .some(.mp4):
-            // v1 video: inline player over the persisted blob. A reaped row
-            // (blob gone, mime stamp survives) renders a tombstone — a
-            // STORY's says so, in the same voice as the photo tombstone.
-            if let data = m.mediaData {
-                if m.isStory {
-                    // Live video story: the same mark + in-view boundary wipe
-                    // the photo story gets (StillwaterPhoto's .task); the
-                    // reaper covers off-screen rows. Wiping the blob flips
-                    // this render to the tombstone branch below.
-                    VStack(alignment: m.isOutbound ? .trailing : .leading, spacing: 5) {
-                        VideoBubble(data: data, isOutbound: m.isOutbound)
-                        StoryCaption(message: m)
-                    }
-                    .task {
-                        let remaining = MediaEphemeralityPolicy.storyWindow
-                            - Date.now.timeIntervalSince(m.sentAt ?? m.timestamp)
-                        if remaining > 0 {
-                            try? await Task.sleep(for: .seconds(remaining))
-                            guard !Task.isCancelled else { return }
-                        }
-                        wipeMedia(m)
-                    }
-                } else {
-                    VideoBubble(data: data, isOutbound: m.isOutbound)
-                }
-            } else if m.isStory {
+        // ITEM 2: a STORY never renders inline (photo OR video) — it collapses
+        // to a tap-to-view icon that opens the full-screen viewer, and (a)
+        // stays re-viewable until the 8h reaper. Normal media below is
+        // unchanged. Branches on `isStory` FIRST so a reaped story (blob gone)
+        // still shows the story tombstone.
+        if m.isStory {
+            if m.mediaData != nil {
+                StoryIconBubble(message: m, isOutbound: m.isOutbound, wipe: { wipeMedia(m) })
+            } else {
                 Text("story · gone")
                     .stillwaterMono(8.5, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
-            } else {
-                Text("— media —")
-                    .font(Stillwater.Serif.italic(15))
-                    .foregroundColor(Stillwater.Palette.mistDim)
             }
-        default:
-            if m.isStory {
-                Text("story · gone")
-                    .stillwaterMono(8.5, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
-            } else {
+        } else {
+            switch m.mediaMime {
+            case .some(.jpeg):
+                StillwaterPhoto(message: m, isOutbound: m.isOutbound, wipe: { wipeMedia(m) })
+            case .some(.m4a):
+                StillwaterVoiceNote(message: m,
+                                    isOutbound: m.isOutbound,
+                                    stampListened: { stampListened(m) },
+                                    wipe: { wipeMedia(m) })
+            case .some(.mp4):
+                if let data = m.mediaData {
+                    VideoBubble(data: data, isOutbound: m.isOutbound)
+                } else {
+                    Text("— media —")
+                        .font(Stillwater.Serif.italic(15))
+                        .foregroundColor(Stillwater.Palette.mistDim)
+                }
+            default:
                 Text("— media —")
                     .font(Stillwater.Serif.italic(15))
                     .foregroundColor(Stillwater.Palette.mistDim)
@@ -1049,6 +1033,228 @@ private struct StoryCaption: View {
         if s >= 3600 { return "\(Int((s / 3600).rounded(.up)))h" }
         if s >= 60 { return "\(Int((s / 60).rounded(.up)))m" }
         return "moments"
+    }
+}
+
+// MARK: - Story icon bubble (Item 2 · tap to view, re-viewable until 8h)
+/// A story renders as a compact tappable icon — never inline. Tap opens the
+/// full-screen `StoryViewer`; on dismiss it collapses back here and stays
+/// re-viewable (behavior a) until the shared 8h reaper wipes it. Owns the
+/// in-view boundary wipe (both directions, from the `sentAt` anchor) that the
+/// inline story render used to; the reaper covers off-screen rows. A subtle
+/// "seen" state dims the ring after the first open.
+private struct StoryIconBubble: View {
+    let message: Message
+    let isOutbound: Bool
+    let wipe: () -> Void
+
+    @State private var showViewer = false
+    @State private var seen = false
+    @State private var expiredNow = false
+
+    private var expired: Bool {
+        if expiredNow || message.mediaData == nil { return true }
+        return MediaEphemeralityPolicy.isExpired(isStory: true,
+                                                 mime: message.mediaMime,
+                                                 timestamp: message.timestamp,
+                                                 sentAt: message.sentAt,
+                                                 listenedAt: message.listenedAt,
+                                                 now: .now)
+    }
+
+    var body: some View {
+        Group {
+            if expired {
+                Text("story · gone")
+                    .stillwaterMono(8.5, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
+            } else {
+                Button {
+                    seen = true
+                    showViewer = true
+                } label: { iconRow }
+                .buttonStyle(.plain)
+            }
+        }
+        // 8h boundary wipe, both directions — same anchor the reaper uses; a
+        // conversation left open across the deadline tombstones in place.
+        .task {
+            let remaining = MediaEphemeralityPolicy.storyWindow
+                - Date.now.timeIntervalSince(message.sentAt ?? message.timestamp)
+            if remaining > 0 {
+                try? await Task.sleep(for: .seconds(remaining))
+                guard !Task.isCancelled else { return }
+            }
+            if message.mediaData != nil { wipe() }
+            expiredNow = true
+        }
+        .fullScreenCover(isPresented: $showViewer) {
+            StoryViewer(message: message)
+        }
+    }
+
+    private var expiry: Date {
+        (message.sentAt ?? message.timestamp)
+            .addingTimeInterval(MediaEphemeralityPolicy.storyWindow)
+    }
+
+    /// Thin glowing ring (kin to the presence dots) + a small play triangle,
+    /// and ONE quiet caps line "story · {countdown}". No heavy tile, no
+    /// container fill, no redundant "tap to view"/duplicate "story". Seen dims
+    /// the ring and the line.
+    private var iconRow: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .strokeBorder(Stillwater.Palette.biolume.opacity(seen ? 0.3 : 0.7), lineWidth: 1.5)
+                    .frame(width: 40, height: 40)
+                if message.mediaMime == .jpeg, let data = message.mediaData,
+                   let img = UIImage(data: data) {
+                    Image(uiImage: img)
+                        .resizable().scaledToFill()
+                        .frame(width: 33, height: 33)
+                        .clipShape(Circle())
+                        .opacity(seen ? 0.7 : 1)
+                } else {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Stillwater.Palette.biolume.opacity(seen ? 0.5 : 0.95))
+                }
+            }
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                Text("story · \(Self.remaining(to: expiry, from: context.date))")
+                    .stillwaterMono(8.5, trackingEm: 0.22,
+                                    color: Stillwater.Palette.biolume.opacity(seen ? 0.5 : 0.8))
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
+    /// Coarse story clock (matches StoryCaption): hours rounded up while ≥1h,
+    /// then minutes, then "moments".
+    private static func remaining(to expiry: Date, from now: Date) -> String {
+        let s = expiry.timeIntervalSince(now)
+        if s >= 3600 { return "\(Int((s / 3600).rounded(.up)))h" }
+        if s >= 60 { return "\(Int((s / 60).rounded(.up)))m" }
+        return "moments"
+    }
+}
+
+// MARK: - Story viewer (Item 2 · full-screen; manages audio for video-with-sound)
+/// Full-screen story presentation. Photo: fit-to-screen, tap to dismiss.
+/// Video: `VideoPlayer`, auto-plays once; if the clip carries audio the viewer
+/// ACTIVATES `.playback` on open and DEACTIVATES with
+/// `.notifyOthersOnDeactivation` on dismiss (so Music/Spotify/podcast resumes)
+/// — the same managed-session pattern as the calling + trim-preview fixes, via
+/// AVAudioSession directly (never the call layer's RTCAudioSession). Dismiss
+/// returns to the chat; the icon stays re-viewable.
+private struct StoryViewer: View {
+    let message: Message
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var player: AVPlayer?
+    @State private var tempURL: URL?
+    @State private var audioActive = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if message.mediaMime == .jpeg, let data = message.mediaData,
+               let img = UIImage(data: data) {
+                Image(uiImage: img)
+                    .resizable().scaledToFit()
+                    .ignoresSafeArea()
+                    .onTapGesture { dismiss() }
+            } else if let player {
+                // No default player controls — Apple's control bar (with the
+                // audio/route button) would sit above and swallow the close
+                // tap. We drive playback (auto-play on open) and dismiss via
+                // our own close button + tap-to-dismiss, so close always wins.
+                StoryVideoSurface(player: player)
+                    .ignoresSafeArea()
+                    .onTapGesture { dismiss() }
+            }
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Text("close")
+                            .stillwaterMono(9, trackingEm: 0.24, color: Color.white)
+                    }
+                    .padding(20)
+                }
+                Spacer()
+            }
+        }
+        .task { await stageVideoIfNeeded() }
+        .onDisappear { teardown() }
+    }
+
+    @MainActor
+    private func stageVideoIfNeeded() async {
+        guard message.mediaMime == .mp4, let data = message.mediaData, player == nil else { return }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("story-\(UUID().uuidString).mp4")
+        guard (try? data.write(to: url)) != nil else { return }
+        tempURL = url
+        // Managed audio only for a clip that actually has sound.
+        if await Self.hasAudioTrack(url) { activateAudio() }
+        let p = AVPlayer(url: url)
+        player = p
+        p.play()
+    }
+
+    private func teardown() {
+        player?.pause()
+        player = nil
+        deactivateAudio()
+        if let tempURL { try? FileManager.default.removeItem(at: tempURL) }
+        tempURL = nil
+    }
+
+    private func activateAudio() {
+        guard !audioActive else { return }
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default)
+        try? session.setActive(true)
+        audioActive = true
+    }
+
+    private func deactivateAudio() {
+        guard audioActive else { return }
+        audioActive = false
+        try? AVAudioSession.sharedInstance()
+            .setActive(false, options: [.notifyOthersOnDeactivation])
+    }
+
+    private static func hasAudioTrack(_ url: URL) async -> Bool {
+        let tracks = try? await AVURLAsset(url: url).loadTracks(withMediaType: .audio)
+        return tracks?.isEmpty == false
+    }
+}
+
+// MARK: - Story video surface (Item 2 · bare AVPlayerLayer, NO default controls)
+/// Hosts the story video with no playback control layer, so Apple's control
+/// bar (play/scrub/audio-route) can't intercept the close tap. Playback is
+/// driven by `StoryViewer`; dismissal is its close button + tap-to-dismiss.
+private struct StoryVideoSurface: UIViewRepresentable {
+    let player: AVPlayer
+
+    final class PlayerView: UIView {
+        override static var layerClass: AnyClass { AVPlayerLayer.self }
+        var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    }
+
+    func makeUIView(context: Context) -> PlayerView {
+        let view = PlayerView()
+        view.playerLayer.videoGravity = .resizeAspect
+        view.playerLayer.player = player
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerView, context: Context) {
+        uiView.playerLayer.player = player
     }
 }
 
