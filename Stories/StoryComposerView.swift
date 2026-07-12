@@ -59,6 +59,15 @@ struct StoryComposerView: View {
     @State private var pickedItem: PhotosPickerItem?
     @State private var media: CanvasMedia?
 
+    /// Item 3a: in-composer camera capture. `showCamera` presents the capture
+    /// surface; the option is only offered where a camera exists (hidden in
+    /// the simulator), so `applyPhoto` stays the one convergence point for
+    /// library AND camera photos.
+    @State private var showCamera = false
+    private var cameraAvailable: Bool {
+        UIImagePickerController.isSourceTypeAvailable(.camera)
+    }
+
     /// TRIM (T1): the scrubber's inputs + selection, populated on video load.
     /// Defaults keep the clip LEGAL — in = 0, out = min(duration, cap) — so a
     /// ≤60s source opens fully selected and posts exactly like stage d.
@@ -153,6 +162,22 @@ struct StoryComposerView: View {
         .onChange(of: pickedItem) { _, item in
             guard let item else { return }
             Task { await loadPicked(item) }
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            // Item 3a/3b: the native camera offers photo OR video (its own
+            // toggle); both converge on the same applyPhoto / applyVideo paths.
+            StoryCameraCapture(
+                onPhoto: { image in
+                    showCamera = false
+                    guard let raw = image.jpegData(compressionQuality: 0.95) else { return }
+                    applyPhoto(raw: raw, image: image)
+                },
+                onVideo: { url in
+                    showCamera = false
+                    Task { await acceptCameraVideo(url) }
+                },
+                onCancel: { showCamera = false })
+            .ignoresSafeArea()
         }
         .onDisappear { discardVideoIfAny() }   // idempotent: try? on a gone file
         .alert("can't carry this clip", isPresented: Binding(
@@ -261,12 +286,23 @@ struct StoryComposerView: View {
     @ViewBuilder
     private var footer: some View {
         if media == nil {
-            PhotosPicker(selection: $pickedItem,
-                         matching: .any(of: [.images, .videos]),
-                         photoLibrary: .shared()) {
-                outlinePill("pick a photo or video")
+            // Source picker (Item 3a/4): Library AND Camera, side by side,
+            // neither buried. Camera pill only where a camera exists.
+            HStack(spacing: 12) {
+                PhotosPicker(selection: $pickedItem,
+                             matching: .any(of: [.images, .videos]),
+                             photoLibrary: .shared()) {
+                    outlinePill("library")
+                }
+                .buttonStyle(.plain)
+
+                if cameraAvailable {
+                    Button { showCamera = true } label: {
+                        outlinePill("camera")
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .buttonStyle(.plain)
         } else {
             VStack(spacing: 12) {
                 Button(action: post) {
@@ -276,14 +312,26 @@ struct StoryComposerView: View {
                 .disabled(posting || selectionOverCap)
                 .opacity(selectionOverCap ? 0.4 : 1.0)
 
-                PhotosPicker(selection: $pickedItem,
-                             matching: .any(of: [.images, .videos]),
-                             photoLibrary: .shared()) {
-                    Text("choose another")
-                        .stillwaterMono(8, trackingEm: 0.22, color: Stillwater.Palette.mistDim)
+                // Replace the current media — same two sources.
+                HStack(spacing: 18) {
+                    PhotosPicker(selection: $pickedItem,
+                                 matching: .any(of: [.images, .videos]),
+                                 photoLibrary: .shared()) {
+                        Text("library")
+                            .stillwaterMono(8, trackingEm: 0.22, color: Stillwater.Palette.mistDim)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(posting)
+
+                    if cameraAvailable {
+                        Button { showCamera = true } label: {
+                            Text("camera")
+                                .stillwaterMono(8, trackingEm: 0.22, color: Stillwater.Palette.mistDim)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(posting)
+                    }
                 }
-                .buttonStyle(.plain)
-                .disabled(posting)
 
                 Text("vanishes for both of you \(Self.windowHours) hours after sending")
                     .stillwaterMono(7.5, trackingEm: 0.18, color: Stillwater.Palette.mistDimmest)
@@ -303,35 +351,60 @@ struct StoryComposerView: View {
         defer { pickedItem = nil }
         if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
             guard let picked = try? await item.loadTransferable(type: PickedVideo.self) else { return }
-            discardVideoIfAny()
-            let thumb = await Self.firstFrame(of: picked.url)
-            media = .video(url: picked.url, thumb: thumb)
-            overlays = []                      // fresh canvas; no text-on-video until f
-            selectedOverlay = nil
-            // TRIM inputs: duration + filmstrip, and a LEGAL default window.
-            let seconds = (try? await AVURLAsset(url: picked.url).load(.duration).seconds) ?? 0
-            videoDuration = seconds
-            trimSelection = 0...min(seconds, VideoTranscoder.maxClipSeconds)
-            videoThumbs = await Self.filmstrip(of: picked.url)
-            // Only manage the audio session for a clip that actually HAS
-            // sound — a silent video must never interrupt the user's music.
-            let hasAudio = await Self.hasAudioTrack(picked.url)
-            setupPlayer(url: picked.url, hasAudio: hasAudio)
+            await applyVideo(url: picked.url)
         } else {
             guard let raw = try? await item.loadTransferable(type: Data.self),
                   let image = UIImage(data: raw) else { return }
-            discardVideoIfAny()
-            // EXIF-normalize at LOAD: a camera portrait arrives as landscape
-            // pixels + an orientation flag; the engine flattens in raw pixel
-            // space, so the canvas image (preview frame AND burn base) must
-            // be .up at scale 1 or the burn would land on rotated pixels.
-            media = .photo(raw: raw, image: Self.normalizedUp(image))
-            overlays = []
-            selectedOverlay = nil
-            videoDuration = 0
-            videoThumbs = []
-            trimSelection = 0...0
+            applyPhoto(raw: raw, image: image)
         }
+    }
+
+    /// The ONE place a video (library OR camera, Item 3b) becomes canvas media:
+    /// thumbnail, duration + filmstrip, a LEGAL default trim window, and the
+    /// looping preview player. Both sources converge here, so nothing
+    /// downstream (trim/burn/send) forks.
+    @MainActor
+    private func applyVideo(url: URL) async {
+        discardVideoIfAny()
+        let thumb = await Self.firstFrame(of: url)
+        media = .video(url: url, thumb: thumb)
+        overlays = []                      // fresh canvas; no text-on-video until f
+        selectedOverlay = nil
+        let seconds = (try? await AVURLAsset(url: url).load(.duration).seconds) ?? 0
+        videoDuration = seconds
+        trimSelection = 0...min(seconds, VideoTranscoder.maxClipSeconds)
+        videoThumbs = await Self.filmstrip(of: url)
+        // Only manage the audio session for a clip that actually HAS sound —
+        // a silent video must never interrupt the user's music.
+        let hasAudio = await Self.hasAudioTrack(url)
+        setupPlayer(url: url, hasAudio: hasAudio)
+    }
+
+    /// Camera video (Item 3b): copy out of the picker's temp location to our
+    /// own owned temp (deletable by `discardVideoIfAny`), then the SAME
+    /// `applyVideo` path a library clip takes.
+    @MainActor
+    private func acceptCameraVideo(_ url: URL) async {
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cam-\(UUID().uuidString).mov")
+        let sendURL = (try? FileManager.default.copyItem(at: url, to: dest)) != nil ? dest : url
+        await applyVideo(url: sendURL)
+    }
+
+    /// The ONE place a photo (library OR camera, Item 3a) becomes canvas media.
+    /// EXIF-normalize here: a camera portrait arrives as landscape pixels + an
+    /// orientation flag; the engine flattens in raw pixel space, so the canvas
+    /// image (preview frame AND burn base) must be `.up` at scale 1 or the burn
+    /// lands on rotated pixels. Resets the video/trim state a photo doesn't use.
+    @MainActor
+    private func applyPhoto(raw: Data, image: UIImage) {
+        discardVideoIfAny()
+        media = .photo(raw: raw, image: Self.normalizedUp(image))
+        overlays = []
+        selectedOverlay = nil
+        videoDuration = 0
+        videoThumbs = []
+        trimSelection = 0...0
     }
 
     /// TRIM pre-gate, display/gating only: post is disabled while the
@@ -898,5 +971,55 @@ struct StoryComposerView: View {
                 RoundedRectangle(cornerRadius: 23)
                     .strokeBorder(Stillwater.Palette.biolume.opacity(0.4))
             )
+    }
+}
+
+// MARK: - In-composer camera capture (Item 3a photo + 3b video)
+
+/// The system camera, wrapped for the story composer. Offers BOTH photo and
+/// video via the native camera's own mode toggle (`mediaTypes` carries image +
+/// movie); the delegate routes an image to `onPhoto` and a movie URL to
+/// `onVideo`. Captured media converges on the composer's `applyPhoto` /
+/// `applyVideo` — the SAME pipelines as a library pick, so nothing downstream
+/// forks. Video is capped at the wire clip limit at capture time. Camera
+/// hardware only; the composer hides the entry where no camera exists, so this
+/// is never presented on the simulator.
+struct StoryCameraCapture: UIViewControllerRepresentable {
+    let onPhoto: (UIImage) -> Void
+    let onVideo: (URL) -> Void
+    let onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.mediaTypes = ["public.image", "public.movie"]   // native photo/video toggle
+        picker.videoMaximumDuration = VideoTranscoder.maxClipSeconds
+        picker.videoQuality = .typeHigh
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ picker: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        private let parent: StoryCameraCapture
+        init(_ parent: StoryCameraCapture) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let url = info[.mediaURL] as? URL {
+                parent.onVideo(url)
+            } else if let image = info[.originalImage] as? UIImage {
+                parent.onPhoto(image)
+            } else {
+                parent.onCancel()
+            }
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.onCancel()
+        }
     }
 }
