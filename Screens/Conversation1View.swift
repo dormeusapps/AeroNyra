@@ -1051,6 +1051,9 @@ private struct StoryIconBubble: View {
     @State private var showViewer = false
     @State private var seen = false
     @State private var expiredNow = false
+    /// First-frame preview for a VIDEO story, so its icon shows an image in
+    /// the ring just like a photo story (generated once, off the blob).
+    @State private var videoThumb: UIImage?
 
     private var expired: Bool {
         if expiredNow || message.mediaData == nil { return true }
@@ -1087,6 +1090,12 @@ private struct StoryIconBubble: View {
             if message.mediaData != nil { wipe() }
             expiredNow = true
         }
+        // Generate the video story's ring preview once, off the blob.
+        .task {
+            guard message.mediaMime == .mp4, videoThumb == nil,
+                  let data = message.mediaData else { return }
+            videoThumb = await Self.firstFrame(from: data)
+        }
         .fullScreenCover(isPresented: $showViewer) {
             StoryViewer(message: message)
         }
@@ -1095,6 +1104,29 @@ private struct StoryIconBubble: View {
     private var expiry: Date {
         (message.sentAt ?? message.timestamp)
             .addingTimeInterval(MediaEphemeralityPolicy.storyWindow)
+    }
+
+    /// The image shown inside the ring: a photo story's own bytes, or a video
+    /// story's first frame once generated. Nil until a video thumb is ready.
+    private var ringPreview: UIImage? {
+        if message.mediaMime == .jpeg, let data = message.mediaData {
+            return UIImage(data: data)
+        }
+        return videoThumb
+    }
+
+    /// First frame of a video story's blob for the ring preview — transform-
+    /// applied (upright), small, temp file cleaned up. nil on any failure.
+    private static func firstFrame(from data: Data) async -> UIImage? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("storythumb-\(UUID().uuidString).mp4")
+        guard (try? data.write(to: url)) != nil else { return nil }
+        defer { try? FileManager.default.removeItem(at: url) }
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 120, height: 120)
+        guard let cg = try? await generator.image(at: .zero).image else { return nil }
+        return UIImage(cgImage: cg)
     }
 
     /// Thin glowing ring (kin to the presence dots) + a small play triangle,
@@ -1107,14 +1139,24 @@ private struct StoryIconBubble: View {
                 Circle()
                     .strokeBorder(Stillwater.Palette.biolume.opacity(seen ? 0.3 : 0.7), lineWidth: 1.5)
                     .frame(width: 40, height: 40)
-                if message.mediaMime == .jpeg, let data = message.mediaData,
-                   let img = UIImage(data: data) {
-                    Image(uiImage: img)
+                if let preview = ringPreview {
+                    // Photo: the image itself. Video: its first frame, with a
+                    // small play glyph so the ring still reads as a video.
+                    Image(uiImage: preview)
                         .resizable().scaledToFill()
                         .frame(width: 33, height: 33)
                         .clipShape(Circle())
                         .opacity(seen ? 0.7 : 1)
+                    if message.mediaMime == .mp4 {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color.white)
+                            .shadow(color: .black.opacity(0.5), radius: 1)
+                            .opacity(seen ? 0.7 : 1)
+                    }
                 } else {
+                    // No preview yet (video thumb still generating, or decode
+                    // failed): the quiet play triangle.
                     Image(systemName: "play.fill")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Stillwater.Palette.biolume.opacity(seen ? 0.5 : 0.95))
