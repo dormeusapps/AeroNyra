@@ -74,6 +74,10 @@ struct StoryComposerView: View {
     @State private var playhead: Double?
     @State private var isPlaying = false
     @State private var timeObserver: Any?
+    /// Whether the trim preview currently holds the shared audio session
+    /// (video previews only). Gates activate/deactivate so a photo story — or
+    /// merely opening the composer — never touches other apps' audio.
+    @State private var previewAudioActive = false
 
     /// h1 — the text blocks. Geometry lives in each overlay's FRACTIONS;
     /// every placement/clamp call below is the engine's, never local math.
@@ -765,19 +769,38 @@ struct StoryComposerView: View {
     private func setupPlayer(url: URL) {
         teardownPlayer()
         let p = AVPlayer(url: url)
-        // 30 Hz playhead; auto-pause at the OUT handle so play previews
-        // exactly the segment that posts.
+        p.actionAtItemEnd = .none   // we handle the boundary ourselves
+        activatePreviewAudio()      // hear the clip while trimming (managed session)
+        // 30 Hz playhead; LOOP the selected [in, out] window — at OUT, seek
+        // back to IN and keep playing so the user always sees exactly the
+        // segment that will post. Scrubbing a handle just moves the bounds.
         timeObserver = p.addPeriodicTimeObserver(
             forInterval: CMTime(value: 1, timescale: 30), queue: .main) { time in
             playhead = time.seconds
             if isPlaying, time.seconds >= trimSelection.upperBound {
-                p.pause()
-                isPlaying = false
-                playhead = trimSelection.upperBound
+                p.seek(to: CMTime(seconds: trimSelection.lowerBound, preferredTimescale: 600),
+                       toleranceBefore: .zero, toleranceAfter: .zero)
+                playhead = trimSelection.lowerBound
             }
         }
         player = p
         playhead = 0
+        // Auto-start the loop so the trim preview is live from the moment the
+        // video lands, not tap-to-play.
+        startLoop()
+    }
+
+    /// Play the selected window from the IN handle and keep it looping (the
+    /// periodic observer wraps at OUT). Idempotent.
+    @MainActor
+    private func startLoop() {
+        guard let player else { return }
+        playhead = trimSelection.lowerBound
+        isPlaying = true
+        player.seek(to: CMTime(seconds: trimSelection.lowerBound, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+            player.play()
+        }
     }
 
     private func teardownPlayer() {
@@ -787,6 +810,30 @@ struct StoryComposerView: View {
         timeObserver = nil
         playhead = nil
         isPlaying = false
+        deactivatePreviewAudio()   // hand audio back so other apps resume
+    }
+
+    /// Trim-preview audio, managed like VoicePlayer/VoiceRecorder: activate
+    /// `.playback` only while a video preview is live (the video path is the
+    /// only caller — a photo story never creates a player, so it never reaches
+    /// here) so the user HEARS the clip while trimming. Deactivated on
+    /// teardown with `.notifyOthersOnDeactivation` so Music/Spotify/podcast
+    /// RESUMES. Uses AVAudioSession DIRECTLY — not the RTCAudioSession the call
+    /// layer manages; the composer is unreachable during an active call (the
+    /// call overlay covers the app), so the two never contend.
+    private func activatePreviewAudio() {
+        guard !previewAudioActive else { return }
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default)
+        try? session.setActive(true)
+        previewAudioActive = true
+    }
+
+    private func deactivatePreviewAudio() {
+        guard previewAudioActive else { return }
+        previewAudioActive = false
+        try? AVAudioSession.sharedInstance()
+            .setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
     /// Strip drag: pause and show that exact frame (zero-tolerance seek).
