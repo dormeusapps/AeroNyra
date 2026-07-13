@@ -144,9 +144,13 @@ struct StreamView: View {
             PeerSettingsView(conversation: currentConversation())
         }
         .fullScreenCover(isPresented: $showWalkie) {
-            // Step 1: presentation + idle globe only. The peer is inherited
-            // from this conversation — no picker; dismiss returns to this chat.
-            WalkieGlobeView(peerName: peerName)
+            // Step 2: the globe's hold-to-talk drives the SAME beginPTT/endPTT
+            // the composer button uses — a release sends an `isPushToTalk` note
+            // over the shipped media path. Peer inherited from this chat; no
+            // picker; dismiss returns here.
+            WalkieGlobeView(peerName: peerName,
+                            onPressDown: { beginPTT() },
+                            onPressUp: { endPTT() })
         }
         .sheet(isPresented: $showVerify) {
             SASVerifySheet(peerName: peerName,
@@ -1652,21 +1656,30 @@ private struct RecordingWaveform: View {
         .environment(presence)
 }
 
-// MARK: - Walkie mode (full-screen globe · Step 1: presentation + idle pulse)
+// MARK: - Walkie mode (full-screen globe · Step 2: hold-to-talk wired)
 /// A full-screen "walkie mode" surface for the ONE peer this conversation is
-/// bound to. Step 1 is PRESENTATION ONLY: Stillwater dark field, the peer named
-/// up top, a slow idle breathing globe (timer-driven, no audio), and a dismiss
-/// back to the same chat. The hold-to-talk send and the audio-reactive pulse
-/// (recorder/player meters) land in Steps 2–4 — this view touches nothing on
-/// the wire, the send path, or the calling stack.
+/// bound to. Idle globe (Step 1) + hold-to-talk (Step 2): pressing the orb
+/// drives the SAME `beginPTT()`/`endPTT()` the composer button uses, so a
+/// release sends an ordinary `isPushToTalk: true` voice note over the shipped
+/// media path. This view adds NO recorder, transport, or send code — it only
+/// forwards press-down / release. The audio-reactive pulse (recorder/player
+/// meters) is still Steps 3–4; the held state here is a fixed transmit
+/// brightness.
 private struct WalkieGlobeView: View {
     let peerName: String
+    /// Forwarded to StreamView's `beginPTT`/`endPTT`. The globe never touches
+    /// the recorder or the wire — it only reports press-down and release.
+    let onPressDown: () -> Void
+    let onPressUp: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Idle breathing driver — a single accent, brightness/scale only (never a
     /// second hue), per the design language. Held static under reduce-motion.
     @State private var breathing = false
+    /// True while the orb is pressed — drives the transmit brightness and swaps
+    /// the hint to "transmitting…". Purely local; the send is StreamView's.
+    @State private var holding = false
 
     var body: some View {
         ZStack {
@@ -1677,9 +1690,12 @@ private struct WalkieGlobeView: View {
             VStack {
                 header
                 Spacer()
-                Text("hold to talk")
-                    .stillwaterMono(8.5, trackingEm: 0.28, color: Stillwater.Palette.mistDimmest)
+                Text(holding ? "transmitting…" : "hold to talk")
+                    .stillwaterMono(8.5, trackingEm: 0.28,
+                                    color: holding ? Stillwater.Palette.biolume
+                                                   : Stillwater.Palette.mistDimmest)
                     .padding(.bottom, 54)
+                    .animation(.easeOut(duration: 0.16), value: holding)
             }
         }
         .onAppear {
@@ -1713,7 +1729,9 @@ private struct WalkieGlobeView: View {
         .padding(.top, 18)
     }
 
-    // MARK: The globe — idle breathing (Step 1)
+    // MARK: The globe — idle breathing (Step 1) + hold-to-talk (Step 2)
+    /// Held brightens/enlarges the orb as a fixed transmit state (the meter-
+    /// driven pulse is Step 3). `holding` overrides the idle breathing values.
     private var globe: some View {
         ZStack {
             // Soft outer glow — the "field" the globe sits in.
@@ -1723,22 +1741,34 @@ private struct WalkieGlobeView: View {
                     center: .center, startRadius: 2, endRadius: 190))
                 .frame(width: 340, height: 340)
                 .blur(radius: 26)
-                .opacity(breathing ? 0.9 : 0.55)
+                .opacity(holding ? 1.0 : (breathing ? 0.9 : 0.55))
 
             // Core body — a translucent bioluminescent sphere.
             Circle()
                 .fill(RadialGradient(
-                    colors: [Stillwater.Palette.biolume.opacity(0.35),
+                    colors: [Stillwater.Palette.biolume.opacity(holding ? 0.6 : 0.35),
                              Stillwater.Palette.biolume.opacity(0.04)],
                     center: .init(x: 0.42, y: 0.38), startRadius: 4, endRadius: 150))
                 .frame(width: 210, height: 210)
-                .scaleEffect(breathing ? 1.06 : 1.0)
+                .scaleEffect(holding ? 1.12 : (breathing ? 1.06 : 1.0))
 
             // Rim — the crisp edge that reads as an orb, not a blob.
             Circle()
-                .strokeBorder(Stillwater.Palette.biolume.opacity(breathing ? 0.7 : 0.4), lineWidth: 1.5)
+                .strokeBorder(Stillwater.Palette.biolume.opacity(holding ? 0.95 : (breathing ? 0.7 : 0.4)),
+                              lineWidth: holding ? 2 : 1.5)
                 .frame(width: 210, height: 210)
-                .scaleEffect(breathing ? 1.06 : 1.0)
+                .scaleEffect(holding ? 1.12 : (breathing ? 1.06 : 1.0))
         }
+        // The whole orb is the push-to-talk button. Zero-distance drag detects
+        // press/release (matches the composer `pttButton`); release sends.
+        .contentShape(Circle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in if !holding { holding = true; onPressDown() } }
+                .onEnded { _ in holding = false; onPressUp() }
+        )
+        .animation(.easeOut(duration: 0.16), value: holding)
+        .accessibilityLabel("Hold to talk")
+        .accessibilityHint("Press and hold to send a walkie-talkie voice note")
     }
 }
