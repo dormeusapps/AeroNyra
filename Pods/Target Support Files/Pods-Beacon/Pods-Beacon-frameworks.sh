@@ -177,10 +177,12 @@ code_sign_if_enabled() {
 
 if [[ "$CONFIGURATION" == "Debug" ]]; then
   install_framework "${BUILT_PRODUCTS_DIR}/LibSignalClient/LibSignalClient.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/Opus/Opus.framework"
   install_framework "${PODS_XCFRAMEWORKS_BUILD_DIR}/WebRTC-lib/WebRTC.framework"
 fi
 if [[ "$CONFIGURATION" == "Release" ]]; then
   install_framework "${BUILT_PRODUCTS_DIR}/LibSignalClient/LibSignalClient.framework"
+  install_framework "${BUILT_PRODUCTS_DIR}/Opus/Opus.framework"
   install_framework "${PODS_XCFRAMEWORKS_BUILD_DIR}/WebRTC-lib/WebRTC.framework"
 fi
 if [ "${COCOAPODS_PARALLEL_CODE_SIGN}" == "true" ]; then

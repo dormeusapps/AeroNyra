@@ -1,9 +1,11 @@
 PODS:
   - LibSignalClient (0.96.4)
+  - Opus (1.5.2)
   - WebRTC-lib (149.0.0)
 
 DEPENDENCIES:
   - LibSignalClient (from `https://github.com/signalapp/libsignal.git`, tag `v0.96.4`)
+  - Opus (from `Vendor/opus`)
   - WebRTC-lib (= 149.0.0)
 
 SPEC REPOS:
@@ -14,6 +16,8 @@ EXTERNAL SOURCES:
   LibSignalClient:
     :git: https://github.com/signalapp/libsignal.git
     :tag: v0.96.4
+  Opus:
+    :path: Vendor/opus
 
 CHECKOUT OPTIONS:
   LibSignalClient:
@@ -22,8 +26,9 @@ CHECKOUT OPTIONS:
 
 SPEC CHECKSUMS:
   LibSignalClient: 3f510b4274fccf02d365f51c3e06d18725d9fba1
+  Opus: c1af19778d1b3f121632fa25f99ec01c466f30e1
   WebRTC-lib: be609ee198a0a9cf02d497dad5b9d298860de47b
 
-PODFILE CHECKSUM: 173d3813aaed206cc46774992d63c49ee524b4b6
+PODFILE CHECKSUM: cb0ac8c79261321045b1edf0b7a31e78520379d9
 
 COCOAPODS: 1.16.2

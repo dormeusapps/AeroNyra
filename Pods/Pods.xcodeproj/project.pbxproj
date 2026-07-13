@@ -20,90 +20,210 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		003C2A500A4F3C11B5EAFE8FD333CEE0 /* fixed_generic.h in Headers */ = {isa = PBXBuildFile; fileRef = BF6482F68030F4D9E6906A503A227259 /* fixed_generic.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		00B013DD3D27FAA3BD2EE0A53B5ECB83 /* burg_modified_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 4A4C387EC077D4B0AFF5225283D7336A /* burg_modified_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		00F446DAED2E0849D5D0EB334586902B /* k2a_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = DF9545D344BD538BCCF8A40E8DBFDD36 /* k2a_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		01FDB5791D5EF830BE0A5F93047FF05A /* resampler_structs.h in Headers */ = {isa = PBXBuildFile; fileRef = BF1C8B05EEB87F99ED179FF6C767CECC /* resampler_structs.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		02C00B066CAEC015734134C6F3A67806 /* residual_energy_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 92FEEA0487C1A278559197733252BC37 /* residual_energy_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		0334210370378C4F39F14ADE23E1407A /* stereo_LR_to_MS.c in Sources */ = {isa = PBXBuildFile; fileRef = 8F24889C3CA922893438E5CD54F56D68 /* stereo_LR_to_MS.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		03D66A768F096D5394E103F7634D6CB2 /* BackupAuthCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AA754AE623B3245BD680124BF0202AC /* BackupAuthCredential.swift */; };
+		05CA294029B602A9184B8A9CCC8577C7 /* errors.h in Headers */ = {isa = PBXBuildFile; fileRef = 7E8823F56AFA262F0DC8F4249BDA90F6 /* errors.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		05D3D7989CD4B90F2E36567ADBE1F875 /* structs_FLP.h in Headers */ = {isa = PBXBuildFile; fileRef = 6B0B162CB62AE8B60E100E1ADEA4D367 /* structs_FLP.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		06032AACE6AFA9BC811CE3DA52196E4D /* kiss_fft.c in Sources */ = {isa = PBXBuildFile; fileRef = 69ABE35646506A0D8467576091EBBC44 /* kiss_fft.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		06CDC379FFBEB94FAC74BCB2FED16CA3 /* DeviceId.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CA1382020344593A5272F6EF66BCA57 /* DeviceId.swift */; };
+		0817624DA28E6921873408D4BAAF847C /* decode_pulses.c in Sources */ = {isa = PBXBuildFile; fileRef = C4C887FFE431F12C0B8089691A0793CD /* decode_pulses.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		084ABDE0627226BC8C5F68BDDE05D311 /* MacroDebug.h in Headers */ = {isa = PBXBuildFile; fileRef = 1C19A93EBBDCC1AEDAC45880585F5C11 /* MacroDebug.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		090493BE1F6DCC0615BE0DC62162FAAC /* mapping_matrix.h in Headers */ = {isa = PBXBuildFile; fileRef = 7F3588AD3E157F2F3BE2107E5074CCEF /* mapping_matrix.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		092C5CB90414D58FF43051150996F96A /* CreateCallLinkCredentialRequestContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90E4AF0F79992EAB6242800309D1D73E /* CreateCallLinkCredentialRequestContext.swift */; };
+		092CBD7A12E5D3613B2E8C34328F81A8 /* init_encoder.c in Sources */ = {isa = PBXBuildFile; fileRef = 35E7DA1B87D9B521966E404DFC19B67F /* init_encoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		095027F50F3EAF6C6349B1D71462D342 /* ServiceId.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10E6903BF99F1AA9FD712A2670E8AF24 /* ServiceId.swift */; };
 		09877EA0E190DB401DB8E3DF3B86F6BF /* ProfileKeyCommitment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9899616F3DD26B33618F02E5138D9938 /* ProfileKeyCommitment.swift */; };
 		0B5495A795D1C2BA7D726FDD526AD7F7 /* ServerZkProfileOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9D5569B4E7F991F5AD284F4DD7A9D73 /* ServerZkProfileOperations.swift */; };
+		0D0476C7A6C46B08B5063B3E26AD37AF /* sigm_Q15.c in Sources */ = {isa = PBXBuildFile; fileRef = 06EF1A497B787C152AC30AE2F6D896E0 /* sigm_Q15.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		0D4EF2F90C4E59E27963E17DAFF7E47B /* BackupAuthCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1BA45B9E6B908492AB1282A531213A8 /* BackupAuthCredentialResponse.swift */; };
+		0D6C39B37949EEF5572574D929F5B23E /* stereo_MS_to_LR.c in Sources */ = {isa = PBXBuildFile; fileRef = 5E4477BCCF4D0B3499EA1486C7630273 /* stereo_MS_to_LR.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		0E8D2B942DDF8DA84731C737B8C7664B /* PlaintextContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 921181BA80D6A27196AE4947860EBBCC /* PlaintextContent.swift */; };
 		0F1CEA68A527E4C589B82EB5E4CF4D18 /* AuthMessagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63C44D1B920C0431A5E033E6066D69D0 /* AuthMessagesService.swift */; };
+		10AB5C19E0C81DD77E46455685BED25B /* control.h in Headers */ = {isa = PBXBuildFile; fileRef = 59E4D0937D5EB8287279F8FC4AE66E56 /* control.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		11A1FB4EA635FFEDAF1B7A32FEA9CC6A /* SigProc_FLP.h in Headers */ = {isa = PBXBuildFile; fileRef = E6A9F8B30561988239C1C09EE1A0F093 /* SigProc_FLP.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		12641E3E3F6715949539800F0CCC7BF7 /* ExpiringProfileKeyCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 239E19F04540A501949D4453A92C4D0F /* ExpiringProfileKeyCredentialResponse.swift */; };
 		12882DF9B30C06854212F8907D04B54F /* CallLinkAuthCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79139E4E0262154ABC9EC57875FF61FD /* CallLinkAuthCredentialResponse.swift */; };
 		1288D078513353CB4FB573E50332774B /* NotarySignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 961392D26B3B75B444646D5EF31878DB /* NotarySignature.swift */; };
+		1337D9D7EA5E969F2F3BAD2F41487416 /* bwexpander.c in Sources */ = {isa = PBXBuildFile; fileRef = 9D72A9C7C4743C18AD42D7FACC766515 /* bwexpander.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		1342C632253ACB72CA0AE320155DABB7 /* bands.c in Sources */ = {isa = PBXBuildFile; fileRef = 4BECE021359C6894CE9E12F4EB472ED2 /* bands.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		135E7169FCACD89E3F793E68D94A2406 /* GroupSecretParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7405AC8F88B2F4C534C6980618C99CE0 /* GroupSecretParams.swift */; };
 		1420EB94FFB2DF19B93DC6B8F595C918 /* Cds2.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FBDA96133C387CD7AB773DC7BE1EB46 /* Cds2.swift */; };
+		15A9F7599B67380D6345732F2F55CF86 /* fixed_debug.h in Headers */ = {isa = PBXBuildFile; fileRef = 1A850F0C5A6ED4E1D0CB862668384C48 /* fixed_debug.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		1830F916FE9D81B143F52C227F98B9C5 /* SealedSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CF046973EA88C919041ACCF88CBAAE9 /* SealedSender.swift */; };
+		1853C38D6AA91F3C0DF98C381EB8866C /* NLSF_decode.c in Sources */ = {isa = PBXBuildFile; fileRef = F3BD93621460F86DE1EDB09B95BE7916 /* NLSF_decode.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		191D2F00D2E7A6A1045F19F2B8A1CBA9 /* Username.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF3498FA90C4F714D7900EDCB2ECD81 /* Username.swift */; };
 		19AE47254AD02DFD5E1EAB56D5403373 /* CiphertextMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4F70B1278FBAFA66CE211151B49816 /* CiphertextMessage.swift */; };
+		1A124A44EB1FFDBEF2BCE59E7B079CA5 /* beacon_opus_ctl.h in Headers */ = {isa = PBXBuildFile; fileRef = B7E0BEF5B1FF7FE99A2EC428B0885446 /* beacon_opus_ctl.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		1B024A67EF9EF1C8D735A7E6F95F860C /* ServerPublicParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E9DE7901795E7FA9D9F947D66ED01FA /* ServerPublicParams.swift */; };
+		1B62182F7F40C2B517BCAFA635B4D8EA /* opus_projection.h in Headers */ = {isa = PBXBuildFile; fileRef = EE4FEFD1E4D6744B0F121F5F5B392EC7 /* opus_projection.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		1C27190A18E0088EE3445982499B7683 /* inner_prod_aligned.c in Sources */ = {isa = PBXBuildFile; fileRef = 9E2F217AC74004A5E7855F546CEBCBB3 /* inner_prod_aligned.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		1CE1DD55A10F07D2D55DC51EABFAD7A8 /* float_cast.h in Headers */ = {isa = PBXBuildFile; fileRef = 09F242691BD93C70C0F454C0101424F1 /* float_cast.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		1D35F9D6D8AD5D49C0288021A05F0B4E /* NativeHandleOwner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC993D7A32FDCB56F677174DED9666E /* NativeHandleOwner.swift */; };
 		20046A7F3D56FE4E00DB2F77A6ABE5FE /* Pods-BeaconTests-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = 1ACADA1981F0D577A44244783D7E57D5 /* Pods-BeaconTests-dummy.m */; };
 		2020B1FDC77FAABE1B30AF246035D280 /* ChatServiceTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3FACC0C398EC076F376AC594E4DB8E2 /* ChatServiceTypes.swift */; };
 		206E6C593A08F4E406E4397F78C0A126 /* UnauthProfilesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 680BF45D9222FB64A0191E39C83EFEF3 /* UnauthProfilesService.swift */; };
 		20723D97BDB500765E2B0DF73E911FAA /* LibSignalClient-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = D13751284E25169F0A67A82E07F72322 /* LibSignalClient-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		20B33F677A9F1D35CD64CB7630BA86FB /* Fingerprint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 096C8A9BF087D7110EADB90AA33E2497 /* Fingerprint.swift */; };
+		20F133CD98025ECDD3730BD6BA3C1E64 /* opus_types.h in Headers */ = {isa = PBXBuildFile; fileRef = 035DA509A6427862A41371BF19345683 /* opus_types.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		21B679C80ACD3F8DBFAEF0C0246375C3 /* VAD.c in Sources */ = {isa = PBXBuildFile; fileRef = 3A97F9A813D1D1FB7A11BF0448215629 /* VAD.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		2338DF664E459FDE21B934F21CA63E0F /* UuidCiphertext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01EB3841E5A370AACE165952B801F11E /* UuidCiphertext.swift */; };
+		23C1F75A0AFD919F54926CA7D3B93459 /* control_codec.c in Sources */ = {isa = PBXBuildFile; fileRef = 2E100AEF32EFB05BB40B657B995B347E /* control_codec.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		24B3075A163239846414249E9ED28609 /* opus.c in Sources */ = {isa = PBXBuildFile; fileRef = 6046E08B248CBBD01FD4EDED0873C57A /* opus.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		25C3B2142F0D60001C69F697F18CFC56 /* GenericServerPublicParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9DEA193A99E667CA7343F7D1E4265A9 /* GenericServerPublicParams.swift */; };
+		25FA863452148A78062AA1C29B8AC6F6 /* opus_multistream_encoder.c in Sources */ = {isa = PBXBuildFile; fileRef = 4528038FFE7BDF93558D5968347CF6CC /* opus_multistream_encoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		2718E047044463F6CBF02AB98E8D4224 /* opus_multistream.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D0715090F511ABE3284DC4C8E8300F9 /* opus_multistream.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		2776AB8227CA64D2AC97621F7C6BD20C /* mathops.h in Headers */ = {isa = PBXBuildFile; fileRef = A59ABD14E3FC2A60DEE6EA97AB6083A0 /* mathops.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		2809B1D8E2F65CA3574CD2DC1ED8F62E /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
 		2846FEADCC64E00E89AF8AF1D89174EE /* CallLinkAuthCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 814DA87A54B137A9BC8DCF85211AF08D /* CallLinkAuthCredential.swift */; };
+		28B0FE15245C7B79B92182FB372063DE /* lin2log.c in Sources */ = {isa = PBXBuildFile; fileRef = C911C9FFB41389386D84F1B659FD7FAA /* lin2log.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		2AA5558FB1F8239EC4A30F6552D602B9 /* ExpiringProfileKeyCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFFD7422EEBE65480C254F00AFB501AB /* ExpiringProfileKeyCredential.swift */; };
+		2CB0D714C94F329C317ACB5C2ACF31BB /* tables_NLSF_CB_WB.c in Sources */ = {isa = PBXBuildFile; fileRef = 67CD106F8B929255BAF729127B1DB6CE /* tables_NLSF_CB_WB.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		2FC28576D14D285E40634975C7D308D7 /* CreateCallLinkCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75043C0EF7F3C718347F07AB54A0EE4C /* CreateCallLinkCredentialPresentation.swift */; };
+		2FFADBC137F63BAB0DB5F1404B18EDED /* process_gains_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = D9076F31B9C0A9F408C40E194B6EA765 /* process_gains_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		3007BAFF74419D7B0012B5108AE906B6 /* vq.c in Sources */ = {isa = PBXBuildFile; fileRef = DCB59DD334E2E61AACDB2C045C0F9A4A /* vq.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		3036173D427FCF2CA61DAB739E531571 /* NiceBridgingUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC8A5CB70D404A444FFCFD037492E0E2 /* NiceBridgingUtils.swift */; };
+		3163E5BA89190BBC41EA6B9DC6F10C1B /* Opus-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 3E89612B4EB794E9979461FB234481AF /* Opus-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		31E9880D119F93CD8267DF7AE3FA08BF /* rate.c in Sources */ = {isa = PBXBuildFile; fileRef = F795311E437205DA7894D21E9653F2B3 /* rate.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		3221372D40CA1088BB9E55CF9058614C /* resampler_down2_3.c in Sources */ = {isa = PBXBuildFile; fileRef = 136D897D842422FCF30829C9DBD739F1 /* resampler_down2_3.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		3317E8B6EEDDD5724E1528A941DEC41D /* ChatConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76965EBDC272194AB4E2061BAF85397F /* ChatConnection.swift */; };
 		34ED56447E88972AB673DBC2CC267979 /* GroupPublicParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC1CDED6E8AA95F4F433C5C7CE665FCC /* GroupPublicParams.swift */; };
 		35634C572214D7DEEC13A470BE03D3D0 /* BorrowUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE1F72BE78D00D52DFC69BE3A0A09225 /* BorrowUtils.swift */; };
 		35D55774712772B4A5F9EF90A9AF294F /* Services.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDF462904720800639E703771B9B546 /* Services.swift */; };
 		36CE04B09843972D9746C543E95C237A /* IncrementalMac.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985E22F11FC2B9337F36450BA5045181 /* IncrementalMac.swift */; };
+		38F139A2550D1E8506DFC5926A34CB8C /* LP_variable_cutoff.c in Sources */ = {isa = PBXBuildFile; fileRef = 165D7B266E698AAF81B6C5763696775B /* LP_variable_cutoff.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		3942C180A09C023A6EA1E720D8D316D0 /* Error.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C78F00AA513DD72EDD12A23B55D95FD /* Error.swift */; };
+		3AA69A62F869284CF168E3426EEA1CE6 /* celt.c in Sources */ = {isa = PBXBuildFile; fileRef = B33E1483BAA822C2C33A9C758099E143 /* celt.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		3B29FC09ECD125FBF35B58D1BA1409E4 /* UserBasedAuthorization.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EF89C03E014891077B794CFE9E73A0B /* UserBasedAuthorization.swift */; };
+		3B893E930B53690E2FDEA98EC32F5120 /* celt_encoder.c in Sources */ = {isa = PBXBuildFile; fileRef = 2B2C1076DDFA98D22FCC96C546EE7891 /* celt_encoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		3BBA0EA0FBBE49597212DE017E5DAF6B /* ReceiptCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14E61633022CE2A9B4197B5B24BF7318 /* ReceiptCredential.swift */; };
+		3CFB5FFB01491CC210B976443E2F20D6 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
+		3D597478BAAE6846D34F5FEF1AA89733 /* extensions.c in Sources */ = {isa = PBXBuildFile; fileRef = C979484A0092E29511A463F75034B534 /* extensions.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		3DD63C398836E751C59A4302C0925218 /* AvatarUploadCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0ADE0769B16CD649B7CAF47B8EE8EE /* AvatarUploadCredential.swift */; };
 		3F73486B3DC3BA67E56749A18321AEAF /* IoProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC2311DAB6D627F833BFFA35FED72CD7 /* IoProtocols.swift */; };
 		40A4CFF3C8B19B6226691453046E94D9 /* Aes256GcmSiv.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB8E42BE9F1F09BEDACDFAF3F9B1BEB /* Aes256GcmSiv.swift */; };
+		411B8564308AA667F75BE664E48698EC /* config.h in Headers */ = {isa = PBXBuildFile; fileRef = 3260E8F46BF4CDEC8784034EDAF3B9FB /* config.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		423E5E9174AABE45C6AC6B30E4834577 /* opus_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 9D4AFF2E07603CF5753FAE858D248120 /* opus_private.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		4262D37C1BCE81D8A4FAAC73FB7782CB /* Sgx.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBE2E63BE97A93693104455343DC192F /* Sgx.swift */; };
+		4409CB11362961A619ED582FF9F57FD0 /* VQ_WMat_EC.c in Sources */ = {isa = PBXBuildFile; fileRef = A41237287EC01F8B761A22D6877EFBB8 /* VQ_WMat_EC.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		44C538325CD53E2B0CC5AFC6B2FAC703 /* find_LTP_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = DAE5464E5B9C7F600476D6EC3139D9C1 /* find_LTP_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		45A712DB82B6A381753DE0B22013CDCA /* encode_indices.c in Sources */ = {isa = PBXBuildFile; fileRef = 2DA121DC0CA702C0D649E83B7288CFA4 /* encode_indices.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		471B1B0A3A9249278258378514446635 /* table_LSF_cos.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D1ECD42D09BD583905A56A2DE2792BC /* table_LSF_cos.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		48C98B569B69C13B5C282D05F0E3C0EF /* RegistrationServiceTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9AFFBF09D36816E441EF9C97F14E015 /* RegistrationServiceTypes.swift */; };
+		4A1AB93D7ECBF645CF4A61D4A76F3A86 /* LPC_inv_pred_gain_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 3EF019EDAD58C9D9272D8A4292DFD7E8 /* LPC_inv_pred_gain_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		4ACF0A997FEC6F638603E322A0B8986A /* static_modes_float_arm_ne10.h in Headers */ = {isa = PBXBuildFile; fileRef = 254DA2B13B9175449DFF8CC85483A6CE /* static_modes_float_arm_ne10.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		4B6B6098859210BC3AEC4CFF667F9E24 /* bwexpander_32.c in Sources */ = {isa = PBXBuildFile; fileRef = F61E42A320ECC00CCEC17E9CAEF97068 /* bwexpander_32.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		4C8E8F307DA0F87817D08789E77FB30E /* Aes256Gcm.swift in Sources */ = {isa = PBXBuildFile; fileRef = F76F30D6E1208FCF691B7776F920E277 /* Aes256Gcm.swift */; };
+		4CECF006BA90C02E7F455A5AA66EEEE3 /* LPC_fit.c in Sources */ = {isa = PBXBuildFile; fileRef = 681DE51C02B8F69E3CB9047920F2EC61 /* LPC_fit.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		4E4B7911F4631E47DD01EBEF3020D700 /* BackupAuthCredentialRequestContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4197E61711747E0FE8816C13DD1A1D95 /* BackupAuthCredentialRequestContext.swift */; };
+		4FD793633CFF159A92D8FB702A5E3EE1 /* NLSF_VQ.c in Sources */ = {isa = PBXBuildFile; fileRef = 23C6A530C8F2AC63519EB4C714E5D686 /* NLSF_VQ.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		505DFBD0A81A75D55FEEEDFC1D5D480C /* opus_multistream.h in Headers */ = {isa = PBXBuildFile; fileRef = 0FD49094750B8B2E2B5C45AC25974779 /* opus_multistream.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		5091CFE4D8C95BE2140671D8AA8A3703 /* bands.h in Headers */ = {isa = PBXBuildFile; fileRef = 49EC1F3326AC5958FF0E01E76CBC8F93 /* bands.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		514B383E8DA32F8309841F72AD00B8F4 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900533955BA476ED9B73F5E3B2860375 /* Logging.swift */; };
+		51BDFA83260E3ECA01F4D1559A28B718 /* interpolate.c in Sources */ = {isa = PBXBuildFile; fileRef = B2E945D43064DEAC540506EB7C3ECC50 /* interpolate.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		532BEFF2284121B63A0E115090BAA6EB /* mdct.h in Headers */ = {isa = PBXBuildFile; fileRef = 269B8AD784A669369DA7CA2A11CBC2D0 /* mdct.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		5405EF7A138DE152EDFCC3A4CE7ADAFE /* ReceiptSerial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51E39DB1BFC9407CC15BCBEBE8161824 /* ReceiptSerial.swift */; };
+		545ED7D7ED5D890D74DA3049537899AE /* wrappers_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = E28F350D8FDA4B5C0BC585F54293BCAF /* wrappers_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		54AA83AB1058B0ECEE5E15718626A1CC /* opus_projection_encoder.c in Sources */ = {isa = PBXBuildFile; fileRef = 65A24826F128D2FEDC308AB4486D55A6 /* opus_projection_encoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		552BBED63888B9718B5EFA02FF7265E7 /* resampler_private.h in Headers */ = {isa = PBXBuildFile; fileRef = 2A0799FE2CDBF931D9C93A3F89D602DC /* resampler_private.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		5592667A4349E8318A41C0FAA6B1BFFF /* ClientZkAuthOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 071003D60846035F28352A723F299C73 /* ClientZkAuthOperations.swift */; };
+		55F1E74B8A56ACAF7AEE97E90D8CFFF9 /* stereo_quant_pred.c in Sources */ = {isa = PBXBuildFile; fileRef = 416875D71059C2CF51BD2AB29E8A4564 /* stereo_quant_pred.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		55F339F57FA1F95B717C508461D71C4A /* AuthDevicesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F74B4696704A4803AA419089FC23E562 /* AuthDevicesService.swift */; };
+		562EA7A8B5D7A7643F2DDF299FB464CC /* SigProc_FIX.h in Headers */ = {isa = PBXBuildFile; fileRef = CBC6309FBE91DED5C447C355D9E9312A /* SigProc_FIX.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		5805B6C48ABA15325BFAC1B5021C2944 /* analysis.c in Sources */ = {isa = PBXBuildFile; fileRef = 4E3268A348AF7CB7C487063C4D48F07C /* analysis.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		59424F59A3D7502E0A5898C5062FF61B /* entcode.c in Sources */ = {isa = PBXBuildFile; fileRef = 220CC71F704B47B760F2F220459A948E /* entcode.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		5BB911CA1228199828CFCF30A95AF0E5 /* decode_indices.c in Sources */ = {isa = PBXBuildFile; fileRef = 4BF506EF494AD3A477BFF6747CD543CF /* decode_indices.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		5BCF79C2ACDEE7AC15AACF2AD659F5BA /* HP_variable_cutoff.c in Sources */ = {isa = PBXBuildFile; fileRef = FB5F1B1AD15B2FF5444B700019C35896 /* HP_variable_cutoff.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		5CD8D84C0A38FC97112437262FFBA48E /* control_SNR.c in Sources */ = {isa = PBXBuildFile; fileRef = 5613F848EB6C43BAEB44CA4AED48FE9A /* control_SNR.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		5CDC6D9DA90129B9EDB32ED5292A38EE /* ComparableBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B3B71AA84FCF57D6CE164458913C99C /* ComparableBackup.swift */; };
+		5CF656CA3A63B087ABDBA06B5D10E10A /* modes.h in Headers */ = {isa = PBXBuildFile; fileRef = 10ABAC16D3F98974E33C07DE58FE0ABB /* modes.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		5D3794A7A421F01E1F383BB3030611C0 /* resampler_private_AR2.c in Sources */ = {isa = PBXBuildFile; fileRef = E84BE4BB8C1CE197933FA8233FD049B2 /* resampler_private_AR2.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		5E4963CAC60D39F7B6CDE483F8DFEBB8 /* MessageBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B8A706E3BEBBA3A1DE071F45BE4101F /* MessageBackup.swift */; };
+		5ECA386F249645EA616622868A2F71D4 /* celt.h in Headers */ = {isa = PBXBuildFile; fileRef = 81F286B9905D9E3418922AB267D3B83E /* celt.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		614767C79D7AFABAA995FFD3952BD3D1 /* shell_coder.c in Sources */ = {isa = PBXBuildFile; fileRef = E5247A6220EB673B5742A67136986454 /* shell_coder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		63BC7A81C8978846D7BFD4C5378BA24C /* Media.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03FA76C5F1821D396CF8CA6ED282C082 /* Media.swift */; };
 		63DB3FFC85AA76731A19B4F71F3101B1 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
 		63EC39451DCAF192A5B26C12D7E8F9F8 /* PublicKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656B9EC52C94D00FFD6EF2399469FE32 /* PublicKey.swift */; };
+		640EDF3D3B635E9745DEB728B79C13C1 /* opus_custom.h in Headers */ = {isa = PBXBuildFile; fileRef = 5987DDE47E1251187585D84329DE7899 /* opus_custom.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		644035050EA7B2198E578475B01A1868 /* NSQ_del_dec.c in Sources */ = {isa = PBXBuildFile; fileRef = 7ADDED1513213FB680D3BB7137EC30C1 /* NSQ_del_dec.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		64434A05A451CB7D4FAB066A611FAB60 /* typedef.h in Headers */ = {isa = PBXBuildFile; fileRef = 638BCAB33DB6379AA1C8D3558A1DC13D /* typedef.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		64B35D87D9DD9BEF6D80BCDB25CE2EA5 /* find_LPC_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 16CDC98E51F36A8907C150F165E23324 /* find_LPC_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		64D6159B33BC2BAED084E305C2DE0C6B /* ClientZkProfileOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 296FCD2B9C008082AC3D4D42E5A3879D /* ClientZkProfileOperations.swift */; };
 		65B8E84A582703617DA1B8A42ABD04E5 /* GroupSendDerivedKeyPair.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8182B7C0C5B7D52F6077D5D042FE1B8 /* GroupSendDerivedKeyPair.swift */; };
 		65CB13E9312A583D0C703E8CF711DF87 /* GroupSendEndorsement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1026BB61545962F3B73A7C1522F0B9D7 /* GroupSendEndorsement.swift */; };
+		666544777F650119FA986896B293B1A2 /* stereo_find_predictor.c in Sources */ = {isa = PBXBuildFile; fileRef = BA8F045B6136C43954E46992ED1EA63C /* stereo_find_predictor.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		66ADE510A13323245DD2CDF3F448DC86 /* cwrs.c in Sources */ = {isa = PBXBuildFile; fileRef = BDF88C5770F4F79964074BE657297ACA /* cwrs.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		6963E89B2621A9970F5E76E966BB7F6F /* LPC_analysis_filter.c in Sources */ = {isa = PBXBuildFile; fileRef = D7031148FDCD4B378982B7BCB451475E /* LPC_analysis_filter.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		6A6CD9B5DDA87312ED57A53797567C8A /* define.h in Headers */ = {isa = PBXBuildFile; fileRef = 0C24797C0D58D97213B368C2D2118E9B /* define.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		6AA50DAFDAD02542A0EE3AA72AE4DBD6 /* PreKeyRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5AFFE0A7EA61D4A9E43D8381CBFB7544 /* PreKeyRecord.swift */; };
+		6B71E4A3078F1B14EF6FF5758156D6B2 /* main_FLP.h in Headers */ = {isa = PBXBuildFile; fileRef = FF698B76C90BFCF18ACB01C634F6FBA9 /* main_FLP.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		6C30BEDFA60A65DB8BAAF6B6C32134D5 /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED9F33017D89BED453FBD2ADBC5C4584 /* Protocol.swift */; };
 		6D58AC10B044111B297448D858E1A8A9 /* ServerSecretParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C27AA7271DADE1799794F89E5346E22 /* ServerSecretParams.swift */; };
 		6E14C38BE587B4A220CA6B2601B4EC02 /* Kdf.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D4279E3CA774EAD58AC25589C4BCB2 /* Kdf.swift */; };
+		6E49AF6A559D8A8BB27CFAEDF2662C8A /* sort.c in Sources */ = {isa = PBXBuildFile; fileRef = 2491878E889636060BF3207E586A3672 /* sort.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		6EE3D824CB45E31A77907CF330B95E55 /* ReceiptCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FEC8816D680226BE2EF4FEFDEE7D79D /* ReceiptCredentialResponse.swift */; };
 		6F71A37E25DE71EBB36C080BC9A4258E /* UnauthMessagesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30B067B018BAFFB515ABFE8E0C2CEC1C /* UnauthMessagesService.swift */; };
 		6FE63A651E6418981D8772D3AB739750 /* CallLinkPublicParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06BE900981861169ADC810278DFD3359 /* CallLinkPublicParams.swift */; };
+		705229F7099D9F0D34A691F7D35616DD /* repacketizer.c in Sources */ = {isa = PBXBuildFile; fileRef = E77E971F99844697DBAE8D7D36136F40 /* repacketizer.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		70CE6ED7575FA27BBCD365C670B18831 /* ProfileKeyCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FD13B1F03227D19780A7A02FAB3023B /* ProfileKeyCredentialPresentation.swift */; };
 		7135F3EB798E4EA31553981B383955C5 /* ClientZkReceiptOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F5EC13B57CBB64A5180799C9A9915B0 /* ClientZkReceiptOperations.swift */; };
 		729455B044A061C25DF098DBE9222F00 /* CreateCallLinkCredential.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450FE1C9388A9F8D5997E0592A8AD37F /* CreateCallLinkCredential.swift */; };
+		72CA56B2939DA8F5D586BA89B4857225 /* vq.h in Headers */ = {isa = PBXBuildFile; fileRef = 19A881AE68D06EE8BA213FD5B5BFDBDC /* vq.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		738167F31AB9098A5E606F271B6EB958 /* UnauthUsernamesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E83324AE2900ECBB536CC91E2FD3D72 /* UnauthUsernamesService.swift */; };
 		75385805C65DEAD130830C02DCADDA8B /* SignedPreKeyRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9DDBBC6B5CEEF2CF8C352AA57F1C345 /* SignedPreKeyRecord.swift */; };
+		764E4D51A27A55E6285320D4E0DB53EB /* pitch.h in Headers */ = {isa = PBXBuildFile; fileRef = FE30FA7FD0956BC59266515D05C7815B /* pitch.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		76D5E61CF113D8684B96609129450F59 /* NLSF_encode.c in Sources */ = {isa = PBXBuildFile; fileRef = 7ABDB88788FADB3F7E5E74E36C3BD3A2 /* NLSF_encode.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		7725BCE14F945DC5EAFF8E923B1EE8FA /* sort_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = EE4409EBB36A3455EDB05813C8F1364B /* sort_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		77536E80DDA1EEA410DC0F43C723EBDB /* scale_copy_vector_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 49F4072C982D83D3DE74D72AF6EB70DF /* scale_copy_vector_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		77D6B82CC1443EE0A5E2FB1E8FD8B4EA /* process_NLSFs.c in Sources */ = {isa = PBXBuildFile; fileRef = 4ACB504F485F1FE6CDF76AF5720EDF38 /* process_NLSFs.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		78417DDD7C905783313ABE0591A15792 /* celt_lpc.h in Headers */ = {isa = PBXBuildFile; fileRef = 7B1B40712C452468A344F4843337BB4C /* celt_lpc.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		7945D2D3A63FB7966D272B0D7DC0F554 /* opus.h in Headers */ = {isa = PBXBuildFile; fileRef = 42FB2E9785CA6D5F3B189FB2E663F8C7 /* opus.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		799106B2B18136733DD4F41BE48FB7A4 /* CdsTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C311F84E68E479FA4039DEF7486AD35 /* CdsTypes.swift */; };
 		7A4756C2C2B191706FCC04DDC6FF48D0 /* AccountKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC04974D5C676245512C779CE91D2841 /* AccountKeys.swift */; };
 		7AD2C3F5748AF0BCAB15C69DA83909AE /* DataStoreUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CA0656B7D1ECDA691D9EA6CE82DB663 /* DataStoreUtils.swift */; };
+		7C03437928FBCD9F42A014C9E4E4020C /* NLSF_VQ_weights_laroia.c in Sources */ = {isa = PBXBuildFile; fileRef = 05487A768845542EBA99AE73777545DB /* NLSF_VQ_weights_laroia.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		7C53473B369202183721C3FD8EF0B435 /* mathops.c in Sources */ = {isa = PBXBuildFile; fileRef = 6529B91CAA4A174158E61722F0C22096 /* mathops.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		7D42BFB69814F832DF9139852FB006B9 /* os_support.h in Headers */ = {isa = PBXBuildFile; fileRef = 1918AABED26CA270990FA2E60B38FEA2 /* os_support.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		7D49556AC3BE99A8D60E20649689215B /* entcode.h in Headers */ = {isa = PBXBuildFile; fileRef = 55ABE61ECBB39FC75D0C54DFB08D0AEF /* entcode.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		7DC3081495F87DF05BB71EC22E9B1E53 /* sum_sqr_shift.c in Sources */ = {isa = PBXBuildFile; fileRef = 292C138521787C1F34B63282493B54E3 /* sum_sqr_shift.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		7E04E6221A5CFAC0FD90150DC95036A9 /* CNG.c in Sources */ = {isa = PBXBuildFile; fileRef = 1B67274A109A89035270FF60C440B418 /* CNG.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		7ED0AC4B239EADEA19EBFA05DFE42F96 /* GenericServerSecretParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F2B796758BEA549922C0C8645AED22F /* GenericServerSecretParams.swift */; };
+		7F96035B50C2E560C7D0B00223C88A1F /* opus_multistream_decoder.c in Sources */ = {isa = PBXBuildFile; fileRef = 34864590C8AE62FF00A5376DB5D3B4E5 /* opus_multistream_decoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		80173E544A159EC71EC4E6E2C8F76B72 /* tables_NLSF_CB_NB_MB.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B004915EF2FB4CF79E404A50AEB4509 /* tables_NLSF_CB_NB_MB.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		8183167B37901A47D4C15A7A63C467F3 /* find_pitch_lags_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 5D48311D063268BD137B3020FB1D176C /* find_pitch_lags_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		8349D54D17645E1703FF1D990A6E8321 /* stereo_decode_pred.c in Sources */ = {isa = PBXBuildFile; fileRef = 7743795134E9A05B7023ECC77ADD5F23 /* stereo_decode_pred.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		8390C31A3CFFF693D1A7A551224075C5 /* stack_alloc.h in Headers */ = {isa = PBXBuildFile; fileRef = 3638D14A676B0C5839D2BD058591BAE0 /* stack_alloc.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		83A4325056AA877D6E1C3A556DDBA8BF /* ProfileKeyCredentialRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 566D232F52BD423CDC25DEAF93AA06D0 /* ProfileKeyCredentialRequest.swift */; };
 		83B35AD6A29149DDBAADCF4BF37DC067 /* UnauthKeysService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C722B1A530DA0283FCDB41E6FB2F759 /* UnauthKeysService.swift */; };
+		846EEDEC6173F5B39C2A8EDECB5605B1 /* log2lin.c in Sources */ = {isa = PBXBuildFile; fileRef = F7667C07DA3144CC66FB8F16475518FA /* log2lin.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		847B3A95E61B80F2726AE8D7DB4681D7 /* A2NLSF.c in Sources */ = {isa = PBXBuildFile; fileRef = 1115AD175976E51B71C9A476D3E0536B /* A2NLSF.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		859930AE20D5789AC29FE8F219A26E5F /* SingleOutboundMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 343183E9D6B8AD12E226BA8F1BE3AB37 /* SingleOutboundMessage.swift */; };
 		85F41D886C627852FC633E3EFD498FFB /* KeyTransparency.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B1CC9D6DB7B6CBC9F3719988D49E872 /* KeyTransparency.swift */; };
+		867153E407C4D7EF15C4011D89E84254 /* scale_vector_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 9CFA354B6385645B561AB9BA95C0CD75 /* scale_vector_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		86A237A953B647379FEFE48BB6067BAE /* analysis.h in Headers */ = {isa = PBXBuildFile; fileRef = 65C1EDA9BFBB7E7801ABFDF8BAF56D9A /* analysis.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		877C275633103D5C1D5312CC166D154B /* SecureValueRecoveryBackup.swift in Sources */ = {isa = PBXBuildFile; fileRef = F790A483012BB0B608D11EA8A34AC9D7 /* SecureValueRecoveryBackup.swift */; };
 		88D02F350DB1EF702085AE23108A9796 /* ProfileKeyCiphertext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79A1E3E61E0FFF72BFB7B5901741C3FE /* ProfileKeyCiphertext.swift */; };
+		8946380CA3510CC0930299AF1297F8B1 /* decoder_set_fs.c in Sources */ = {isa = PBXBuildFile; fileRef = 8CDA01BDFF426252EF1812D332DDB99E /* decoder_set_fs.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		89F07CD1F59F7D9CC288C03678FEF3D3 /* static_modes_fixed_arm_ne10.h in Headers */ = {isa = PBXBuildFile; fileRef = 9DBFDDE1C4070B734885706CF07A8A08 /* static_modes_fixed_arm_ne10.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		8A1A8C66D8FB179C1147E82CCD0811BB /* LTP_analysis_filter_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 04E7A60CCBA285204DF470AD20396312 /* LTP_analysis_filter_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		8C94485902EF187C8B6BF6F56184777D /* pitch_est_tables.c in Sources */ = {isa = PBXBuildFile; fileRef = 830D440F2F02B60AD836080E8A020EA4 /* pitch_est_tables.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		8CE419817EB641366D9EEA422F007B87 /* GroupSendFullToken.swift in Sources */ = {isa = PBXBuildFile; fileRef = F207AD906EEAED2708043635E684754B /* GroupSendFullToken.swift */; };
 		8D84896C1C1F1E85D39C458316DE7303 /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79A8CF6BAA84F569664E5C2591164036 /* SessionRecord.swift */; };
+		8E4581C039F0A7913D3DF694ED56C5E8 /* tables_pitch_lag.c in Sources */ = {isa = PBXBuildFile; fileRef = 3B79719FC3B068132C6B3CC3FB106F56 /* tables_pitch_lag.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		8EA0D8C95437C260CE3CD1CFE017A866 /* CreateCallLinkCredentialRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A3770AA9CA9A55FCFCF35F81EFBC906 /* CreateCallLinkCredentialRequest.swift */; };
+		8EBABAADC0C7316AD3ABB91705217F17 /* mapping_matrix.c in Sources */ = {isa = PBXBuildFile; fileRef = 8948A85EC36E4817694A51F4C6A3E2BA /* mapping_matrix.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		8FFE1A47BE387B1255EA85FDAE70C602 /* SenderKeyMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BEA5ACCA8EC0357A81319D039F55F07 /* SenderKeyMessage.swift */; };
+		90C0123DFDEE26BE6B7ED1D87143EA3B /* PLC.h in Headers */ = {isa = PBXBuildFile; fileRef = 3D95A9B8D08AC77DAD1C6176C98F921E /* PLC.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		915A18743E74D1EA6640B58DB8CDF733 /* resampler.c in Sources */ = {isa = PBXBuildFile; fileRef = 5197054379F3B18B777D5823731CECD8 /* resampler.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		91C691BE66C2A91CB8710DC6F8291008 /* Opus-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = FB6BAB9EB1D343152A959A668B5ECE9A /* Opus-dummy.m */; };
+		92AA897606A288EB6930584161C914BE /* resampler_rom.h in Headers */ = {isa = PBXBuildFile; fileRef = 95AA6FD9F71836504B1F2AC831C0A6A3 /* resampler_rom.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		939EC7E624ED58608291C7A23765342D /* resampler_private_up2_HQ.c in Sources */ = {isa = PBXBuildFile; fileRef = 5F3A0687C6C59CF41CA8E6A754DE87B3 /* resampler_private_up2_HQ.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		96C6B0CBA36D9E8AAA9A3BA6914E7A1E /* LTP_scale_ctrl_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = D8209A1DC3F8D468BE94BD450ECC551C /* LTP_scale_ctrl_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		96EBD8F258CAC7E7D2A9A0ECDA6C5339 /* inner_product_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = F9B50D6F2500F20F0B6755DFE7C7C6B5 /* inner_product_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		984673D2EC11F3C6A7A647E64E3C0DFC /* CallLinkAuthCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41D5B89DBD31FD90D4E90F4AAE0B4EC6 /* CallLinkAuthCredentialPresentation.swift */; };
 		98EF2DFCCA963830B8A11D0C9BD290C6 /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8100B12AF79BC948D0A0045771E7382 /* Utils.swift */; };
 		9A17054896CB1263B9824D2CCE09FC14 /* SignalMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC92391C170E3B8394FD4C5C9A395F0B /* SignalMessage.swift */; };
@@ -112,266 +232,564 @@
 		9C494244395EF52549705B10EC13FBB1 /* Pods-BeaconTests-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = F68E480FBE795A4DE3C01A20A3414D23 /* Pods-BeaconTests-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		9D4ACE880F363E0DC00DFEF8DB3FDC8C /* SenderKeyRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE1A2D279C2B4EDE0215F93D4FED8B24 /* SenderKeyRecord.swift */; };
 		9D85AA3CB1894D273051E9947B6883B0 /* TokioAsyncContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357F528DB2383BEE7C126B9107FD99C3 /* TokioAsyncContext.swift */; };
+		9DA1A94B7E39A1BAAEB536D9C72ED4BB /* control_audio_bandwidth.c in Sources */ = {isa = PBXBuildFile; fileRef = 1AD5A12A4F67C33A2401B67B1F0C2F93 /* control_audio_bandwidth.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		9FFAC54341A746DB6842F5EEA33FB2BF /* Randomness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B669DEDBDED82FB0A3B8F8E822E9793 /* Randomness.swift */; };
+		A143172DC10F2377ACBE2F440F3C4130 /* mlp.h in Headers */ = {isa = PBXBuildFile; fileRef = 67E6E96A5D9F7FE83D740DA262675533 /* mlp.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		A2A8B243C88FB76F67EA5F860D69ECBC /* laplace.h in Headers */ = {isa = PBXBuildFile; fileRef = D8FF3E61C9EAF26C30256C7D2930FFD5 /* laplace.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		A5CC78451A8BAB5F244B5FA2AC9FAB74 /* ReceiptCredentialRequestContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08176232E603C884246A9D58C6C783BD /* ReceiptCredentialRequestContext.swift */; };
 		A675A7B09287D0517A18C61197C2DE06 /* SignedPublicPreKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = B96EDEEC6CAD23EEEC7A121D5F1058A2 /* SignedPublicPreKey.swift */; };
-		A69945BE46FB90C92740DDF555FD3751 /* Pods-Beacon-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 5CF3310A31C5D6A90A0E1E3C73674BDA /* Pods-Beacon-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		A690F78EAD820B65E542ABD4D594F901 /* debug.h in Headers */ = {isa = PBXBuildFile; fileRef = A134EF593211F897C739A5581E78853E /* debug.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		A6DEAE4A5AEB174F172B546E497ED395 /* NLSF2A.c in Sources */ = {isa = PBXBuildFile; fileRef = 3CE94A9CE0B160E6546CE16BB7F486B8 /* NLSF2A.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		A7A02B3726CCA9D39A9921161675ED08 /* BackupAuthCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBD8FC0719FD917C5B829F28A5563B6E /* BackupAuthCredentialPresentation.swift */; };
 		A7F21D27DDD601BB479F8ED8EB53DCF9 /* SenderKeyDistributionMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 694A282C7DCE525332FD4B8FFE76ACB1 /* SenderKeyDistributionMessage.swift */; };
 		A81D6C45D04FDA63BDB046610DC9AA71 /* HsmEnclave.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4553FB22CAC48A19201BC1237F415D4 /* HsmEnclave.swift */; };
+		A81EA12A62D0D4CA92EA8ABE8F89137D /* pitch_analysis_core_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 3A6C499A5665390DDB06715AA1E392AB /* pitch_analysis_core_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		A8A4646E26F91DECB6DA04722C7E54A9 /* ZkCredentialKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BE53E45945D34BA8B6061183DB0FA54 /* ZkCredentialKey.swift */; };
+		A92A35126C90310F8473D85FC1D71964 /* NLSF_unpack.c in Sources */ = {isa = PBXBuildFile; fileRef = 8591CD3308B7C952F071ABDECDE4F4E8 /* NLSF_unpack.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		AAD683C918FC16B63BA32D64A98EA916 /* entenc.c in Sources */ = {isa = PBXBuildFile; fileRef = 5B3A8C32534381522BB632B4CC6635D3 /* entenc.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		AB5000522E9E125E024189998953FBDF /* quant_bands.c in Sources */ = {isa = PBXBuildFile; fileRef = 0B9AC6A095212740869BA615E3488568 /* quant_bands.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		ABAC40836253AD2488380513F70803CE /* PLC.c in Sources */ = {isa = PBXBuildFile; fileRef = 1CDB62F7E1CEFDD4AC38FA4A515DF9B7 /* PLC.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		ABCF45E916554B7000BF8E5916CD82BD /* DataStoreProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6C7F444A768792FADA80522B12576BC /* DataStoreProtocols.swift */; };
 		ADCD2831126D772FC11CED4551207C78 /* AuthCredentialWithPni.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77AAC994857B00ED0FE5E40CC6914948 /* AuthCredentialWithPni.swift */; };
+		AE0A99C7C5958F0AE7CAF0F824357706 /* opus_projection_decoder.c in Sources */ = {isa = PBXBuildFile; fileRef = 45F2D51568CF77B3FFDDE24D334ED4DB /* opus_projection_decoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		AEC78E6BF53A720C5F4C73A14A24A5EE /* gain_quant.c in Sources */ = {isa = PBXBuildFile; fileRef = C48D4B29DF78E59A0304749E22A115BB /* gain_quant.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		AF30048D1E073BC6E37EE5F5E5DD8C24 /* ProfileKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07139C76D43CC25E449F5AD07CD08BD5 /* ProfileKey.swift */; };
-		B006DBE0200AEC321C185D0D33173BCF /* Pods-Beacon-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = C74FF458AF9156A107F265F71CAD9A72 /* Pods-Beacon-dummy.m */; };
 		B0DAF5266838BA44CE14CBE5BCC3D7EB /* BackupLevel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CDBC36EA895E6CB82363152EDCD3B2A /* BackupLevel.swift */; };
 		B12823B2AA3CD08AC5EEBD7866F527D7 /* ChatListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = B61D14491CCB222D8D6C269F29367B32 /* ChatListener.swift */; };
+		B1B154D05D9B676266734D0BFCF17A4F /* mlp_data.c in Sources */ = {isa = PBXBuildFile; fileRef = E87E92A2832ECFB7D12427160B87F0C4 /* mlp_data.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		B318DAB876455A7A9E4C8B6F47DCFE59 /* ChatConnection+Fake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ADE55F786A7B10A2DDBDEC49D96DDA2 /* ChatConnection+Fake.swift */; };
+		B43113A7234B2F8C8A0D0B0896439E55 /* init_decoder.c in Sources */ = {isa = PBXBuildFile; fileRef = A894ACD422B8F5DAED4D363A3A8FEE51 /* init_decoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		B48E0AF00624141FC0DFA7E32D099980 /* CallLinkSecretParams.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D014DE0AD1F2525A4E6CD5DA664DA5A /* CallLinkSecretParams.swift */; };
+		B525B0E5C04C08CC292A33964FE4DE20 /* encode_pulses.c in Sources */ = {isa = PBXBuildFile; fileRef = AB702770EB1191B962D21BCFADB9B99A /* encode_pulses.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		B6290F25D445E872972F6B22E5E8B14E /* ecintrin.h in Headers */ = {isa = PBXBuildFile; fileRef = 98812242882E5283DCE848010C4AFC85 /* ecintrin.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		B67C6F118B0971F0548290D765B6992B /* resampler_private_down_FIR.c in Sources */ = {isa = PBXBuildFile; fileRef = FB0E95E10612A53E9EF37C46D898798D /* resampler_private_down_FIR.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		B68915102698E6023D5050113C75FFDA /* corrMatrix_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 863EF4DA89D6ABDD838F9097EA054F50 /* corrMatrix_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		B6B9FC48FD2CAC77E281D6E605CF3026 /* pitch_est_defines.h in Headers */ = {isa = PBXBuildFile; fileRef = 45398F012BB78D1D9F5DE60E526C3EB9 /* pitch_est_defines.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		B779BBDE18FDD816CA26A25433F8352C /* Kem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26D2611DBFBA5436BFBEC452F6B7364C /* Kem.swift */; };
+		B781C1707A92EC698D4C0615ED7F2EA1 /* _kiss_fft_guts.h in Headers */ = {isa = PBXBuildFile; fileRef = 2798D6E861D50C7602CA3E55484EFD95 /* _kiss_fft_guts.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		B7B0635AA9FD432422195AD16716B9B7 /* decode_parameters.c in Sources */ = {isa = PBXBuildFile; fileRef = DD5D88543CDBBE022BF9F9A055281EEA /* decode_parameters.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		B841F7180424332C663A9F577821702B /* bwexpander_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 702782AC292DE029B41CD6A2BF431E9D /* bwexpander_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		B8594FA943E9FDA2D7B9856FC0AB99BF /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
 		B89FD04B8610CA0D689B6A01CF991960 /* KyberPreKeyRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29678B564207DF03C27AD20F0F04AE0F /* KyberPreKeyRecord.swift */; };
 		B9449091B47E8768D3444579F6A49522 /* CreateCallLinkCredentialResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46F7B25C69F0436DB9B5A6D1C9862B18 /* CreateCallLinkCredentialResponse.swift */; };
+		BA95BE24C3D32F97BE019440130FBF6F /* pitch.c in Sources */ = {isa = PBXBuildFile; fileRef = 6162AB04518127CA3E73179719B6E099 /* pitch.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		BAD826E999FB532D9CF9D487AA761C6B /* ProvisioningConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B5489FF62CF159E454AB5CAF3B5C83A /* ProvisioningConnection.swift */; };
+		BB08BCA1B4A3FA9DBAB0D42C835E9C3A /* apply_sine_window_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 61A99CC3CAC39F7EFADF410DB2CEB033 /* apply_sine_window_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		BB12251506C788D991F76354E02FDEC3 /* entdec.c in Sources */ = {isa = PBXBuildFile; fileRef = 9B0AACA68ABDFF2333CA371E7F1C1EBC /* entdec.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		BBE7A93C74309205667D7D2C19359F2A /* DonationPermit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6BFA93A9EE5D509AA7E083D8031F6D /* DonationPermit.swift */; };
+		BC3BF89ADC63E1F06599A30EF800023F /* ana_filt_bank_1.c in Sources */ = {isa = PBXBuildFile; fileRef = CE1855D11942F584A44CC50F64764258 /* ana_filt_bank_1.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		BDFD4AA8B05FE00864771DB15113123E /* laplace.c in Sources */ = {isa = PBXBuildFile; fileRef = A096A41957B75101DC02DCBE5E4DA4F9 /* laplace.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		BE68F087EB03982911A6211EB9E14F56 /* Inlines.h in Headers */ = {isa = PBXBuildFile; fileRef = 4267206C7B8D3F585A530593F4816D9C /* Inlines.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		C1204BB3C9A31802ECBC6E7BEEA18945 /* decode_pitch.c in Sources */ = {isa = PBXBuildFile; fileRef = 4D8A035729E9F12734BACB3B9AD557B5 /* decode_pitch.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		C15D1C199BE763FF70F3839A116937DC /* Aes256Ctr.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD9BFAF4C33D571BB2B904475BB103BD /* Aes256Ctr.swift */; };
+		C19F98EA19C12D32D1C33F2E81028F9A /* tables.h in Headers */ = {isa = PBXBuildFile; fileRef = 657A8B33C1E9DC541BE8B77C6F74E6F6 /* tables.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		C3C07D24F34178E92EE080A31EAAAC93 /* PrivateKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B481C94D58D065A18E54B3E36E7FACC /* PrivateKey.swift */; };
 		C45E0C92A6FCC604B84366DD3526E4ED /* AuthUsernamesService.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA87974A2FAB736320D08B87D693D25C /* AuthUsernamesService.swift */; };
-		C6D9BDB4465A1CA6594C0178155964BE /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */; };
+		C722D9E60A364FA10046BB53049CBF04 /* kiss_fft.h in Headers */ = {isa = PBXBuildFile; fileRef = D782B9A2ED9B65395EE551FF5D12B7DA /* kiss_fft.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		C7A42883B916665FB47CA1BDE7B42C10 /* PreKeyBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37D39825AF7597231EE65057AD5E9E7E /* PreKeyBundle.swift */; };
 		C85C6CC6329FA891CE857E48C125B6E8 /* IoUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8DDD4514DC45499B3BF73EE987A6D89 /* IoUtils.swift */; };
 		C8C28DA52D297C5C0D044CCA8DAA8F2D /* ProfileKeyVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDCE3888D2DD86E73B3E86144575335C /* ProfileKeyVersion.swift */; };
 		C9D4012E375C80D1B9D6B5326C6E6C6A /* BackupAuthCredentialRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43480E1F2D2A883CA5F3F46433E73D0F /* BackupAuthCredentialRequest.swift */; };
+		CA2E3E65D6F446A52EDE52A6FC08BF81 /* Pods-Beacon-umbrella.h in Headers */ = {isa = PBXBuildFile; fileRef = 5CF3310A31C5D6A90A0E1E3C73674BDA /* Pods-Beacon-umbrella.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		CA5A124B968659DEDC93EEC9B75F271C /* quant_bands.h in Headers */ = {isa = PBXBuildFile; fileRef = BC16A1BE075E3CE9BBFF0E247F644B8A /* quant_bands.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		CA8266CD636B39728468C3819170437E /* static_modes_float.h in Headers */ = {isa = PBXBuildFile; fileRef = 696920E6B5EB741241614291F797DDEA /* static_modes_float.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		CA989358A87AE5DDE29978342E26167C /* find_pred_coefs_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 83DB891B72C61665B41057C3CD750350 /* find_pred_coefs_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		CADE60CDE744CC856982818588B6C6B5 /* modes.c in Sources */ = {isa = PBXBuildFile; fileRef = 0CED82F45534FB8C6C5C50E98F3BAEEC /* modes.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		CAEA4ECD3FA481E267186C71A02BF0CC /* decode_core.c in Sources */ = {isa = PBXBuildFile; fileRef = E303EB8A3A9E7C444EBCB1E13370D1AE /* decode_core.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		CC30E74153BB6FCE032968F69DDEA2A0 /* resampler_down2.c in Sources */ = {isa = PBXBuildFile; fileRef = 06B1E1995D67234935A84CC58F013822 /* resampler_down2.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		CE1A334CB3CAB4677ED77E5823B5BAA2 /* macros.h in Headers */ = {isa = PBXBuildFile; fileRef = 66A81422F2DB274043AADB79E60C0818 /* macros.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		CEBA580A74211FC8D85C8A85EB7440E5 /* UnauthBackupsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A56D8567BC0631098C691355C9EF347E /* UnauthBackupsService.swift */; };
+		CF60F9B273A55923C2844851FCFC989F /* celt_lpc.c in Sources */ = {isa = PBXBuildFile; fileRef = 867724033040F57EC6B374D8CE32631C /* celt_lpc.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		D03EF0C58FA4A1702274AFE24E6ACC5D /* LPC_analysis_filter_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 965D86DD2FBACF89AC5CAED27C98DA9F /* LPC_analysis_filter_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		D20E5A90F1A1F07A6531BDBA9E972384 /* mdct.c in Sources */ = {isa = PBXBuildFile; fileRef = 6219185FE9050D4F9F7763D4E9805E3A /* mdct.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		D26B2864A6B1A6CA8FC69873847E867E /* opus_encoder.c in Sources */ = {isa = PBXBuildFile; fileRef = A9D4B967A53D0431E750275C0FC582B4 /* opus_encoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		D2ACEA475561253115CC80E91FDBDCD8 /* UploadForm.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE377A735469BB1533633D64ADCC4530 /* UploadForm.swift */; };
 		D4602E4381471113E5CF54A0226235BA /* LibSignalClient-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = 20CA787E45BF6C7C944A3EE259A1A1D6 /* LibSignalClient-dummy.m */; };
+		D4E4C1F7A92BA10B89440D396E74878A /* API.h in Headers */ = {isa = PBXBuildFile; fileRef = FF5AFF230C403DC2EDB84D87952731C6 /* API.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		D4E99302D80853645B6684118715A38E /* noise_shape_analysis_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EB252245CEA6DD50A280D14458F3348 /* noise_shape_analysis_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		D6AE189E0BA81842EF31D603E5EDB26A /* NativeNice.swift in Sources */ = {isa = PBXBuildFile; fileRef = BADC3514CB2C3D5A3BA2ABCC48A98C9A /* NativeNice.swift */; };
 		D6C662A0F71263C3B088A6AEC1771B9D /* Svr2.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA16DA17D6B0525A6427267FA461698E /* Svr2.swift */; };
+		D784C644E7EA24057740210F229CCA44 /* quant_LTP_gains.c in Sources */ = {isa = PBXBuildFile; fileRef = 0717833F9FF7F4D65BDAD18B2FF5F0A1 /* quant_LTP_gains.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		D9DBC0CEB584D4161A21B9476EA5EA7D /* tables_LTP.c in Sources */ = {isa = PBXBuildFile; fileRef = 9826CF6D95A8CEFECA352FFCF280BC7D /* tables_LTP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		DB7833DDFE6AAC73C9482300F8892D36 /* IdentityKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94FA347BEDBE6F6C7DBEAA504AB31465 /* IdentityKey.swift */; };
+		DCF904C722C02AA883B963233D9B4317 /* structs.h in Headers */ = {isa = PBXBuildFile; fileRef = 87240B4BC1DE3907A8111906AA91373D /* structs.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		DD1B8BB1130C00EACAD4A7B15B52C2D4 /* NSQ.h in Headers */ = {isa = PBXBuildFile; fileRef = 7B3001C344E532CC71C1C79023B2B296 /* NSQ.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		DE2BBC6A564B7DA2445F4DD68360882E /* dec_API.c in Sources */ = {isa = PBXBuildFile; fileRef = BEBCEE4734ABE35AF8387534ED29EFE7 /* dec_API.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		E0077ACD4989F24DEA3AD0795523739A /* Net.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F94DB60FC42D4707887E3380741F704 /* Net.swift */; };
+		E0CD34815EB8C3B177822D72475A3205 /* cwrs.h in Headers */ = {isa = PBXBuildFile; fileRef = C759E5B3CAF55FAAF95998575555A377 /* cwrs.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		E148B38D609828AC9E7510FDD9C2A034 /* biquad_alt.c in Sources */ = {isa = PBXBuildFile; fileRef = EF47287B094BBF046F0D00B1D129CFB8 /* biquad_alt.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		E24F850B04910E5B6CE34393717E7B83 /* AuthCredentialWithPniResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89F38D18EEF9F198FCB26B003EA9753A /* AuthCredentialWithPniResponse.swift */; };
+		E2BCCA4BD17C5D7506FFEAA4CA7CCD3F /* enc_API.c in Sources */ = {isa = PBXBuildFile; fileRef = 9E9A00612046A7970664C64F96C428F5 /* enc_API.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		E33CBFC513F641B57CDA4D911B1D6B20 /* static_modes_fixed.h in Headers */ = {isa = PBXBuildFile; fileRef = 693CB446F71104CE131ECCD61D34CFAA /* static_modes_fixed.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		E371BB9CD00FFEC5F69EF42A98088365 /* tables_gain.c in Sources */ = {isa = PBXBuildFile; fileRef = 807810EDAB8FF057FF4427E89FB2F46C /* tables_gain.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		E57017695E7FB140616C39ECA799CA9E /* DeviceTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DEA3A59DD2C633617791EA1C540D75F /* DeviceTransfer.swift */; };
 		E644C4209DB89AF2D0D3A6FCB0B874B1 /* ClientZkGroupCipher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CD31739698818D95AADE2689A8F92D6 /* ClientZkGroupCipher.swift */; };
+		E6A3059FD2F04D0793C9C4D752B03143 /* schur_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 496CABD1653989429CA719EB14ECE47F /* schur_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		E7992A9AE4D4FD740CABAF54310346EA /* ReceiptCredentialRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65F817A5CA2F8347C8C5C020680D1E8D /* ReceiptCredentialRequest.swift */; };
+		E8E846E48F27E8621DF5156AF81FAD91 /* Pods-Beacon-dummy.m in Sources */ = {isa = PBXBuildFile; fileRef = C74FF458AF9156A107F265F71CAD9A72 /* Pods-Beacon-dummy.m */; };
 		E9723A6D2D444ADB8C834434FF91A551 /* ReceiptCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D10A66FF8DB1A19E241C426689B555 /* ReceiptCredentialPresentation.swift */; };
+		EA797EAFE9238D5B1D04115615EBA3B6 /* tuning_parameters.h in Headers */ = {isa = PBXBuildFile; fileRef = BE64AE250651549558B692E1E4AC1E65 /* tuning_parameters.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		EA7BB45B12266F5ED949E13F64024723 /* PreKeySignalMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2FB7A137D8F1A1D75004E34460CC8F5 /* PreKeySignalMessage.swift */; };
 		EAF336382A8DE8219062E39B363B87A4 /* GroupIdentifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A044C941005FFB9EA85021BDF58D66 /* GroupIdentifier.swift */; };
+		EB0D3F04B95990AE82461AA67DBBF146 /* stereo_encode_pred.c in Sources */ = {isa = PBXBuildFile; fileRef = F7AC0154FC3BE645BAD38FA0B1D1DD82 /* stereo_encode_pred.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		ECAE57989A1E7437F88940F33D0898AC /* main.h in Headers */ = {isa = PBXBuildFile; fileRef = 96A6A83FFD88AB0246D8AF3DA4BCEDEE /* main.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		EECFFDC6163698A86A26A845F28DCC07 /* DataStoreInMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47B3BDFEF8CC91B725E0DF5ED84D085 /* DataStoreInMemory.swift */; };
+		EEF4C26970CC25071360527D58D0586C /* code_signs.c in Sources */ = {isa = PBXBuildFile; fileRef = B320F6322A023108A489008C03A503F9 /* code_signs.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		EF0F59BD45B473D38AC65C712E0D8979 /* tables_pulses_per_block.c in Sources */ = {isa = PBXBuildFile; fileRef = 0F08500B78B250D7C29D26397F385557 /* tables_pulses_per_block.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		EF11028301CE03BB416E73C06B988D9F /* NSQ.c in Sources */ = {isa = PBXBuildFile; fileRef = E0C75B0F438F8C3A901BE34D3B3BC943 /* NSQ.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		EF7284E743102362915183239B6076AD /* entenc.h in Headers */ = {isa = PBXBuildFile; fileRef = 0F3DA1F735915E58B9063B5AA45B7D05 /* entenc.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		EF86AC343FD03F831BCDACD6EF64EFC9 /* MacroCount.h in Headers */ = {isa = PBXBuildFile; fileRef = 3284BF390F0DFFB0EA543B02BF6845E3 /* MacroCount.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		EFA19E0C98FF27C5F29CDED97ABAEE34 /* NLSF_del_dec_quant.c in Sources */ = {isa = PBXBuildFile; fileRef = BB2F584FABE966A619C28ED4B99A6D6C /* NLSF_del_dec_quant.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		EFBDB170F0E1950C2C8443CA85E712E5 /* ByteArray.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC1FD039B5EFA25F348BA9789D4770DB /* ByteArray.swift */; };
+		F02186DBD564FBD15ECBA9B4F674541E /* check_control_input.c in Sources */ = {isa = PBXBuildFile; fileRef = D4C647CEB505142CEA9918DD70E2F2B8 /* check_control_input.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		F04018D69471A8DE998968D8A598FF07 /* debug.c in Sources */ = {isa = PBXBuildFile; fileRef = 15961B58B24F73176ED19FDE82685335 /* debug.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		F0D643ADA53A163654AB6AE1E0E0ED5C /* rate.h in Headers */ = {isa = PBXBuildFile; fileRef = 0ADDC7445C58DF2D3B041B3966B11B43 /* rate.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		F129507F2EB522F38686F1FC33317C68 /* mfrngcod.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EE7E406D241A2E3FB4E463A6B31CAF9 /* mfrngcod.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		F1CEAE2C27172CFF42AF9D1A06FA2D1C /* AuthCredentialPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 471AA49A9B4638028A3D67730B858BAC /* AuthCredentialPresentation.swift */; };
+		F24F9B89FE5128A826C0824F9E6776CF /* entdec.h in Headers */ = {isa = PBXBuildFile; fileRef = 45909153C25D5FF1E8EFAFF0F174B811 /* entdec.h */; settings = {ATTRIBUTES = (Project, ); }; };
+		F2DAEEB1DA67B42DA737B91D7F6FB642 /* resampler_private_IIR_FIR.c in Sources */ = {isa = PBXBuildFile; fileRef = C095A328705825DCCC95996B4568F3FA /* resampler_private_IIR_FIR.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		F329128873792254A4697E907C4D8521 /* LPC_inv_pred_gain.c in Sources */ = {isa = PBXBuildFile; fileRef = E5C9F904CB81DA63A5D04510333705B7 /* LPC_inv_pred_gain.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		F342489BC09E448C89D8E92F47DE0DB8 /* warped_autocorrelation_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 9C123C330B1AEA90094B5520F37ADD83 /* warped_autocorrelation_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		F3D4AFE438F924621FB196D8429FCF42 /* cpu_support.h in Headers */ = {isa = PBXBuildFile; fileRef = 4D62B2F6A330738F5FAD4D72BCC16636 /* cpu_support.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		F3D5F20B58F398534E2CC14DFFABDA1F /* GroupSendEndorsementsResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = 932CF8597DC7F4338F15FC1468C1AAF3 /* GroupSendEndorsementsResponse.swift */; };
+		F4C94D151315C6BD54EC535FB72D7A96 /* regularize_correlations_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 82BCF24E049A8E72A2F9135A3F63423D /* regularize_correlations_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		F5AF20D44631E749DE7855A737EA65AA /* resampler_rom.c in Sources */ = {isa = PBXBuildFile; fileRef = 431179456F0E53F59163C05C906D69F9 /* resampler_rom.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		F5EEA159EE1B2279428D692E1B8183D5 /* ServerZkAuthOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8776B0225FECF9C63BF88C1B79BDEA1F /* ServerZkAuthOperations.swift */; };
 		F6DCC5AE163908EBC5ACC05EAF8E328C /* SealedSenderCertificates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79159174126A10AC45B8D136DB486B6F /* SealedSenderCertificates.swift */; };
+		F71CEC05EFDD9DB120E31E2F6430DBD0 /* arch.h in Headers */ = {isa = PBXBuildFile; fileRef = F9A4F631E6637F261F979CFDCCDC581F /* arch.h */; settings = {ATTRIBUTES = (Project, ); }; };
 		F814FA5AAA4DD0DFD832805EE0D0A0AF /* RegistrationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29AAD6E5F88D89E07E28FEE7ADB74218 /* RegistrationService.swift */; };
 		F820F1AF47BC728190EF0888327303A3 /* GroupMasterKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22C383643910CD0ADB57A93BB1376FA6 /* GroupMasterKey.swift */; };
+		F89D4C91CEF261A20B0FD51AA70A8FD9 /* decode_frame.c in Sources */ = {isa = PBXBuildFile; fileRef = FC1A0C0A551F5F43693BD90A1AFE7FA7 /* decode_frame.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		F8E6331D15A73A56133558B70421D13E /* mlp.c in Sources */ = {isa = PBXBuildFile; fileRef = 04ED98EB173514256F63E4940500FD92 /* mlp.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		F95F38F11CC67F642DB9AAE8A3FDF0CB /* celt_decoder.c in Sources */ = {isa = PBXBuildFile; fileRef = 73680BB80AF4890D95B0928DA00142DE /* celt_decoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		FA0049C1F12E975F09B6C6FE788D7B55 /* NLSF_stabilize.c in Sources */ = {isa = PBXBuildFile; fileRef = 7771AB08AA94DCBE25669A9CE94706D2 /* NLSF_stabilize.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		FA28175E0F81D181FFBA4FEE23F49912 /* ServerZkReceiptOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13747331C4EF126A76ABAE1491651FEE /* ServerZkReceiptOperations.swift */; };
+		FAA92A08638AFD6E57B070891730F603 /* opus_defines.h in Headers */ = {isa = PBXBuildFile; fileRef = 13FFAFC0BF698202923AF8D75BA49F97 /* opus_defines.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		FCB21EC19D11A63B786E1FF628841C76 /* tables_other.c in Sources */ = {isa = PBXBuildFile; fileRef = 888C77093133983C78BD0904E9A765A4 /* tables_other.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		FD8D07735919FFB9A38F86AFDAE251A4 /* autocorrelation_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 3D86E129E15E7D8ADA81EC7A2B30F8CA /* autocorrelation_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 		FDC27FBF7D5421B91DB96DF1B84CE848 /* Address.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5238DB139EE8D3B314E0FFF3D6B5829F /* Address.swift */; };
+		FE8BCB626995ABB3533C86BC0F4FCD6F /* energy_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = 9DF087C6FDC879D69B1265D91109DAC1 /* energy_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		FF125D347514C7E503125934938DC5D5 /* encode_frame_FLP.c in Sources */ = {isa = PBXBuildFile; fileRef = A5B4767438C14312117DC391B1245DF9 /* encode_frame_FLP.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
+		FFF26B631476B61E65FF75870DCBDFE1 /* opus_decoder.c in Sources */ = {isa = PBXBuildFile; fileRef = 8CDC3EA31A3FEAF0F336A85D7492FBEF /* opus_decoder.c */; settings = {COMPILER_FLAGS = "-fno-objc-arc"; }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		3AAF1B89EE22AF5CA7A2AD4561858535 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = DDBC7E0BF7FE162EF742772F4DC3D525;
-			remoteInfo = "WebRTC-lib";
-		};
-		B77C14AE96B47F29B434B3FBEA753F43 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 04BDD72EAE718614B413E19FEAEAA671;
-			remoteInfo = "Pods-Beacon";
-		};
-		F751FE16790C19CAF77D333997BAB3C0 /* PBXContainerItemProxy */ = {
+		22CECE28F7C1745D3A7B71E73A43C9C0 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = D77A98059641D2A99D7DD3EBCA4606AE;
 			remoteInfo = LibSignalClient;
 		};
+		31A86EDB9AFB61DC37630311BCC6CDF6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E2A878BA6EF9AC0FE5A8A5A4B34B433;
+			remoteInfo = Opus;
+		};
+		50CC1BF82295FFDE7E1BCB3349AF3D99 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DDBC7E0BF7FE162EF742772F4DC3D525;
+			remoteInfo = "WebRTC-lib";
+		};
+		89C3D4AE55227E56491FE9B3C2280FFA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BFDFE7DC352907FC980B868725387E98 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 04BDD72EAE718614B413E19FEAEAA671;
+			remoteInfo = "Pods-Beacon";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		01EB3841E5A370AACE165952B801F11E /* UuidCiphertext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UuidCiphertext.swift; path = swift/Sources/LibSignalClient/zkgroup/UuidCiphertext.swift; sourceTree = "<group>"; };
+		02F42D9A96D07AD3D6B3939C9B35AB9F /* Opus.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = Opus.release.xcconfig; sourceTree = "<group>"; };
+		035DA509A6427862A41371BF19345683 /* opus_types.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = opus_types.h; sourceTree = "<group>"; };
 		03FA76C5F1821D396CF8CA6ED282C082 /* Media.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Media.swift; path = swift/Sources/LibSignalClient/Media.swift; sourceTree = "<group>"; };
+		04E7A60CCBA285204DF470AD20396312 /* LTP_analysis_filter_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = LTP_analysis_filter_FLP.c; sourceTree = "<group>"; };
+		04ED98EB173514256F63E4940500FD92 /* mlp.c */ = {isa = PBXFileReference; includeInIndex = 1; path = mlp.c; sourceTree = "<group>"; };
+		05487A768845542EBA99AE73777545DB /* NLSF_VQ_weights_laroia.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NLSF_VQ_weights_laroia.c; sourceTree = "<group>"; };
+		06B1E1995D67234935A84CC58F013822 /* resampler_down2.c */ = {isa = PBXFileReference; includeInIndex = 1; path = resampler_down2.c; sourceTree = "<group>"; };
 		06BE900981861169ADC810278DFD3359 /* CallLinkPublicParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkPublicParams.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkPublicParams.swift; sourceTree = "<group>"; };
+		06EF1A497B787C152AC30AE2F6D896E0 /* sigm_Q15.c */ = {isa = PBXFileReference; includeInIndex = 1; path = sigm_Q15.c; sourceTree = "<group>"; };
 		071003D60846035F28352A723F299C73 /* ClientZkAuthOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClientZkAuthOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ClientZkAuthOperations.swift; sourceTree = "<group>"; };
 		07139C76D43CC25E449F5AD07CD08BD5 /* ProfileKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKey.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKey.swift; sourceTree = "<group>"; };
+		0717833F9FF7F4D65BDAD18B2FF5F0A1 /* quant_LTP_gains.c */ = {isa = PBXFileReference; includeInIndex = 1; path = quant_LTP_gains.c; sourceTree = "<group>"; };
 		08176232E603C884246A9D58C6C783BD /* ReceiptCredentialRequestContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredentialRequestContext.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredentialRequestContext.swift; sourceTree = "<group>"; };
 		096C8A9BF087D7110EADB90AA33E2497 /* Fingerprint.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Fingerprint.swift; path = swift/Sources/LibSignalClient/Fingerprint.swift; sourceTree = "<group>"; };
+		09F242691BD93C70C0F454C0101424F1 /* float_cast.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = float_cast.h; sourceTree = "<group>"; };
+		0ADDC7445C58DF2D3B041B3966B11B43 /* rate.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = rate.h; sourceTree = "<group>"; };
 		0B481C94D58D065A18E54B3E36E7FACC /* PrivateKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PrivateKey.swift; path = swift/Sources/LibSignalClient/PrivateKey.swift; sourceTree = "<group>"; };
+		0B9AC6A095212740869BA615E3488568 /* quant_bands.c */ = {isa = PBXFileReference; includeInIndex = 1; path = quant_bands.c; sourceTree = "<group>"; };
 		0BB8E42BE9F1F09BEDACDFAF3F9B1BEB /* Aes256GcmSiv.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Aes256GcmSiv.swift; path = swift/Sources/LibSignalClient/Aes256GcmSiv.swift; sourceTree = "<group>"; };
 		0BC993D7A32FDCB56F677174DED9666E /* NativeHandleOwner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NativeHandleOwner.swift; path = swift/Sources/LibSignalClient/NativeHandleOwner.swift; sourceTree = "<group>"; };
 		0BE53E45945D34BA8B6061183DB0FA54 /* ZkCredentialKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ZkCredentialKey.swift; path = swift/Sources/LibSignalClient/zkgroup/ZkCredentialKey.swift; sourceTree = "<group>"; };
+		0C24797C0D58D97213B368C2D2118E9B /* define.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = define.h; sourceTree = "<group>"; };
+		0CED82F45534FB8C6C5C50E98F3BAEEC /* modes.c */ = {isa = PBXFileReference; includeInIndex = 1; path = modes.c; sourceTree = "<group>"; };
+		0F08500B78B250D7C29D26397F385557 /* tables_pulses_per_block.c */ = {isa = PBXFileReference; includeInIndex = 1; path = tables_pulses_per_block.c; sourceTree = "<group>"; };
+		0F3DA1F735915E58B9063B5AA45B7D05 /* entenc.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = entenc.h; sourceTree = "<group>"; };
+		0FD49094750B8B2E2B5C45AC25974779 /* opus_multistream.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = opus_multistream.h; sourceTree = "<group>"; };
 		1026BB61545962F3B73A7C1522F0B9D7 /* GroupSendEndorsement.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSendEndorsement.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSendEndorsement.swift; sourceTree = "<group>"; };
+		10ABAC16D3F98974E33C07DE58FE0ABB /* modes.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = modes.h; sourceTree = "<group>"; };
 		10E6903BF99F1AA9FD712A2670E8AF24 /* ServiceId.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServiceId.swift; path = swift/Sources/LibSignalClient/ServiceId.swift; sourceTree = "<group>"; };
+		1115AD175976E51B71C9A476D3E0536B /* A2NLSF.c */ = {isa = PBXFileReference; includeInIndex = 1; path = A2NLSF.c; sourceTree = "<group>"; };
+		136D897D842422FCF30829C9DBD739F1 /* resampler_down2_3.c */ = {isa = PBXFileReference; includeInIndex = 1; path = resampler_down2_3.c; sourceTree = "<group>"; };
 		13747331C4EF126A76ABAE1491651FEE /* ServerZkReceiptOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerZkReceiptOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerZkReceiptOperations.swift; sourceTree = "<group>"; };
+		13FFAFC0BF698202923AF8D75BA49F97 /* opus_defines.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = opus_defines.h; sourceTree = "<group>"; };
 		14E61633022CE2A9B4197B5B24BF7318 /* ReceiptCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredential.swift; sourceTree = "<group>"; };
+		15961B58B24F73176ED19FDE82685335 /* debug.c */ = {isa = PBXFileReference; includeInIndex = 1; path = debug.c; sourceTree = "<group>"; };
+		165D7B266E698AAF81B6C5763696775B /* LP_variable_cutoff.c */ = {isa = PBXFileReference; includeInIndex = 1; path = LP_variable_cutoff.c; sourceTree = "<group>"; };
+		16CDC98E51F36A8907C150F165E23324 /* find_LPC_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = find_LPC_FLP.c; sourceTree = "<group>"; };
+		1918AABED26CA270990FA2E60B38FEA2 /* os_support.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = os_support.h; sourceTree = "<group>"; };
+		19A881AE68D06EE8BA213FD5B5BFDBDC /* vq.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = vq.h; sourceTree = "<group>"; };
 		1A3770AA9CA9A55FCFCF35F81EFBC906 /* CreateCallLinkCredentialRequest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredentialRequest.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredentialRequest.swift; sourceTree = "<group>"; };
+		1A850F0C5A6ED4E1D0CB862668384C48 /* fixed_debug.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = fixed_debug.h; sourceTree = "<group>"; };
 		1ACADA1981F0D577A44244783D7E57D5 /* Pods-BeaconTests-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-BeaconTests-dummy.m"; sourceTree = "<group>"; };
+		1AD5A12A4F67C33A2401B67B1F0C2F93 /* control_audio_bandwidth.c */ = {isa = PBXFileReference; includeInIndex = 1; path = control_audio_bandwidth.c; sourceTree = "<group>"; };
 		1B4C6A523E7DC929973742DB814E3FD1 /* AsyncUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AsyncUtils.swift; path = swift/Sources/LibSignalClient/AsyncUtils.swift; sourceTree = "<group>"; };
+		1B67274A109A89035270FF60C440B418 /* CNG.c */ = {isa = PBXFileReference; includeInIndex = 1; path = CNG.c; sourceTree = "<group>"; };
 		1BDF462904720800639E703771B9B546 /* Services.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Services.swift; path = swift/Sources/LibSignalClient/chat/Services.swift; sourceTree = "<group>"; };
+		1C19A93EBBDCC1AEDAC45880585F5C11 /* MacroDebug.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = MacroDebug.h; sourceTree = "<group>"; };
 		1CA0656B7D1ECDA691D9EA6CE82DB663 /* DataStoreUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DataStoreUtils.swift; path = swift/Sources/LibSignalClient/DataStoreUtils.swift; sourceTree = "<group>"; };
+		1CDB62F7E1CEFDD4AC38FA4A515DF9B7 /* PLC.c */ = {isa = PBXFileReference; includeInIndex = 1; path = PLC.c; sourceTree = "<group>"; };
 		1D014DE0AD1F2525A4E6CD5DA664DA5A /* CallLinkSecretParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkSecretParams.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkSecretParams.swift; sourceTree = "<group>"; };
 		1E9DE7901795E7FA9D9F947D66ED01FA /* ServerPublicParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerPublicParams.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerPublicParams.swift; sourceTree = "<group>"; };
+		1EB252245CEA6DD50A280D14458F3348 /* noise_shape_analysis_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = noise_shape_analysis_FLP.c; sourceTree = "<group>"; };
 		1FBDA96133C387CD7AB773DC7BE1EB46 /* Cds2.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Cds2.swift; path = swift/Sources/LibSignalClient/Cds2.swift; sourceTree = "<group>"; };
 		20BB872F7FFD61E1871B3FBD00B6D601 /* Pods-Beacon-frameworks.sh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.script.sh; path = "Pods-Beacon-frameworks.sh"; sourceTree = "<group>"; };
 		20CA787E45BF6C7C944A3EE259A1A1D6 /* LibSignalClient-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "LibSignalClient-dummy.m"; sourceTree = "<group>"; };
 		219D1E23243351997C85E422F91B2F83 /* LibSignalClient-prefix.pch */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "LibSignalClient-prefix.pch"; sourceTree = "<group>"; };
+		220CC71F704B47B760F2F220459A948E /* entcode.c */ = {isa = PBXFileReference; includeInIndex = 1; path = entcode.c; sourceTree = "<group>"; };
 		2238A76D1F2691DD5983F2F09B86E76D /* Pods-BeaconTests-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-BeaconTests-acknowledgements.markdown"; sourceTree = "<group>"; };
 		22C383643910CD0ADB57A93BB1376FA6 /* GroupMasterKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupMasterKey.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupMasterKey.swift; sourceTree = "<group>"; };
 		239E19F04540A501949D4453A92C4D0F /* ExpiringProfileKeyCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpiringProfileKeyCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/ExpiringProfileKeyCredentialResponse.swift; sourceTree = "<group>"; };
+		23C6A530C8F2AC63519EB4C714E5D686 /* NLSF_VQ.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NLSF_VQ.c; sourceTree = "<group>"; };
+		2491878E889636060BF3207E586A3672 /* sort.c */ = {isa = PBXFileReference; includeInIndex = 1; path = sort.c; sourceTree = "<group>"; };
+		254DA2B13B9175449DFF8CC85483A6CE /* static_modes_float_arm_ne10.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = static_modes_float_arm_ne10.h; sourceTree = "<group>"; };
+		269B8AD784A669369DA7CA2A11CBC2D0 /* mdct.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = mdct.h; sourceTree = "<group>"; };
 		26D2611DBFBA5436BFBEC452F6B7364C /* Kem.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Kem.swift; path = swift/Sources/LibSignalClient/Kem.swift; sourceTree = "<group>"; };
 		2795BE032EF22E63A406BE97FF01308C /* LibSignalClient-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "LibSignalClient-Info.plist"; sourceTree = "<group>"; };
+		2798D6E861D50C7602CA3E55484EFD95 /* _kiss_fft_guts.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = _kiss_fft_guts.h; sourceTree = "<group>"; };
+		292C138521787C1F34B63282493B54E3 /* sum_sqr_shift.c */ = {isa = PBXFileReference; includeInIndex = 1; path = sum_sqr_shift.c; sourceTree = "<group>"; };
 		29678B564207DF03C27AD20F0F04AE0F /* KyberPreKeyRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = KyberPreKeyRecord.swift; path = swift/Sources/LibSignalClient/state/KyberPreKeyRecord.swift; sourceTree = "<group>"; };
 		296FCD2B9C008082AC3D4D42E5A3879D /* ClientZkProfileOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClientZkProfileOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ClientZkProfileOperations.swift; sourceTree = "<group>"; };
 		29AAD6E5F88D89E07E28FEE7ADB74218 /* RegistrationService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RegistrationService.swift; path = swift/Sources/LibSignalClient/RegistrationService.swift; sourceTree = "<group>"; };
+		2A0799FE2CDBF931D9C93A3F89D602DC /* resampler_private.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = resampler_private.h; sourceTree = "<group>"; };
 		2AA754AE623B3245BD680124BF0202AC /* BackupAuthCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredential.swift; sourceTree = "<group>"; };
+		2B2C1076DDFA98D22FCC96C546EE7891 /* celt_encoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = celt_encoder.c; sourceTree = "<group>"; };
 		2B3B71AA84FCF57D6CE164458913C99C /* ComparableBackup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ComparableBackup.swift; path = swift/Sources/LibSignalClient/ComparableBackup.swift; sourceTree = "<group>"; };
+		2DA121DC0CA702C0D649E83B7288CFA4 /* encode_indices.c */ = {isa = PBXFileReference; includeInIndex = 1; path = encode_indices.c; sourceTree = "<group>"; };
+		2E100AEF32EFB05BB40B657B995B347E /* control_codec.c */ = {isa = PBXFileReference; includeInIndex = 1; path = control_codec.c; sourceTree = "<group>"; };
 		2FD13B1F03227D19780A7A02FAB3023B /* ProfileKeyCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCredentialPresentation.swift; sourceTree = "<group>"; };
 		2FF3498FA90C4F714D7900EDCB2ECD81 /* Username.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Username.swift; path = swift/Sources/LibSignalClient/Username.swift; sourceTree = "<group>"; };
 		30B067B018BAFFB515ABFE8E0C2CEC1C /* UnauthMessagesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthMessagesService.swift; path = swift/Sources/LibSignalClient/chat/UnauthMessagesService.swift; sourceTree = "<group>"; };
+		3260E8F46BF4CDEC8784034EDAF3B9FB /* config.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = config.h; sourceTree = "<group>"; };
+		3284BF390F0DFFB0EA543B02BF6845E3 /* MacroCount.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = MacroCount.h; sourceTree = "<group>"; };
 		343183E9D6B8AD12E226BA8F1BE3AB37 /* SingleOutboundMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SingleOutboundMessage.swift; path = swift/Sources/LibSignalClient/chat/SingleOutboundMessage.swift; sourceTree = "<group>"; };
+		34864590C8AE62FF00A5376DB5D3B4E5 /* opus_multistream_decoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = opus_multistream_decoder.c; sourceTree = "<group>"; };
 		357F528DB2383BEE7C126B9107FD99C3 /* TokioAsyncContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TokioAsyncContext.swift; path = swift/Sources/LibSignalClient/TokioAsyncContext.swift; sourceTree = "<group>"; };
+		35E7DA1B87D9B521966E404DFC19B67F /* init_encoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = init_encoder.c; sourceTree = "<group>"; };
+		3638D14A676B0C5839D2BD058591BAE0 /* stack_alloc.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = stack_alloc.h; sourceTree = "<group>"; };
 		3781903EC563662550AFB19D69538A24 /* Pods-BeaconTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-BeaconTests.debug.xcconfig"; sourceTree = "<group>"; };
 		37D39825AF7597231EE65057AD5E9E7E /* PreKeyBundle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PreKeyBundle.swift; path = swift/Sources/LibSignalClient/state/PreKeyBundle.swift; sourceTree = "<group>"; };
 		384DDA2CB25005BD6479B5987C619DD4 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		3A6C499A5665390DDB06715AA1E392AB /* pitch_analysis_core_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = pitch_analysis_core_FLP.c; sourceTree = "<group>"; };
+		3A97F9A813D1D1FB7A11BF0448215629 /* VAD.c */ = {isa = PBXFileReference; includeInIndex = 1; path = VAD.c; sourceTree = "<group>"; };
 		3ADE55F786A7B10A2DDBDEC49D96DDA2 /* ChatConnection+Fake.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = "ChatConnection+Fake.swift"; path = "swift/Sources/LibSignalClient/ChatConnection+Fake.swift"; sourceTree = "<group>"; };
+		3B79719FC3B068132C6B3CC3FB106F56 /* tables_pitch_lag.c */ = {isa = PBXFileReference; includeInIndex = 1; path = tables_pitch_lag.c; sourceTree = "<group>"; };
+		3CE94A9CE0B160E6546CE16BB7F486B8 /* NLSF2A.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NLSF2A.c; sourceTree = "<group>"; };
+		3D0715090F511ABE3284DC4C8E8300F9 /* opus_multistream.c */ = {isa = PBXFileReference; includeInIndex = 1; path = opus_multistream.c; sourceTree = "<group>"; };
+		3D1ECD42D09BD583905A56A2DE2792BC /* table_LSF_cos.c */ = {isa = PBXFileReference; includeInIndex = 1; path = table_LSF_cos.c; sourceTree = "<group>"; };
+		3D86E129E15E7D8ADA81EC7A2B30F8CA /* autocorrelation_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = autocorrelation_FLP.c; sourceTree = "<group>"; };
+		3D95A9B8D08AC77DAD1C6176C98F921E /* PLC.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = PLC.h; sourceTree = "<group>"; };
 		3DEA3A59DD2C633617791EA1C540D75F /* DeviceTransfer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DeviceTransfer.swift; path = swift/Sources/LibSignalClient/DeviceTransfer.swift; sourceTree = "<group>"; };
+		3E89612B4EB794E9979461FB234481AF /* Opus-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Opus-umbrella.h"; sourceTree = "<group>"; };
+		3EF019EDAD58C9D9272D8A4292DFD7E8 /* LPC_inv_pred_gain_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = LPC_inv_pred_gain_FLP.c; sourceTree = "<group>"; };
 		3FEC8816D680226BE2EF4FEFDEE7D79D /* ReceiptCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredentialResponse.swift; sourceTree = "<group>"; };
+		416875D71059C2CF51BD2AB29E8A4564 /* stereo_quant_pred.c */ = {isa = PBXFileReference; includeInIndex = 1; path = stereo_quant_pred.c; sourceTree = "<group>"; };
 		4197E61711747E0FE8816C13DD1A1D95 /* BackupAuthCredentialRequestContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredentialRequestContext.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredentialRequestContext.swift; sourceTree = "<group>"; };
 		41D5B89DBD31FD90D4E90F4AAE0B4EC6 /* CallLinkAuthCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkAuthCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkAuthCredentialPresentation.swift; sourceTree = "<group>"; };
+		4267206C7B8D3F585A530593F4816D9C /* Inlines.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = Inlines.h; sourceTree = "<group>"; };
+		42FB2E9785CA6D5F3B189FB2E663F8C7 /* opus.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = opus.h; sourceTree = "<group>"; };
+		431179456F0E53F59163C05C906D69F9 /* resampler_rom.c */ = {isa = PBXFileReference; includeInIndex = 1; path = resampler_rom.c; sourceTree = "<group>"; };
 		43480E1F2D2A883CA5F3F46433E73D0F /* BackupAuthCredentialRequest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredentialRequest.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredentialRequest.swift; sourceTree = "<group>"; };
+		445BC113DF03959E103A538C236C4D8B /* Opus.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = Opus.modulemap; sourceTree = "<group>"; };
 		450FE1C9388A9F8D5997E0592A8AD37F /* CreateCallLinkCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredential.swift; sourceTree = "<group>"; };
+		4528038FFE7BDF93558D5968347CF6CC /* opus_multistream_encoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = opus_multistream_encoder.c; sourceTree = "<group>"; };
+		45398F012BB78D1D9F5DE60E526C3EB9 /* pitch_est_defines.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = pitch_est_defines.h; sourceTree = "<group>"; };
+		45909153C25D5FF1E8EFAFF0F174B811 /* entdec.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = entdec.h; sourceTree = "<group>"; };
+		45F2D51568CF77B3FFDDE24D334ED4DB /* opus_projection_decoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = opus_projection_decoder.c; sourceTree = "<group>"; };
 		46F7B25C69F0436DB9B5A6D1C9862B18 /* CreateCallLinkCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredentialResponse.swift; sourceTree = "<group>"; };
 		471AA49A9B4638028A3D67730B858BAC /* AuthCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/AuthCredentialPresentation.swift; sourceTree = "<group>"; };
+		496CABD1653989429CA719EB14ECE47F /* schur_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = schur_FLP.c; sourceTree = "<group>"; };
+		49EC1F3326AC5958FF0E01E76CBC8F93 /* bands.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = bands.h; sourceTree = "<group>"; };
+		49F4072C982D83D3DE74D72AF6EB70DF /* scale_copy_vector_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = scale_copy_vector_FLP.c; sourceTree = "<group>"; };
+		4A4C387EC077D4B0AFF5225283D7336A /* burg_modified_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = burg_modified_FLP.c; sourceTree = "<group>"; };
 		4A623A0BA1BFC2862E7640667CF780DF /* Pods-BeaconTests */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-BeaconTests"; path = Pods_BeaconTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		4ACB504F485F1FE6CDF76AF5720EDF38 /* process_NLSFs.c */ = {isa = PBXFileReference; includeInIndex = 1; path = process_NLSFs.c; sourceTree = "<group>"; };
 		4B1CC9D6DB7B6CBC9F3719988D49E872 /* KeyTransparency.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = KeyTransparency.swift; path = swift/Sources/LibSignalClient/KeyTransparency.swift; sourceTree = "<group>"; };
 		4B8A706E3BEBBA3A1DE071F45BE4101F /* MessageBackup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = MessageBackup.swift; path = swift/Sources/LibSignalClient/MessageBackup.swift; sourceTree = "<group>"; };
+		4BECE021359C6894CE9E12F4EB472ED2 /* bands.c */ = {isa = PBXFileReference; includeInIndex = 1; path = bands.c; sourceTree = "<group>"; };
+		4BF506EF494AD3A477BFF6747CD543CF /* decode_indices.c */ = {isa = PBXFileReference; includeInIndex = 1; path = decode_indices.c; sourceTree = "<group>"; };
 		4C27AA7271DADE1799794F89E5346E22 /* ServerSecretParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerSecretParams.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerSecretParams.swift; sourceTree = "<group>"; };
+		4D62B2F6A330738F5FAD4D72BCC16636 /* cpu_support.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = cpu_support.h; sourceTree = "<group>"; };
+		4D8A035729E9F12734BACB3B9AD557B5 /* decode_pitch.c */ = {isa = PBXFileReference; includeInIndex = 1; path = decode_pitch.c; sourceTree = "<group>"; };
+		4E3268A348AF7CB7C487063C4D48F07C /* analysis.c */ = {isa = PBXFileReference; includeInIndex = 1; path = analysis.c; sourceTree = "<group>"; };
 		4E6B17683DC0E1D2E12E3BA22648393F /* LibSignalClient.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = LibSignalClient.modulemap; sourceTree = "<group>"; };
 		51748D3779939C67C213A2ADE499C2B0 /* Pods-BeaconTests-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-BeaconTests-Info.plist"; sourceTree = "<group>"; };
+		5197054379F3B18B777D5823731CECD8 /* resampler.c */ = {isa = PBXFileReference; includeInIndex = 1; path = resampler.c; sourceTree = "<group>"; };
 		51E39DB1BFC9407CC15BCBEBE8161824 /* ReceiptSerial.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptSerial.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptSerial.swift; sourceTree = "<group>"; };
 		5238DB139EE8D3B314E0FFF3D6B5829F /* Address.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Address.swift; path = swift/Sources/LibSignalClient/Address.swift; sourceTree = "<group>"; };
+		55ABE61ECBB39FC75D0C54DFB08D0AEF /* entcode.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = entcode.h; sourceTree = "<group>"; };
+		5613F848EB6C43BAEB44CA4AED48FE9A /* control_SNR.c */ = {isa = PBXFileReference; includeInIndex = 1; path = control_SNR.c; sourceTree = "<group>"; };
 		566D232F52BD423CDC25DEAF93AA06D0 /* ProfileKeyCredentialRequest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCredentialRequest.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCredentialRequest.swift; sourceTree = "<group>"; };
 		582E2E2C1291332CF866B40DF5659723 /* Pods-BeaconTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-BeaconTests.release.xcconfig"; sourceTree = "<group>"; };
+		5987DDE47E1251187585D84329DE7899 /* opus_custom.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = opus_custom.h; sourceTree = "<group>"; };
+		59E4D0937D5EB8287279F8FC4AE66E56 /* control.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = control.h; sourceTree = "<group>"; };
 		5AFFE0A7EA61D4A9E43D8381CBFB7544 /* PreKeyRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PreKeyRecord.swift; path = swift/Sources/LibSignalClient/state/PreKeyRecord.swift; sourceTree = "<group>"; };
+		5B3A8C32534381522BB632B4CC6635D3 /* entenc.c */ = {isa = PBXFileReference; includeInIndex = 1; path = entenc.c; sourceTree = "<group>"; };
 		5B5489FF62CF159E454AB5CAF3B5C83A /* ProvisioningConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProvisioningConnection.swift; path = swift/Sources/LibSignalClient/ProvisioningConnection.swift; sourceTree = "<group>"; };
 		5CA1382020344593A5272F6EF66BCA57 /* DeviceId.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DeviceId.swift; path = swift/Sources/LibSignalClient/DeviceId.swift; sourceTree = "<group>"; };
 		5CD31739698818D95AADE2689A8F92D6 /* ClientZkGroupCipher.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClientZkGroupCipher.swift; path = swift/Sources/LibSignalClient/zkgroup/ClientZkGroupCipher.swift; sourceTree = "<group>"; };
 		5CF046973EA88C919041ACCF88CBAAE9 /* SealedSender.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SealedSender.swift; path = swift/Sources/LibSignalClient/SealedSender.swift; sourceTree = "<group>"; };
 		5CF3310A31C5D6A90A0E1E3C73674BDA /* Pods-Beacon-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-Beacon-umbrella.h"; sourceTree = "<group>"; };
+		5D37184EA5623A6B4A922F788750CE20 /* Opus.podspec */ = {isa = PBXFileReference; explicitFileType = text.script.ruby; includeInIndex = 1; indentWidth = 2; lastKnownFileType = text; path = Opus.podspec; sourceTree = "<group>"; tabWidth = 2; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
+		5D48311D063268BD137B3020FB1D176C /* find_pitch_lags_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = find_pitch_lags_FLP.c; sourceTree = "<group>"; };
+		5E4477BCCF4D0B3499EA1486C7630273 /* stereo_MS_to_LR.c */ = {isa = PBXFileReference; includeInIndex = 1; path = stereo_MS_to_LR.c; sourceTree = "<group>"; };
+		5F3A0687C6C59CF41CA8E6A754DE87B3 /* resampler_private_up2_HQ.c */ = {isa = PBXFileReference; includeInIndex = 1; path = resampler_private_up2_HQ.c; sourceTree = "<group>"; };
+		6046E08B248CBBD01FD4EDED0873C57A /* opus.c */ = {isa = PBXFileReference; includeInIndex = 1; path = opus.c; sourceTree = "<group>"; };
+		6162AB04518127CA3E73179719B6E099 /* pitch.c */ = {isa = PBXFileReference; includeInIndex = 1; path = pitch.c; sourceTree = "<group>"; };
+		61A99CC3CAC39F7EFADF410DB2CEB033 /* apply_sine_window_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = apply_sine_window_FLP.c; sourceTree = "<group>"; };
+		6219185FE9050D4F9F7763D4E9805E3A /* mdct.c */ = {isa = PBXFileReference; includeInIndex = 1; path = mdct.c; sourceTree = "<group>"; };
+		638BCAB33DB6379AA1C8D3558A1DC13D /* typedef.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = typedef.h; sourceTree = "<group>"; };
 		63C44D1B920C0431A5E033E6066D69D0 /* AuthMessagesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthMessagesService.swift; path = swift/Sources/LibSignalClient/chat/AuthMessagesService.swift; sourceTree = "<group>"; };
 		6528523AC3E7E1D3B60A1E44EDE29150 /* WebRTC.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; path = WebRTC.xcframework; sourceTree = "<group>"; };
+		6529B91CAA4A174158E61722F0C22096 /* mathops.c */ = {isa = PBXFileReference; includeInIndex = 1; path = mathops.c; sourceTree = "<group>"; };
 		656B9EC52C94D00FFD6EF2399469FE32 /* PublicKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PublicKey.swift; path = swift/Sources/LibSignalClient/PublicKey.swift; sourceTree = "<group>"; };
+		657A8B33C1E9DC541BE8B77C6F74E6F6 /* tables.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = tables.h; sourceTree = "<group>"; };
+		65A24826F128D2FEDC308AB4486D55A6 /* opus_projection_encoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = opus_projection_encoder.c; sourceTree = "<group>"; };
+		65C1EDA9BFBB7E7801ABFDF8BAF56D9A /* analysis.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = analysis.h; sourceTree = "<group>"; };
 		65F817A5CA2F8347C8C5C020680D1E8D /* ReceiptCredentialRequest.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredentialRequest.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredentialRequest.swift; sourceTree = "<group>"; };
+		66A81422F2DB274043AADB79E60C0818 /* macros.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = macros.h; sourceTree = "<group>"; };
+		67CD106F8B929255BAF729127B1DB6CE /* tables_NLSF_CB_WB.c */ = {isa = PBXFileReference; includeInIndex = 1; path = tables_NLSF_CB_WB.c; sourceTree = "<group>"; };
+		67E6E96A5D9F7FE83D740DA262675533 /* mlp.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = mlp.h; sourceTree = "<group>"; };
 		680BF45D9222FB64A0191E39C83EFEF3 /* UnauthProfilesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthProfilesService.swift; path = swift/Sources/LibSignalClient/chat/UnauthProfilesService.swift; sourceTree = "<group>"; };
+		681DE51C02B8F69E3CB9047920F2EC61 /* LPC_fit.c */ = {isa = PBXFileReference; includeInIndex = 1; path = LPC_fit.c; sourceTree = "<group>"; };
+		693CB446F71104CE131ECCD61D34CFAA /* static_modes_fixed.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = static_modes_fixed.h; sourceTree = "<group>"; };
 		694A282C7DCE525332FD4B8FFE76ACB1 /* SenderKeyDistributionMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SenderKeyDistributionMessage.swift; path = swift/Sources/LibSignalClient/messages/SenderKeyDistributionMessage.swift; sourceTree = "<group>"; };
+		696920E6B5EB741241614291F797DDEA /* static_modes_float.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = static_modes_float.h; sourceTree = "<group>"; };
+		69ABE35646506A0D8467576091EBBC44 /* kiss_fft.c */ = {isa = PBXFileReference; includeInIndex = 1; path = kiss_fft.c; sourceTree = "<group>"; };
+		6B0B162CB62AE8B60E100E1ADEA4D367 /* structs_FLP.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = structs_FLP.h; sourceTree = "<group>"; };
 		6BEA5ACCA8EC0357A81319D039F55F07 /* SenderKeyMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SenderKeyMessage.swift; path = swift/Sources/LibSignalClient/messages/SenderKeyMessage.swift; sourceTree = "<group>"; };
 		6CDBC36EA895E6CB82363152EDCD3B2A /* BackupLevel.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupLevel.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupLevel.swift; sourceTree = "<group>"; };
 		6E83324AE2900ECBB536CC91E2FD3D72 /* UnauthUsernamesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthUsernamesService.swift; path = swift/Sources/LibSignalClient/chat/UnauthUsernamesService.swift; sourceTree = "<group>"; };
+		6EE7E406D241A2E3FB4E463A6B31CAF9 /* mfrngcod.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = mfrngcod.h; sourceTree = "<group>"; };
+		702782AC292DE029B41CD6A2BF431E9D /* bwexpander_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = bwexpander_FLP.c; sourceTree = "<group>"; };
+		73680BB80AF4890D95B0928DA00142DE /* celt_decoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = celt_decoder.c; sourceTree = "<group>"; };
 		7405AC8F88B2F4C534C6980618C99CE0 /* GroupSecretParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSecretParams.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSecretParams.swift; sourceTree = "<group>"; };
 		75043C0EF7F3C718347F07AB54A0EE4C /* CreateCallLinkCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredentialPresentation.swift; sourceTree = "<group>"; };
 		76965EBDC272194AB4E2061BAF85397F /* ChatConnection.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatConnection.swift; path = swift/Sources/LibSignalClient/ChatConnection.swift; sourceTree = "<group>"; };
+		7743795134E9A05B7023ECC77ADD5F23 /* stereo_decode_pred.c */ = {isa = PBXFileReference; includeInIndex = 1; path = stereo_decode_pred.c; sourceTree = "<group>"; };
+		7771AB08AA94DCBE25669A9CE94706D2 /* NLSF_stabilize.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NLSF_stabilize.c; sourceTree = "<group>"; };
 		77AAC994857B00ED0FE5E40CC6914948 /* AuthCredentialWithPni.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthCredentialWithPni.swift; path = swift/Sources/LibSignalClient/zkgroup/AuthCredentialWithPni.swift; sourceTree = "<group>"; };
 		79139E4E0262154ABC9EC57875FF61FD /* CallLinkAuthCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkAuthCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkAuthCredentialResponse.swift; sourceTree = "<group>"; };
 		79159174126A10AC45B8D136DB486B6F /* SealedSenderCertificates.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SealedSenderCertificates.swift; path = swift/Sources/LibSignalClient/SealedSenderCertificates.swift; sourceTree = "<group>"; };
 		79A1E3E61E0FFF72BFB7B5901741C3FE /* ProfileKeyCiphertext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCiphertext.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCiphertext.swift; sourceTree = "<group>"; };
 		79A8CF6BAA84F569664E5C2591164036 /* SessionRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SessionRecord.swift; path = swift/Sources/LibSignalClient/state/SessionRecord.swift; sourceTree = "<group>"; };
+		7ABDB88788FADB3F7E5E74E36C3BD3A2 /* NLSF_encode.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NLSF_encode.c; sourceTree = "<group>"; };
+		7ADDED1513213FB680D3BB7137EC30C1 /* NSQ_del_dec.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NSQ_del_dec.c; sourceTree = "<group>"; };
+		7B004915EF2FB4CF79E404A50AEB4509 /* tables_NLSF_CB_NB_MB.c */ = {isa = PBXFileReference; includeInIndex = 1; path = tables_NLSF_CB_NB_MB.c; sourceTree = "<group>"; };
+		7B1B40712C452468A344F4843337BB4C /* celt_lpc.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = celt_lpc.h; sourceTree = "<group>"; };
+		7B3001C344E532CC71C1C79023B2B296 /* NSQ.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = NSQ.h; sourceTree = "<group>"; };
 		7B669DEDBDED82FB0A3B8F8E822E9793 /* Randomness.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Randomness.swift; path = swift/Sources/LibSignalClient/zkgroup/Randomness.swift; sourceTree = "<group>"; };
+		7E8823F56AFA262F0DC8F4249BDA90F6 /* errors.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = errors.h; sourceTree = "<group>"; };
 		7EF89C03E014891077B794CFE9E73A0B /* UserBasedAuthorization.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UserBasedAuthorization.swift; path = swift/Sources/LibSignalClient/chat/UserBasedAuthorization.swift; sourceTree = "<group>"; };
 		7F112E19AC7F0B73214A08EDFF2B12BA /* WebRTC-lib-xcframeworks.sh */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.script.sh; path = "WebRTC-lib-xcframeworks.sh"; sourceTree = "<group>"; };
 		7F2B796758BEA549922C0C8645AED22F /* GenericServerSecretParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GenericServerSecretParams.swift; path = swift/Sources/LibSignalClient/zkgroup/GenericServerSecretParams.swift; sourceTree = "<group>"; };
+		7F3588AD3E157F2F3BE2107E5074CCEF /* mapping_matrix.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = mapping_matrix.h; sourceTree = "<group>"; };
+		807810EDAB8FF057FF4427E89FB2F46C /* tables_gain.c */ = {isa = PBXFileReference; includeInIndex = 1; path = tables_gain.c; sourceTree = "<group>"; };
 		814DA87A54B137A9BC8DCF85211AF08D /* CallLinkAuthCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CallLinkAuthCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/CallLinkAuthCredential.swift; sourceTree = "<group>"; };
+		81DC6B20CD0057257E43CF20884613C2 /* Opus-prefix.pch */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Opus-prefix.pch"; sourceTree = "<group>"; };
+		81F286B9905D9E3418922AB267D3B83E /* celt.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = celt.h; sourceTree = "<group>"; };
+		82BCF24E049A8E72A2F9135A3F63423D /* regularize_correlations_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = regularize_correlations_FLP.c; sourceTree = "<group>"; };
+		830D440F2F02B60AD836080E8A020EA4 /* pitch_est_tables.c */ = {isa = PBXFileReference; includeInIndex = 1; path = pitch_est_tables.c; sourceTree = "<group>"; };
+		83DB891B72C61665B41057C3CD750350 /* find_pred_coefs_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = find_pred_coefs_FLP.c; sourceTree = "<group>"; };
 		852FFB9EA869CC588526F9819F5051C9 /* Pods-Beacon-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-Beacon-Info.plist"; sourceTree = "<group>"; };
+		8591CD3308B7C952F071ABDECDE4F4E8 /* NLSF_unpack.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NLSF_unpack.c; sourceTree = "<group>"; };
+		863EF4DA89D6ABDD838F9097EA054F50 /* corrMatrix_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = corrMatrix_FLP.c; sourceTree = "<group>"; };
+		867724033040F57EC6B374D8CE32631C /* celt_lpc.c */ = {isa = PBXFileReference; includeInIndex = 1; path = celt_lpc.c; sourceTree = "<group>"; };
+		87240B4BC1DE3907A8111906AA91373D /* structs.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = structs.h; sourceTree = "<group>"; };
 		8776B0225FECF9C63BF88C1B79BDEA1F /* ServerZkAuthOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerZkAuthOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerZkAuthOperations.swift; sourceTree = "<group>"; };
 		87D10A66FF8DB1A19E241C426689B555 /* ReceiptCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ReceiptCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/ReceiptCredentialPresentation.swift; sourceTree = "<group>"; };
+		888C77093133983C78BD0904E9A765A4 /* tables_other.c */ = {isa = PBXFileReference; includeInIndex = 1; path = tables_other.c; sourceTree = "<group>"; };
 		8902B8FD78E2AC02213226602981F8A0 /* WebRTC-lib.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "WebRTC-lib.release.xcconfig"; sourceTree = "<group>"; };
+		8948A85EC36E4817694A51F4C6A3E2BA /* mapping_matrix.c */ = {isa = PBXFileReference; includeInIndex = 1; path = mapping_matrix.c; sourceTree = "<group>"; };
 		89F38D18EEF9F198FCB26B003EA9753A /* AuthCredentialWithPniResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthCredentialWithPniResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/AuthCredentialWithPniResponse.swift; sourceTree = "<group>"; };
 		8A4F70B1278FBAFA66CE211151B49816 /* CiphertextMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CiphertextMessage.swift; path = swift/Sources/LibSignalClient/messages/CiphertextMessage.swift; sourceTree = "<group>"; };
 		8C78F00AA513DD72EDD12A23B55D95FD /* Error.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Error.swift; path = swift/Sources/LibSignalClient/Error.swift; sourceTree = "<group>"; };
 		8C82C2C7FFCF70463CF5C6F4BCE02DC3 /* Pods-Beacon-acknowledgements.markdown */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = "Pods-Beacon-acknowledgements.markdown"; sourceTree = "<group>"; };
+		8CDA01BDFF426252EF1812D332DDB99E /* decoder_set_fs.c */ = {isa = PBXFileReference; includeInIndex = 1; path = decoder_set_fs.c; sourceTree = "<group>"; };
+		8CDC3EA31A3FEAF0F336A85D7492FBEF /* opus_decoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = opus_decoder.c; sourceTree = "<group>"; };
+		8F24889C3CA922893438E5CD54F56D68 /* stereo_LR_to_MS.c */ = {isa = PBXFileReference; includeInIndex = 1; path = stereo_LR_to_MS.c; sourceTree = "<group>"; };
 		8F5EC13B57CBB64A5180799C9A9915B0 /* ClientZkReceiptOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ClientZkReceiptOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ClientZkReceiptOperations.swift; sourceTree = "<group>"; };
 		8F94DB60FC42D4707887E3380741F704 /* Net.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Net.swift; path = swift/Sources/LibSignalClient/Net.swift; sourceTree = "<group>"; };
 		900533955BA476ED9B73F5E3B2860375 /* Logging.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Logging.swift; path = swift/Sources/LibSignalClient/Logging.swift; sourceTree = "<group>"; };
 		90E4AF0F79992EAB6242800309D1D73E /* CreateCallLinkCredentialRequestContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CreateCallLinkCredentialRequestContext.swift; path = swift/Sources/LibSignalClient/zkgroup/CreateCallLinkCredentialRequestContext.swift; sourceTree = "<group>"; };
 		921181BA80D6A27196AE4947860EBBCC /* PlaintextContent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PlaintextContent.swift; path = swift/Sources/LibSignalClient/messages/PlaintextContent.swift; sourceTree = "<group>"; };
+		92FEEA0487C1A278559197733252BC37 /* residual_energy_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = residual_energy_FLP.c; sourceTree = "<group>"; };
 		932CF8597DC7F4338F15FC1468C1AAF3 /* GroupSendEndorsementsResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSendEndorsementsResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSendEndorsementsResponse.swift; sourceTree = "<group>"; };
 		94FA347BEDBE6F6C7DBEAA504AB31465 /* IdentityKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IdentityKey.swift; path = swift/Sources/LibSignalClient/IdentityKey.swift; sourceTree = "<group>"; };
+		95AA6FD9F71836504B1F2AC831C0A6A3 /* resampler_rom.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = resampler_rom.h; sourceTree = "<group>"; };
 		961392D26B3B75B444646D5EF31878DB /* NotarySignature.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NotarySignature.swift; path = swift/Sources/LibSignalClient/zkgroup/NotarySignature.swift; sourceTree = "<group>"; };
+		965D86DD2FBACF89AC5CAED27C98DA9F /* LPC_analysis_filter_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = LPC_analysis_filter_FLP.c; sourceTree = "<group>"; };
+		96A6A83FFD88AB0246D8AF3DA4BCEDEE /* main.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = main.h; sourceTree = "<group>"; };
 		97CDDF3C0C29FE8A5F6EEC3181F930A9 /* Pods-Beacon-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-Beacon-acknowledgements.plist"; sourceTree = "<group>"; };
+		9826CF6D95A8CEFECA352FFCF280BC7D /* tables_LTP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = tables_LTP.c; sourceTree = "<group>"; };
 		985E22F11FC2B9337F36450BA5045181 /* IncrementalMac.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IncrementalMac.swift; path = swift/Sources/LibSignalClient/IncrementalMac.swift; sourceTree = "<group>"; };
+		98812242882E5283DCE848010C4AFC85 /* ecintrin.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = ecintrin.h; sourceTree = "<group>"; };
 		9899616F3DD26B33618F02E5138D9938 /* ProfileKeyCommitment.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCommitment.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCommitment.swift; sourceTree = "<group>"; };
+		9B0AACA68ABDFF2333CA371E7F1C1EBC /* entdec.c */ = {isa = PBXFileReference; includeInIndex = 1; path = entdec.c; sourceTree = "<group>"; };
+		9C123C330B1AEA90094B5520F37ADD83 /* warped_autocorrelation_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = warped_autocorrelation_FLP.c; sourceTree = "<group>"; };
 		9C311F84E68E479FA4039DEF7486AD35 /* CdsTypes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CdsTypes.swift; path = swift/Sources/LibSignalClient/CdsTypes.swift; sourceTree = "<group>"; };
 		9C722B1A530DA0283FCDB41E6FB2F759 /* UnauthKeysService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthKeysService.swift; path = swift/Sources/LibSignalClient/chat/UnauthKeysService.swift; sourceTree = "<group>"; };
+		9CFA354B6385645B561AB9BA95C0CD75 /* scale_vector_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = scale_vector_FLP.c; sourceTree = "<group>"; };
+		9D4AFF2E07603CF5753FAE858D248120 /* opus_private.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = opus_private.h; sourceTree = "<group>"; };
 		9D6BFA93A9EE5D509AA7E083D8031F6D /* DonationPermit.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DonationPermit.swift; path = swift/Sources/LibSignalClient/zkgroup/DonationPermit.swift; sourceTree = "<group>"; };
+		9D72A9C7C4743C18AD42D7FACC766515 /* bwexpander.c */ = {isa = PBXFileReference; includeInIndex = 1; path = bwexpander.c; sourceTree = "<group>"; };
 		9D940727FF8FB9C785EB98E56350EF41 /* Podfile */ = {isa = PBXFileReference; explicitFileType = text.script.ruby; includeInIndex = 1; indentWidth = 2; lastKnownFileType = text; name = Podfile; path = ../Podfile; sourceTree = SOURCE_ROOT; tabWidth = 2; xcLanguageSpecificationIdentifier = xcode.lang.ruby; };
+		9DBFDDE1C4070B734885706CF07A8A08 /* static_modes_fixed_arm_ne10.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = static_modes_fixed_arm_ne10.h; sourceTree = "<group>"; };
+		9DF087C6FDC879D69B1265D91109DAC1 /* energy_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = energy_FLP.c; sourceTree = "<group>"; };
+		9E2F217AC74004A5E7855F546CEBCBB3 /* inner_prod_aligned.c */ = {isa = PBXFileReference; includeInIndex = 1; path = inner_prod_aligned.c; sourceTree = "<group>"; };
+		9E9A00612046A7970664C64F96C428F5 /* enc_API.c */ = {isa = PBXFileReference; includeInIndex = 1; path = enc_API.c; sourceTree = "<group>"; };
 		9F0ADE0769B16CD649B7CAF47B8EE8EE /* AvatarUploadCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AvatarUploadCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/AvatarUploadCredential.swift; sourceTree = "<group>"; };
+		A096A41957B75101DC02DCBE5E4DA4F9 /* laplace.c */ = {isa = PBXFileReference; includeInIndex = 1; path = laplace.c; sourceTree = "<group>"; };
+		A134EF593211F897C739A5581E78853E /* debug.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = debug.h; sourceTree = "<group>"; };
+		A41237287EC01F8B761A22D6877EFBB8 /* VQ_WMat_EC.c */ = {isa = PBXFileReference; includeInIndex = 1; path = VQ_WMat_EC.c; sourceTree = "<group>"; };
 		A47B3BDFEF8CC91B725E0DF5ED84D085 /* DataStoreInMemory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DataStoreInMemory.swift; path = swift/Sources/LibSignalClient/DataStoreInMemory.swift; sourceTree = "<group>"; };
 		A4819E3B555F34A695AA38AD26BC22CC /* Pods-Beacon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-Beacon.release.xcconfig"; sourceTree = "<group>"; };
 		A56D8567BC0631098C691355C9EF347E /* UnauthBackupsService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UnauthBackupsService.swift; path = swift/Sources/LibSignalClient/chat/UnauthBackupsService.swift; sourceTree = "<group>"; };
+		A59ABD14E3FC2A60DEE6EA97AB6083A0 /* mathops.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = mathops.h; sourceTree = "<group>"; };
+		A5B4767438C14312117DC391B1245DF9 /* encode_frame_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = encode_frame_FLP.c; sourceTree = "<group>"; };
+		A894ACD422B8F5DAED4D363A3A8FEE51 /* init_decoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = init_decoder.c; sourceTree = "<group>"; };
 		A90E27BCB5AF1B1636C9A3030E8BD7D0 /* Pods-BeaconTests-acknowledgements.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Pods-BeaconTests-acknowledgements.plist"; sourceTree = "<group>"; };
 		A98FA2FDF5E2126C2D3B89F6EB6EEDAE /* LibSignalClient.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = LibSignalClient.release.xcconfig; sourceTree = "<group>"; };
+		A9D4B967A53D0431E750275C0FC582B4 /* opus_encoder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = opus_encoder.c; sourceTree = "<group>"; };
 		AA16DA17D6B0525A6427267FA461698E /* Svr2.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Svr2.swift; path = swift/Sources/LibSignalClient/Svr2.swift; sourceTree = "<group>"; };
+		AB702770EB1191B962D21BCFADB9B99A /* encode_pulses.c */ = {isa = PBXFileReference; includeInIndex = 1; path = encode_pulses.c; sourceTree = "<group>"; };
 		AC8A5CB70D404A444FFCFD037492E0E2 /* NiceBridgingUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NiceBridgingUtils.swift; path = swift/Sources/LibSignalClient/NiceBridgingUtils.swift; sourceTree = "<group>"; };
 		B1BA45B9E6B908492AB1282A531213A8 /* BackupAuthCredentialResponse.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredentialResponse.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredentialResponse.swift; sourceTree = "<group>"; };
+		B2E945D43064DEAC540506EB7C3ECC50 /* interpolate.c */ = {isa = PBXFileReference; includeInIndex = 1; path = interpolate.c; sourceTree = "<group>"; };
+		B320F6322A023108A489008C03A503F9 /* code_signs.c */ = {isa = PBXFileReference; includeInIndex = 1; path = code_signs.c; sourceTree = "<group>"; };
+		B33E1483BAA822C2C33A9C758099E143 /* celt.c */ = {isa = PBXFileReference; includeInIndex = 1; path = celt.c; sourceTree = "<group>"; };
+		B572A643114101930C7B5BB8D686215C /* Opus */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = Opus; path = Opus.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B61D14491CCB222D8D6C269F29367B32 /* ChatListener.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatListener.swift; path = swift/Sources/LibSignalClient/ChatListener.swift; sourceTree = "<group>"; };
+		B7DDBC497FC005A9F510820FBFC4E1DC /* COPYING */ = {isa = PBXFileReference; includeInIndex = 1; path = COPYING; sourceTree = "<group>"; };
+		B7E0BEF5B1FF7FE99A2EC428B0885446 /* beacon_opus_ctl.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = beacon_opus_ctl.h; sourceTree = "<group>"; };
 		B8182B7C0C5B7D52F6077D5D042FE1B8 /* GroupSendDerivedKeyPair.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSendDerivedKeyPair.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSendDerivedKeyPair.swift; sourceTree = "<group>"; };
 		B8DDD4514DC45499B3BF73EE987A6D89 /* IoUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IoUtils.swift; path = swift/Sources/LibSignalClient/IoUtils.swift; sourceTree = "<group>"; };
 		B96EDEEC6CAD23EEEC7A121D5F1058A2 /* SignedPublicPreKey.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SignedPublicPreKey.swift; path = swift/Sources/LibSignalClient/SignedPublicPreKey.swift; sourceTree = "<group>"; };
 		BA33B13ACACF13DD3FB929588D247B3F /* Pods-Beacon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "Pods-Beacon.debug.xcconfig"; sourceTree = "<group>"; };
+		BA8F045B6136C43954E46992ED1EA63C /* stereo_find_predictor.c */ = {isa = PBXFileReference; includeInIndex = 1; path = stereo_find_predictor.c; sourceTree = "<group>"; };
 		BADC3514CB2C3D5A3BA2ABCC48A98C9A /* NativeNice.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NativeNice.swift; path = swift/Sources/LibSignalClient/NativeNice.swift; sourceTree = "<group>"; };
+		BB2F584FABE966A619C28ED4B99A6D6C /* NLSF_del_dec_quant.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NLSF_del_dec_quant.c; sourceTree = "<group>"; };
+		BC16A1BE075E3CE9BBFF0E247F644B8A /* quant_bands.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = quant_bands.h; sourceTree = "<group>"; };
 		BC1FD039B5EFA25F348BA9789D4770DB /* ByteArray.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ByteArray.swift; path = swift/Sources/LibSignalClient/zkgroup/ByteArray.swift; sourceTree = "<group>"; };
 		BC2311DAB6D627F833BFFA35FED72CD7 /* IoProtocols.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = IoProtocols.swift; path = swift/Sources/LibSignalClient/IoProtocols.swift; sourceTree = "<group>"; };
 		BC92391C170E3B8394FD4C5C9A395F0B /* SignalMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SignalMessage.swift; path = swift/Sources/LibSignalClient/messages/SignalMessage.swift; sourceTree = "<group>"; };
+		BDF88C5770F4F79964074BE657297ACA /* cwrs.c */ = {isa = PBXFileReference; includeInIndex = 1; path = cwrs.c; sourceTree = "<group>"; };
 		BE1F72BE78D00D52DFC69BE3A0A09225 /* BorrowUtils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BorrowUtils.swift; path = swift/Sources/LibSignalClient/BorrowUtils.swift; sourceTree = "<group>"; };
+		BE64AE250651549558B692E1E4AC1E65 /* tuning_parameters.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = tuning_parameters.h; sourceTree = "<group>"; };
+		BEBCEE4734ABE35AF8387534ED29EFE7 /* dec_API.c */ = {isa = PBXFileReference; includeInIndex = 1; path = dec_API.c; sourceTree = "<group>"; };
+		BF1C8B05EEB87F99ED179FF6C767CECC /* resampler_structs.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = resampler_structs.h; sourceTree = "<group>"; };
+		BF6482F68030F4D9E6906A503A227259 /* fixed_generic.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = fixed_generic.h; sourceTree = "<group>"; };
+		C095A328705825DCCC95996B4568F3FA /* resampler_private_IIR_FIR.c */ = {isa = PBXFileReference; includeInIndex = 1; path = resampler_private_IIR_FIR.c; sourceTree = "<group>"; };
 		C3FACC0C398EC076F376AC594E4DB8E2 /* ChatServiceTypes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChatServiceTypes.swift; path = swift/Sources/LibSignalClient/ChatServiceTypes.swift; sourceTree = "<group>"; };
+		C48D4B29DF78E59A0304749E22A115BB /* gain_quant.c */ = {isa = PBXFileReference; includeInIndex = 1; path = gain_quant.c; sourceTree = "<group>"; };
+		C4C887FFE431F12C0B8089691A0793CD /* decode_pulses.c */ = {isa = PBXFileReference; includeInIndex = 1; path = decode_pulses.c; sourceTree = "<group>"; };
 		C74FF458AF9156A107F265F71CAD9A72 /* Pods-Beacon-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Pods-Beacon-dummy.m"; sourceTree = "<group>"; };
+		C759E5B3CAF55FAAF95998575555A377 /* cwrs.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = cwrs.h; sourceTree = "<group>"; };
 		C8100B12AF79BC948D0A0045771E7382 /* Utils.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Utils.swift; path = swift/Sources/LibSignalClient/Utils.swift; sourceTree = "<group>"; };
+		C911C9FFB41389386D84F1B659FD7FAA /* lin2log.c */ = {isa = PBXFileReference; includeInIndex = 1; path = lin2log.c; sourceTree = "<group>"; };
+		C979484A0092E29511A463F75034B534 /* extensions.c */ = {isa = PBXFileReference; includeInIndex = 1; path = extensions.c; sourceTree = "<group>"; };
 		C9DEA193A99E667CA7343F7D1E4265A9 /* GenericServerPublicParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GenericServerPublicParams.swift; path = swift/Sources/LibSignalClient/zkgroup/GenericServerPublicParams.swift; sourceTree = "<group>"; };
+		CBC6309FBE91DED5C447C355D9E9312A /* SigProc_FIX.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = SigProc_FIX.h; sourceTree = "<group>"; };
+		CE1855D11942F584A44CC50F64764258 /* ana_filt_bank_1.c */ = {isa = PBXFileReference; includeInIndex = 1; path = ana_filt_bank_1.c; sourceTree = "<group>"; };
 		CE1A2D279C2B4EDE0215F93D4FED8B24 /* SenderKeyRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SenderKeyRecord.swift; path = swift/Sources/LibSignalClient/state/SenderKeyRecord.swift; sourceTree = "<group>"; };
 		CE377A735469BB1533633D64ADCC4530 /* UploadForm.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UploadForm.swift; path = swift/Sources/LibSignalClient/UploadForm.swift; sourceTree = "<group>"; };
 		D11761D6988B5F29BB319D5189B9EF5E /* LibSignalClient */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = LibSignalClient; path = LibSignalClient.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D13751284E25169F0A67A82E07F72322 /* LibSignalClient-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "LibSignalClient-umbrella.h"; sourceTree = "<group>"; };
+		D4C647CEB505142CEA9918DD70E2F2B8 /* check_control_input.c */ = {isa = PBXFileReference; includeInIndex = 1; path = check_control_input.c; sourceTree = "<group>"; };
 		D4F3617E01C3B5D962C2BA516EBD4E4D /* WebRTC-lib.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = "WebRTC-lib.debug.xcconfig"; sourceTree = "<group>"; };
 		D6C7F444A768792FADA80522B12576BC /* DataStoreProtocols.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DataStoreProtocols.swift; path = swift/Sources/LibSignalClient/DataStoreProtocols.swift; sourceTree = "<group>"; };
+		D7031148FDCD4B378982B7BCB451475E /* LPC_analysis_filter.c */ = {isa = PBXFileReference; includeInIndex = 1; path = LPC_analysis_filter.c; sourceTree = "<group>"; };
+		D782B9A2ED9B65395EE551FF5D12B7DA /* kiss_fft.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = kiss_fft.h; sourceTree = "<group>"; };
+		D8209A1DC3F8D468BE94BD450ECC551C /* LTP_scale_ctrl_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = LTP_scale_ctrl_FLP.c; sourceTree = "<group>"; };
+		D8FF3E61C9EAF26C30256C7D2930FFD5 /* laplace.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = laplace.h; sourceTree = "<group>"; };
+		D9076F31B9C0A9F408C40E194B6EA765 /* process_gains_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = process_gains_FLP.c; sourceTree = "<group>"; };
 		D9AFFBF09D36816E441EF9C97F14E015 /* RegistrationServiceTypes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = RegistrationServiceTypes.swift; path = swift/Sources/LibSignalClient/RegistrationServiceTypes.swift; sourceTree = "<group>"; };
 		D9D5569B4E7F991F5AD284F4DD7A9D73 /* ServerZkProfileOperations.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ServerZkProfileOperations.swift; path = swift/Sources/LibSignalClient/zkgroup/ServerZkProfileOperations.swift; sourceTree = "<group>"; };
 		D9DDBBC6B5CEEF2CF8C352AA57F1C345 /* SignedPreKeyRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SignedPreKeyRecord.swift; path = swift/Sources/LibSignalClient/state/SignedPreKeyRecord.swift; sourceTree = "<group>"; };
+		DAE5464E5B9C7F600476D6EC3139D9C1 /* find_LTP_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = find_LTP_FLP.c; sourceTree = "<group>"; };
+		DCB59DD334E2E61AACDB2C045C0F9A4A /* vq.c */ = {isa = PBXFileReference; includeInIndex = 1; path = vq.c; sourceTree = "<group>"; };
+		DD5D88543CDBBE022BF9F9A055281EEA /* decode_parameters.c */ = {isa = PBXFileReference; includeInIndex = 1; path = decode_parameters.c; sourceTree = "<group>"; };
 		DDCE3888D2DD86E73B3E86144575335C /* ProfileKeyVersion.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyVersion.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyVersion.swift; sourceTree = "<group>"; };
+		DF9545D344BD538BCCF8A40E8DBFDD36 /* k2a_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = k2a_FLP.c; sourceTree = "<group>"; };
 		E03FDA378177089E864461F66B6C9463 /* Pods-BeaconTests.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-BeaconTests.modulemap"; sourceTree = "<group>"; };
+		E0C75B0F438F8C3A901BE34D3B3BC943 /* NSQ.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NSQ.c; sourceTree = "<group>"; };
+		E28F350D8FDA4B5C0BC585F54293BCAF /* wrappers_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = wrappers_FLP.c; sourceTree = "<group>"; };
 		E2A044C941005FFB9EA85021BDF58D66 /* GroupIdentifier.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupIdentifier.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupIdentifier.swift; sourceTree = "<group>"; };
 		E2FB7A137D8F1A1D75004E34460CC8F5 /* PreKeySignalMessage.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = PreKeySignalMessage.swift; path = swift/Sources/LibSignalClient/messages/PreKeySignalMessage.swift; sourceTree = "<group>"; };
+		E303EB8A3A9E7C444EBCB1E13370D1AE /* decode_core.c */ = {isa = PBXFileReference; includeInIndex = 1; path = decode_core.c; sourceTree = "<group>"; };
+		E5247A6220EB673B5742A67136986454 /* shell_coder.c */ = {isa = PBXFileReference; includeInIndex = 1; path = shell_coder.c; sourceTree = "<group>"; };
+		E5C9F904CB81DA63A5D04510333705B7 /* LPC_inv_pred_gain.c */ = {isa = PBXFileReference; includeInIndex = 1; path = LPC_inv_pred_gain.c; sourceTree = "<group>"; };
+		E647B714B07C3B4E6D8237C70FF80087 /* Opus-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Opus-Info.plist"; sourceTree = "<group>"; };
+		E6A9F8B30561988239C1C09EE1A0F093 /* SigProc_FLP.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = SigProc_FLP.h; sourceTree = "<group>"; };
 		E7391286B3A96AE00F3744B47B606A99 /* Pods-Beacon.modulemap */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.module; path = "Pods-Beacon.modulemap"; sourceTree = "<group>"; };
+		E77E971F99844697DBAE8D7D36136F40 /* repacketizer.c */ = {isa = PBXFileReference; includeInIndex = 1; path = repacketizer.c; sourceTree = "<group>"; };
+		E84BE4BB8C1CE197933FA8233FD049B2 /* resampler_private_AR2.c */ = {isa = PBXFileReference; includeInIndex = 1; path = resampler_private_AR2.c; sourceTree = "<group>"; };
+		E87E92A2832ECFB7D12427160B87F0C4 /* mlp_data.c */ = {isa = PBXFileReference; includeInIndex = 1; path = mlp_data.c; sourceTree = "<group>"; };
 		EA87974A2FAB736320D08B87D693D25C /* AuthUsernamesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthUsernamesService.swift; path = swift/Sources/LibSignalClient/chat/AuthUsernamesService.swift; sourceTree = "<group>"; };
 		EC04974D5C676245512C779CE91D2841 /* AccountKeys.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AccountKeys.swift; path = swift/Sources/LibSignalClient/AccountKeys.swift; sourceTree = "<group>"; };
 		ED9F33017D89BED453FBD2ADBC5C4584 /* Protocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Protocol.swift; path = swift/Sources/LibSignalClient/Protocol.swift; sourceTree = "<group>"; };
+		EE4409EBB36A3455EDB05813C8F1364B /* sort_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = sort_FLP.c; sourceTree = "<group>"; };
+		EE4FEFD1E4D6744B0F121F5F5B392EC7 /* opus_projection.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = opus_projection.h; sourceTree = "<group>"; };
+		EF47287B094BBF046F0D00B1D129CFB8 /* biquad_alt.c */ = {isa = PBXFileReference; includeInIndex = 1; path = biquad_alt.c; sourceTree = "<group>"; };
 		EFFD7422EEBE65480C254F00AFB501AB /* ExpiringProfileKeyCredential.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpiringProfileKeyCredential.swift; path = swift/Sources/LibSignalClient/zkgroup/ExpiringProfileKeyCredential.swift; sourceTree = "<group>"; };
 		F0932142FEAD4CD24FB16774D6BAC8B3 /* ProfileKeyCredentialRequestContext.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ProfileKeyCredentialRequestContext.swift; path = swift/Sources/LibSignalClient/zkgroup/ProfileKeyCredentialRequestContext.swift; sourceTree = "<group>"; };
+		F19781570DC40EC317E08CB63340420A /* Opus.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = Opus.debug.xcconfig; sourceTree = "<group>"; };
 		F207AD906EEAED2708043635E684754B /* GroupSendFullToken.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupSendFullToken.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupSendFullToken.swift; sourceTree = "<group>"; };
+		F3BD93621460F86DE1EDB09B95BE7916 /* NLSF_decode.c */ = {isa = PBXFileReference; includeInIndex = 1; path = NLSF_decode.c; sourceTree = "<group>"; };
 		F4553FB22CAC48A19201BC1237F415D4 /* HsmEnclave.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HsmEnclave.swift; path = swift/Sources/LibSignalClient/HsmEnclave.swift; sourceTree = "<group>"; };
 		F5D4279E3CA774EAD58AC25589C4BCB2 /* Kdf.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Kdf.swift; path = swift/Sources/LibSignalClient/Kdf.swift; sourceTree = "<group>"; };
 		F60084EC65C11DD4CF1EFC35554BFC06 /* LibSignalClient.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; path = LibSignalClient.debug.xcconfig; sourceTree = "<group>"; };
+		F61E42A320ECC00CCEC17E9CAEF97068 /* bwexpander_32.c */ = {isa = PBXFileReference; includeInIndex = 1; path = bwexpander_32.c; sourceTree = "<group>"; };
 		F68E480FBE795A4DE3C01A20A3414D23 /* Pods-BeaconTests-umbrella.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = "Pods-BeaconTests-umbrella.h"; sourceTree = "<group>"; };
 		F74B4696704A4803AA419089FC23E562 /* AuthDevicesService.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AuthDevicesService.swift; path = swift/Sources/LibSignalClient/chat/AuthDevicesService.swift; sourceTree = "<group>"; };
+		F7667C07DA3144CC66FB8F16475518FA /* log2lin.c */ = {isa = PBXFileReference; includeInIndex = 1; path = log2lin.c; sourceTree = "<group>"; };
 		F76F30D6E1208FCF691B7776F920E277 /* Aes256Gcm.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Aes256Gcm.swift; path = swift/Sources/LibSignalClient/Aes256Gcm.swift; sourceTree = "<group>"; };
 		F790A483012BB0B608D11EA8A34AC9D7 /* SecureValueRecoveryBackup.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = SecureValueRecoveryBackup.swift; path = swift/Sources/LibSignalClient/SecureValueRecoveryBackup.swift; sourceTree = "<group>"; };
+		F795311E437205DA7894D21E9653F2B3 /* rate.c */ = {isa = PBXFileReference; includeInIndex = 1; path = rate.c; sourceTree = "<group>"; };
+		F7AC0154FC3BE645BAD38FA0B1D1DD82 /* stereo_encode_pred.c */ = {isa = PBXFileReference; includeInIndex = 1; path = stereo_encode_pred.c; sourceTree = "<group>"; };
+		F9A4F631E6637F261F979CFDCCDC581F /* arch.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = arch.h; sourceTree = "<group>"; };
+		F9B50D6F2500F20F0B6755DFE7C7C6B5 /* inner_product_FLP.c */ = {isa = PBXFileReference; includeInIndex = 1; path = inner_product_FLP.c; sourceTree = "<group>"; };
 		FAA9FAF4980655586357B837C578F642 /* Pods-Beacon */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; name = "Pods-Beacon"; path = Pods_Beacon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		FB0E95E10612A53E9EF37C46D898798D /* resampler_private_down_FIR.c */ = {isa = PBXFileReference; includeInIndex = 1; path = resampler_private_down_FIR.c; sourceTree = "<group>"; };
+		FB5F1B1AD15B2FF5444B700019C35896 /* HP_variable_cutoff.c */ = {isa = PBXFileReference; includeInIndex = 1; path = HP_variable_cutoff.c; sourceTree = "<group>"; };
+		FB6BAB9EB1D343152A959A668B5ECE9A /* Opus-dummy.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "Opus-dummy.m"; sourceTree = "<group>"; };
 		FBD8FC0719FD917C5B829F28A5563B6E /* BackupAuthCredentialPresentation.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BackupAuthCredentialPresentation.swift; path = swift/Sources/LibSignalClient/zkgroup/BackupAuthCredentialPresentation.swift; sourceTree = "<group>"; };
 		FBE2E63BE97A93693104455343DC192F /* Sgx.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Sgx.swift; path = swift/Sources/LibSignalClient/Sgx.swift; sourceTree = "<group>"; };
+		FC1A0C0A551F5F43693BD90A1AFE7FA7 /* decode_frame.c */ = {isa = PBXFileReference; includeInIndex = 1; path = decode_frame.c; sourceTree = "<group>"; };
 		FC1CDED6E8AA95F4F433C5C7CE665FCC /* GroupPublicParams.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = GroupPublicParams.swift; path = swift/Sources/LibSignalClient/zkgroup/GroupPublicParams.swift; sourceTree = "<group>"; };
 		FD9BFAF4C33D571BB2B904475BB103BD /* Aes256Ctr.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = Aes256Ctr.swift; path = swift/Sources/LibSignalClient/Aes256Ctr.swift; sourceTree = "<group>"; };
+		FE30FA7FD0956BC59266515D05C7815B /* pitch.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = pitch.h; sourceTree = "<group>"; };
+		FF5AFF230C403DC2EDB84D87952731C6 /* API.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = API.h; sourceTree = "<group>"; };
+		FF698B76C90BFCF18ACB01C634F6FBA9 /* main_FLP.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = main_FLP.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		0BF2AC73C9BFD50C79454984F21B6952 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				C6D9BDB4465A1CA6594C0178155964BE /* Foundation.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		230CBDFEBDC5BD07EE06BC94D581E045 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -388,9 +806,227 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		88F24FA9D10D5DE3F3204823AB7AE984 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B8594FA943E9FDA2D7B9856FC0AB99BF /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9EE11F834D809DACD117360CDE158257 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3CFB5FFB01491CC210B976443E2F20D6 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		1708865453F4D5AC9EFE18761471C85F /* float */ = {
+			isa = PBXGroup;
+			children = (
+				61A99CC3CAC39F7EFADF410DB2CEB033 /* apply_sine_window_FLP.c */,
+				3D86E129E15E7D8ADA81EC7A2B30F8CA /* autocorrelation_FLP.c */,
+				4A4C387EC077D4B0AFF5225283D7336A /* burg_modified_FLP.c */,
+				702782AC292DE029B41CD6A2BF431E9D /* bwexpander_FLP.c */,
+				863EF4DA89D6ABDD838F9097EA054F50 /* corrMatrix_FLP.c */,
+				A5B4767438C14312117DC391B1245DF9 /* encode_frame_FLP.c */,
+				9DF087C6FDC879D69B1265D91109DAC1 /* energy_FLP.c */,
+				16CDC98E51F36A8907C150F165E23324 /* find_LPC_FLP.c */,
+				DAE5464E5B9C7F600476D6EC3139D9C1 /* find_LTP_FLP.c */,
+				5D48311D063268BD137B3020FB1D176C /* find_pitch_lags_FLP.c */,
+				83DB891B72C61665B41057C3CD750350 /* find_pred_coefs_FLP.c */,
+				F9B50D6F2500F20F0B6755DFE7C7C6B5 /* inner_product_FLP.c */,
+				DF9545D344BD538BCCF8A40E8DBFDD36 /* k2a_FLP.c */,
+				965D86DD2FBACF89AC5CAED27C98DA9F /* LPC_analysis_filter_FLP.c */,
+				3EF019EDAD58C9D9272D8A4292DFD7E8 /* LPC_inv_pred_gain_FLP.c */,
+				04E7A60CCBA285204DF470AD20396312 /* LTP_analysis_filter_FLP.c */,
+				D8209A1DC3F8D468BE94BD450ECC551C /* LTP_scale_ctrl_FLP.c */,
+				FF698B76C90BFCF18ACB01C634F6FBA9 /* main_FLP.h */,
+				1EB252245CEA6DD50A280D14458F3348 /* noise_shape_analysis_FLP.c */,
+				3A6C499A5665390DDB06715AA1E392AB /* pitch_analysis_core_FLP.c */,
+				D9076F31B9C0A9F408C40E194B6EA765 /* process_gains_FLP.c */,
+				82BCF24E049A8E72A2F9135A3F63423D /* regularize_correlations_FLP.c */,
+				92FEEA0487C1A278559197733252BC37 /* residual_energy_FLP.c */,
+				49F4072C982D83D3DE74D72AF6EB70DF /* scale_copy_vector_FLP.c */,
+				9CFA354B6385645B561AB9BA95C0CD75 /* scale_vector_FLP.c */,
+				496CABD1653989429CA719EB14ECE47F /* schur_FLP.c */,
+				E6A9F8B30561988239C1C09EE1A0F093 /* SigProc_FLP.h */,
+				EE4409EBB36A3455EDB05813C8F1364B /* sort_FLP.c */,
+				6B0B162CB62AE8B60E100E1ADEA4D367 /* structs_FLP.h */,
+				9C123C330B1AEA90094B5520F37ADD83 /* warped_autocorrelation_FLP.c */,
+				E28F350D8FDA4B5C0BC585F54293BCAF /* wrappers_FLP.c */,
+			);
+			name = float;
+			path = float;
+			sourceTree = "<group>";
+		};
+		2834F0FE28BF3BFBD30EF1AF13EF271B /* silk */ = {
+			isa = PBXGroup;
+			children = (
+				1115AD175976E51B71C9A476D3E0536B /* A2NLSF.c */,
+				CE1855D11942F584A44CC50F64764258 /* ana_filt_bank_1.c */,
+				FF5AFF230C403DC2EDB84D87952731C6 /* API.h */,
+				EF47287B094BBF046F0D00B1D129CFB8 /* biquad_alt.c */,
+				9D72A9C7C4743C18AD42D7FACC766515 /* bwexpander.c */,
+				F61E42A320ECC00CCEC17E9CAEF97068 /* bwexpander_32.c */,
+				D4C647CEB505142CEA9918DD70E2F2B8 /* check_control_input.c */,
+				1B67274A109A89035270FF60C440B418 /* CNG.c */,
+				B320F6322A023108A489008C03A503F9 /* code_signs.c */,
+				59E4D0937D5EB8287279F8FC4AE66E56 /* control.h */,
+				1AD5A12A4F67C33A2401B67B1F0C2F93 /* control_audio_bandwidth.c */,
+				2E100AEF32EFB05BB40B657B995B347E /* control_codec.c */,
+				5613F848EB6C43BAEB44CA4AED48FE9A /* control_SNR.c */,
+				15961B58B24F73176ED19FDE82685335 /* debug.c */,
+				A134EF593211F897C739A5581E78853E /* debug.h */,
+				BEBCEE4734ABE35AF8387534ED29EFE7 /* dec_API.c */,
+				E303EB8A3A9E7C444EBCB1E13370D1AE /* decode_core.c */,
+				FC1A0C0A551F5F43693BD90A1AFE7FA7 /* decode_frame.c */,
+				4BF506EF494AD3A477BFF6747CD543CF /* decode_indices.c */,
+				DD5D88543CDBBE022BF9F9A055281EEA /* decode_parameters.c */,
+				4D8A035729E9F12734BACB3B9AD557B5 /* decode_pitch.c */,
+				C4C887FFE431F12C0B8089691A0793CD /* decode_pulses.c */,
+				8CDA01BDFF426252EF1812D332DDB99E /* decoder_set_fs.c */,
+				0C24797C0D58D97213B368C2D2118E9B /* define.h */,
+				9E9A00612046A7970664C64F96C428F5 /* enc_API.c */,
+				2DA121DC0CA702C0D649E83B7288CFA4 /* encode_indices.c */,
+				AB702770EB1191B962D21BCFADB9B99A /* encode_pulses.c */,
+				7E8823F56AFA262F0DC8F4249BDA90F6 /* errors.h */,
+				C48D4B29DF78E59A0304749E22A115BB /* gain_quant.c */,
+				FB5F1B1AD15B2FF5444B700019C35896 /* HP_variable_cutoff.c */,
+				A894ACD422B8F5DAED4D363A3A8FEE51 /* init_decoder.c */,
+				35E7DA1B87D9B521966E404DFC19B67F /* init_encoder.c */,
+				4267206C7B8D3F585A530593F4816D9C /* Inlines.h */,
+				9E2F217AC74004A5E7855F546CEBCBB3 /* inner_prod_aligned.c */,
+				B2E945D43064DEAC540506EB7C3ECC50 /* interpolate.c */,
+				C911C9FFB41389386D84F1B659FD7FAA /* lin2log.c */,
+				F7667C07DA3144CC66FB8F16475518FA /* log2lin.c */,
+				165D7B266E698AAF81B6C5763696775B /* LP_variable_cutoff.c */,
+				D7031148FDCD4B378982B7BCB451475E /* LPC_analysis_filter.c */,
+				681DE51C02B8F69E3CB9047920F2EC61 /* LPC_fit.c */,
+				E5C9F904CB81DA63A5D04510333705B7 /* LPC_inv_pred_gain.c */,
+				3284BF390F0DFFB0EA543B02BF6845E3 /* MacroCount.h */,
+				1C19A93EBBDCC1AEDAC45880585F5C11 /* MacroDebug.h */,
+				66A81422F2DB274043AADB79E60C0818 /* macros.h */,
+				96A6A83FFD88AB0246D8AF3DA4BCEDEE /* main.h */,
+				3CE94A9CE0B160E6546CE16BB7F486B8 /* NLSF2A.c */,
+				F3BD93621460F86DE1EDB09B95BE7916 /* NLSF_decode.c */,
+				BB2F584FABE966A619C28ED4B99A6D6C /* NLSF_del_dec_quant.c */,
+				7ABDB88788FADB3F7E5E74E36C3BD3A2 /* NLSF_encode.c */,
+				7771AB08AA94DCBE25669A9CE94706D2 /* NLSF_stabilize.c */,
+				8591CD3308B7C952F071ABDECDE4F4E8 /* NLSF_unpack.c */,
+				23C6A530C8F2AC63519EB4C714E5D686 /* NLSF_VQ.c */,
+				05487A768845542EBA99AE73777545DB /* NLSF_VQ_weights_laroia.c */,
+				E0C75B0F438F8C3A901BE34D3B3BC943 /* NSQ.c */,
+				7B3001C344E532CC71C1C79023B2B296 /* NSQ.h */,
+				7ADDED1513213FB680D3BB7137EC30C1 /* NSQ_del_dec.c */,
+				45398F012BB78D1D9F5DE60E526C3EB9 /* pitch_est_defines.h */,
+				830D440F2F02B60AD836080E8A020EA4 /* pitch_est_tables.c */,
+				1CDB62F7E1CEFDD4AC38FA4A515DF9B7 /* PLC.c */,
+				3D95A9B8D08AC77DAD1C6176C98F921E /* PLC.h */,
+				4ACB504F485F1FE6CDF76AF5720EDF38 /* process_NLSFs.c */,
+				0717833F9FF7F4D65BDAD18B2FF5F0A1 /* quant_LTP_gains.c */,
+				5197054379F3B18B777D5823731CECD8 /* resampler.c */,
+				06B1E1995D67234935A84CC58F013822 /* resampler_down2.c */,
+				136D897D842422FCF30829C9DBD739F1 /* resampler_down2_3.c */,
+				2A0799FE2CDBF931D9C93A3F89D602DC /* resampler_private.h */,
+				E84BE4BB8C1CE197933FA8233FD049B2 /* resampler_private_AR2.c */,
+				FB0E95E10612A53E9EF37C46D898798D /* resampler_private_down_FIR.c */,
+				C095A328705825DCCC95996B4568F3FA /* resampler_private_IIR_FIR.c */,
+				5F3A0687C6C59CF41CA8E6A754DE87B3 /* resampler_private_up2_HQ.c */,
+				431179456F0E53F59163C05C906D69F9 /* resampler_rom.c */,
+				95AA6FD9F71836504B1F2AC831C0A6A3 /* resampler_rom.h */,
+				BF1C8B05EEB87F99ED179FF6C767CECC /* resampler_structs.h */,
+				E5247A6220EB673B5742A67136986454 /* shell_coder.c */,
+				06EF1A497B787C152AC30AE2F6D896E0 /* sigm_Q15.c */,
+				CBC6309FBE91DED5C447C355D9E9312A /* SigProc_FIX.h */,
+				2491878E889636060BF3207E586A3672 /* sort.c */,
+				7743795134E9A05B7023ECC77ADD5F23 /* stereo_decode_pred.c */,
+				F7AC0154FC3BE645BAD38FA0B1D1DD82 /* stereo_encode_pred.c */,
+				BA8F045B6136C43954E46992ED1EA63C /* stereo_find_predictor.c */,
+				8F24889C3CA922893438E5CD54F56D68 /* stereo_LR_to_MS.c */,
+				5E4477BCCF4D0B3499EA1486C7630273 /* stereo_MS_to_LR.c */,
+				416875D71059C2CF51BD2AB29E8A4564 /* stereo_quant_pred.c */,
+				87240B4BC1DE3907A8111906AA91373D /* structs.h */,
+				292C138521787C1F34B63282493B54E3 /* sum_sqr_shift.c */,
+				3D1ECD42D09BD583905A56A2DE2792BC /* table_LSF_cos.c */,
+				657A8B33C1E9DC541BE8B77C6F74E6F6 /* tables.h */,
+				807810EDAB8FF057FF4427E89FB2F46C /* tables_gain.c */,
+				9826CF6D95A8CEFECA352FFCF280BC7D /* tables_LTP.c */,
+				7B004915EF2FB4CF79E404A50AEB4509 /* tables_NLSF_CB_NB_MB.c */,
+				67CD106F8B929255BAF729127B1DB6CE /* tables_NLSF_CB_WB.c */,
+				888C77093133983C78BD0904E9A765A4 /* tables_other.c */,
+				3B79719FC3B068132C6B3CC3FB106F56 /* tables_pitch_lag.c */,
+				0F08500B78B250D7C29D26397F385557 /* tables_pulses_per_block.c */,
+				BE64AE250651549558B692E1E4AC1E65 /* tuning_parameters.h */,
+				638BCAB33DB6379AA1C8D3558A1DC13D /* typedef.h */,
+				3A97F9A813D1D1FB7A11BF0448215629 /* VAD.c */,
+				A41237287EC01F8B761A22D6877EFBB8 /* VQ_WMat_EC.c */,
+				1708865453F4D5AC9EFE18761471C85F /* float */,
+			);
+			name = silk;
+			path = silk;
+			sourceTree = "<group>";
+		};
+		2C787A79E5D6D648D4EA63AB85D97CB7 /* celt */ = {
+			isa = PBXGroup;
+			children = (
+				2798D6E861D50C7602CA3E55484EFD95 /* _kiss_fft_guts.h */,
+				F9A4F631E6637F261F979CFDCCDC581F /* arch.h */,
+				4BECE021359C6894CE9E12F4EB472ED2 /* bands.c */,
+				49EC1F3326AC5958FF0E01E76CBC8F93 /* bands.h */,
+				B33E1483BAA822C2C33A9C758099E143 /* celt.c */,
+				81F286B9905D9E3418922AB267D3B83E /* celt.h */,
+				73680BB80AF4890D95B0928DA00142DE /* celt_decoder.c */,
+				2B2C1076DDFA98D22FCC96C546EE7891 /* celt_encoder.c */,
+				867724033040F57EC6B374D8CE32631C /* celt_lpc.c */,
+				7B1B40712C452468A344F4843337BB4C /* celt_lpc.h */,
+				4D62B2F6A330738F5FAD4D72BCC16636 /* cpu_support.h */,
+				BDF88C5770F4F79964074BE657297ACA /* cwrs.c */,
+				C759E5B3CAF55FAAF95998575555A377 /* cwrs.h */,
+				98812242882E5283DCE848010C4AFC85 /* ecintrin.h */,
+				220CC71F704B47B760F2F220459A948E /* entcode.c */,
+				55ABE61ECBB39FC75D0C54DFB08D0AEF /* entcode.h */,
+				9B0AACA68ABDFF2333CA371E7F1C1EBC /* entdec.c */,
+				45909153C25D5FF1E8EFAFF0F174B811 /* entdec.h */,
+				5B3A8C32534381522BB632B4CC6635D3 /* entenc.c */,
+				0F3DA1F735915E58B9063B5AA45B7D05 /* entenc.h */,
+				1A850F0C5A6ED4E1D0CB862668384C48 /* fixed_debug.h */,
+				BF6482F68030F4D9E6906A503A227259 /* fixed_generic.h */,
+				09F242691BD93C70C0F454C0101424F1 /* float_cast.h */,
+				69ABE35646506A0D8467576091EBBC44 /* kiss_fft.c */,
+				D782B9A2ED9B65395EE551FF5D12B7DA /* kiss_fft.h */,
+				A096A41957B75101DC02DCBE5E4DA4F9 /* laplace.c */,
+				D8FF3E61C9EAF26C30256C7D2930FFD5 /* laplace.h */,
+				6529B91CAA4A174158E61722F0C22096 /* mathops.c */,
+				A59ABD14E3FC2A60DEE6EA97AB6083A0 /* mathops.h */,
+				6219185FE9050D4F9F7763D4E9805E3A /* mdct.c */,
+				269B8AD784A669369DA7CA2A11CBC2D0 /* mdct.h */,
+				6EE7E406D241A2E3FB4E463A6B31CAF9 /* mfrngcod.h */,
+				0CED82F45534FB8C6C5C50E98F3BAEEC /* modes.c */,
+				10ABAC16D3F98974E33C07DE58FE0ABB /* modes.h */,
+				1918AABED26CA270990FA2E60B38FEA2 /* os_support.h */,
+				6162AB04518127CA3E73179719B6E099 /* pitch.c */,
+				FE30FA7FD0956BC59266515D05C7815B /* pitch.h */,
+				0B9AC6A095212740869BA615E3488568 /* quant_bands.c */,
+				BC16A1BE075E3CE9BBFF0E247F644B8A /* quant_bands.h */,
+				F795311E437205DA7894D21E9653F2B3 /* rate.c */,
+				0ADDC7445C58DF2D3B041B3966B11B43 /* rate.h */,
+				3638D14A676B0C5839D2BD058591BAE0 /* stack_alloc.h */,
+				693CB446F71104CE131ECCD61D34CFAA /* static_modes_fixed.h */,
+				9DBFDDE1C4070B734885706CF07A8A08 /* static_modes_fixed_arm_ne10.h */,
+				696920E6B5EB741241614291F797DDEA /* static_modes_float.h */,
+				254DA2B13B9175449DFF8CC85483A6CE /* static_modes_float_arm_ne10.h */,
+				DCB59DD334E2E61AACDB2C045C0F9A4A /* vq.c */,
+				19A881AE68D06EE8BA213FD5B5BFDBDC /* vq.h */,
+			);
+			name = celt;
+			path = celt;
+			sourceTree = "<group>";
+		};
 		31F985285610E6794025D78B55BB049A /* Support Files */ = {
 			isa = PBXGroup;
 			children = (
@@ -432,14 +1068,62 @@
 			path = "Target Support Files/Pods-Beacon";
 			sourceTree = "<group>";
 		};
-		589E6BF95A80AE7EC4035B148E665CA5 /* Products */ = {
+		4A99D7B5797B41BDC84183C866FBDC95 /* include */ = {
+			isa = PBXGroup;
+			children = (
+				42FB2E9785CA6D5F3B189FB2E663F8C7 /* opus.h */,
+				5987DDE47E1251187585D84329DE7899 /* opus_custom.h */,
+				13FFAFC0BF698202923AF8D75BA49F97 /* opus_defines.h */,
+				0FD49094750B8B2E2B5C45AC25974779 /* opus_multistream.h */,
+				EE4FEFD1E4D6744B0F121F5F5B392EC7 /* opus_projection.h */,
+				035DA509A6427862A41371BF19345683 /* opus_types.h */,
+			);
+			name = include;
+			path = include;
+			sourceTree = "<group>";
+		};
+		4B79A4965FEE66791144FB8ABB08065C /* Opus */ = {
+			isa = PBXGroup;
+			children = (
+				B7E0BEF5B1FF7FE99A2EC428B0885446 /* beacon_opus_ctl.h */,
+				3260E8F46BF4CDEC8784034EDAF3B9FB /* config.h */,
+				2C787A79E5D6D648D4EA63AB85D97CB7 /* celt */,
+				4A99D7B5797B41BDC84183C866FBDC95 /* include */,
+				5F4230874E217F0FE859083E3EB281A2 /* Pod */,
+				2834F0FE28BF3BFBD30EF1AF13EF271B /* silk */,
+				F6543D36D8A96713C65AAC69664A4AE8 /* src */,
+				F545F97859AE30FE36C488751F1C524F /* Support Files */,
+			);
+			name = Opus;
+			path = ../Vendor/opus;
+			sourceTree = "<group>";
+		};
+		4C9AAF57AB4F1637540409474D166850 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				D11761D6988B5F29BB319D5189B9EF5E /* LibSignalClient */,
+				B572A643114101930C7B5BB8D686215C /* Opus */,
 				FAA9FAF4980655586357B837C578F642 /* Pods-Beacon */,
 				4A623A0BA1BFC2862E7640667CF780DF /* Pods-BeaconTests */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		5F4230874E217F0FE859083E3EB281A2 /* Pod */ = {
+			isa = PBXGroup;
+			children = (
+				B7DDBC497FC005A9F510820FBFC4E1DC /* COPYING */,
+				5D37184EA5623A6B4A922F788750CE20 /* Opus.podspec */,
+			);
+			name = Pod;
+			sourceTree = "<group>";
+		};
+		787DCDEC89C999E6F62E99A1EA5B54B9 /* Development Pods */ = {
+			isa = PBXGroup;
+			children = (
+				4B79A4965FEE66791144FB8ABB08065C /* Opus */,
+			);
+			name = "Development Pods";
 			sourceTree = "<group>";
 		};
 		7D957618D78CC7F3847FC7DF304C9030 /* Pods-BeaconTests */ = {
@@ -645,9 +1329,10 @@
 			isa = PBXGroup;
 			children = (
 				9D940727FF8FB9C785EB98E56350EF41 /* Podfile */,
+				787DCDEC89C999E6F62E99A1EA5B54B9 /* Development Pods */,
 				D210D550F4EA176C3123ED886F8F87F5 /* Frameworks */,
 				B7870803DD6BABDCC0E033456937C1E2 /* Pods */,
-				589E6BF95A80AE7EC4035B148E665CA5 /* Products */,
+				4C9AAF57AB4F1637540409474D166850 /* Products */,
 				3668B5FE2341E92B27E6BF47CC9EA280 /* Targets Support Files */,
 			);
 			sourceTree = "<group>";
@@ -668,6 +1353,47 @@
 			name = iOS;
 			sourceTree = "<group>";
 		};
+		F545F97859AE30FE36C488751F1C524F /* Support Files */ = {
+			isa = PBXGroup;
+			children = (
+				445BC113DF03959E103A538C236C4D8B /* Opus.modulemap */,
+				FB6BAB9EB1D343152A959A668B5ECE9A /* Opus-dummy.m */,
+				E647B714B07C3B4E6D8237C70FF80087 /* Opus-Info.plist */,
+				81DC6B20CD0057257E43CF20884613C2 /* Opus-prefix.pch */,
+				3E89612B4EB794E9979461FB234481AF /* Opus-umbrella.h */,
+				F19781570DC40EC317E08CB63340420A /* Opus.debug.xcconfig */,
+				02F42D9A96D07AD3D6B3939C9B35AB9F /* Opus.release.xcconfig */,
+			);
+			name = "Support Files";
+			path = "../../Pods/Target Support Files/Opus";
+			sourceTree = "<group>";
+		};
+		F6543D36D8A96713C65AAC69664A4AE8 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				4E3268A348AF7CB7C487063C4D48F07C /* analysis.c */,
+				65C1EDA9BFBB7E7801ABFDF8BAF56D9A /* analysis.h */,
+				C979484A0092E29511A463F75034B534 /* extensions.c */,
+				8948A85EC36E4817694A51F4C6A3E2BA /* mapping_matrix.c */,
+				7F3588AD3E157F2F3BE2107E5074CCEF /* mapping_matrix.h */,
+				04ED98EB173514256F63E4940500FD92 /* mlp.c */,
+				67E6E96A5D9F7FE83D740DA262675533 /* mlp.h */,
+				E87E92A2832ECFB7D12427160B87F0C4 /* mlp_data.c */,
+				6046E08B248CBBD01FD4EDED0873C57A /* opus.c */,
+				8CDC3EA31A3FEAF0F336A85D7492FBEF /* opus_decoder.c */,
+				A9D4B967A53D0431E750275C0FC582B4 /* opus_encoder.c */,
+				3D0715090F511ABE3284DC4C8E8300F9 /* opus_multistream.c */,
+				34864590C8AE62FF00A5376DB5D3B4E5 /* opus_multistream_decoder.c */,
+				4528038FFE7BDF93558D5968347CF6CC /* opus_multistream_encoder.c */,
+				9D4AFF2E07603CF5753FAE858D248120 /* opus_private.h */,
+				45F2D51568CF77B3FFDDE24D334ED4DB /* opus_projection_decoder.c */,
+				65A24826F128D2FEDC308AB4486D55A6 /* opus_projection_encoder.c */,
+				E77E971F99844697DBAE8D7D36136F40 /* repacketizer.c */,
+			);
+			name = src;
+			path = src;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -679,6 +1405,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		30FE29D44D83D6635AD2BCB478A264AA /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CA2E3E65D6F446A52EDE52A6FC08BF81 /* Pods-Beacon-umbrella.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3971B2E945BF81AB0C5F0C268DAA5143 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
@@ -687,11 +1421,77 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		5A80A6921C5EB50AC499FBE072CD6360 /* Headers */ = {
+		73CAA1B0E889A04C142A7CC367895213 /* Headers */ = {
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A69945BE46FB90C92740DDF555FD3751 /* Pods-Beacon-umbrella.h in Headers */,
+				B781C1707A92EC698D4C0615ED7F2EA1 /* _kiss_fft_guts.h in Headers */,
+				86A237A953B647379FEFE48BB6067BAE /* analysis.h in Headers */,
+				D4E4C1F7A92BA10B89440D396E74878A /* API.h in Headers */,
+				F71CEC05EFDD9DB120E31E2F6430DBD0 /* arch.h in Headers */,
+				5091CFE4D8C95BE2140671D8AA8A3703 /* bands.h in Headers */,
+				1A124A44EB1FFDBEF2BCE59E7B079CA5 /* beacon_opus_ctl.h in Headers */,
+				5ECA386F249645EA616622868A2F71D4 /* celt.h in Headers */,
+				78417DDD7C905783313ABE0591A15792 /* celt_lpc.h in Headers */,
+				411B8564308AA667F75BE664E48698EC /* config.h in Headers */,
+				10AB5C19E0C81DD77E46455685BED25B /* control.h in Headers */,
+				F3D4AFE438F924621FB196D8429FCF42 /* cpu_support.h in Headers */,
+				E0CD34815EB8C3B177822D72475A3205 /* cwrs.h in Headers */,
+				A690F78EAD820B65E542ABD4D594F901 /* debug.h in Headers */,
+				6A6CD9B5DDA87312ED57A53797567C8A /* define.h in Headers */,
+				B6290F25D445E872972F6B22E5E8B14E /* ecintrin.h in Headers */,
+				7D49556AC3BE99A8D60E20649689215B /* entcode.h in Headers */,
+				F24F9B89FE5128A826C0824F9E6776CF /* entdec.h in Headers */,
+				EF7284E743102362915183239B6076AD /* entenc.h in Headers */,
+				05CA294029B602A9184B8A9CCC8577C7 /* errors.h in Headers */,
+				15A9F7599B67380D6345732F2F55CF86 /* fixed_debug.h in Headers */,
+				003C2A500A4F3C11B5EAFE8FD333CEE0 /* fixed_generic.h in Headers */,
+				1CE1DD55A10F07D2D55DC51EABFAD7A8 /* float_cast.h in Headers */,
+				BE68F087EB03982911A6211EB9E14F56 /* Inlines.h in Headers */,
+				C722D9E60A364FA10046BB53049CBF04 /* kiss_fft.h in Headers */,
+				A2A8B243C88FB76F67EA5F860D69ECBC /* laplace.h in Headers */,
+				EF86AC343FD03F831BCDACD6EF64EFC9 /* MacroCount.h in Headers */,
+				084ABDE0627226BC8C5F68BDDE05D311 /* MacroDebug.h in Headers */,
+				CE1A334CB3CAB4677ED77E5823B5BAA2 /* macros.h in Headers */,
+				ECAE57989A1E7437F88940F33D0898AC /* main.h in Headers */,
+				6B71E4A3078F1B14EF6FF5758156D6B2 /* main_FLP.h in Headers */,
+				090493BE1F6DCC0615BE0DC62162FAAC /* mapping_matrix.h in Headers */,
+				2776AB8227CA64D2AC97621F7C6BD20C /* mathops.h in Headers */,
+				532BEFF2284121B63A0E115090BAA6EB /* mdct.h in Headers */,
+				F129507F2EB522F38686F1FC33317C68 /* mfrngcod.h in Headers */,
+				A143172DC10F2377ACBE2F440F3C4130 /* mlp.h in Headers */,
+				5CF656CA3A63B087ABDBA06B5D10E10A /* modes.h in Headers */,
+				DD1B8BB1130C00EACAD4A7B15B52C2D4 /* NSQ.h in Headers */,
+				7945D2D3A63FB7966D272B0D7DC0F554 /* opus.h in Headers */,
+				3163E5BA89190BBC41EA6B9DC6F10C1B /* Opus-umbrella.h in Headers */,
+				640EDF3D3B635E9745DEB728B79C13C1 /* opus_custom.h in Headers */,
+				FAA92A08638AFD6E57B070891730F603 /* opus_defines.h in Headers */,
+				505DFBD0A81A75D55FEEEDFC1D5D480C /* opus_multistream.h in Headers */,
+				423E5E9174AABE45C6AC6B30E4834577 /* opus_private.h in Headers */,
+				1B62182F7F40C2B517BCAFA635B4D8EA /* opus_projection.h in Headers */,
+				20F133CD98025ECDD3730BD6BA3C1E64 /* opus_types.h in Headers */,
+				7D42BFB69814F832DF9139852FB006B9 /* os_support.h in Headers */,
+				764E4D51A27A55E6285320D4E0DB53EB /* pitch.h in Headers */,
+				B6B9FC48FD2CAC77E281D6E605CF3026 /* pitch_est_defines.h in Headers */,
+				90C0123DFDEE26BE6B7ED1D87143EA3B /* PLC.h in Headers */,
+				CA5A124B968659DEDC93EEC9B75F271C /* quant_bands.h in Headers */,
+				F0D643ADA53A163654AB6AE1E0E0ED5C /* rate.h in Headers */,
+				552BBED63888B9718B5EFA02FF7265E7 /* resampler_private.h in Headers */,
+				92AA897606A288EB6930584161C914BE /* resampler_rom.h in Headers */,
+				01FDB5791D5EF830BE0A5F93047FF05A /* resampler_structs.h in Headers */,
+				562EA7A8B5D7A7643F2DDF299FB464CC /* SigProc_FIX.h in Headers */,
+				11A1FB4EA635FFEDAF1B7A32FEA9CC6A /* SigProc_FLP.h in Headers */,
+				8390C31A3CFFF693D1A7A551224075C5 /* stack_alloc.h in Headers */,
+				E33CBFC513F641B57CDA4D911B1D6B20 /* static_modes_fixed.h in Headers */,
+				89F07CD1F59F7D9CC288C03678FEF3D3 /* static_modes_fixed_arm_ne10.h in Headers */,
+				CA8266CD636B39728468C3819170437E /* static_modes_float.h in Headers */,
+				4ACF0A997FEC6F638603E322A0B8986A /* static_modes_float_arm_ne10.h in Headers */,
+				DCF904C722C02AA883B963233D9B4317 /* structs.h in Headers */,
+				05D3D7989CD4B90F2E36567ADBE1F875 /* structs_FLP.h in Headers */,
+				C19F98EA19C12D32D1C33F2E81028F9A /* tables.h in Headers */,
+				EA797EAFE9238D5B1D04115615EBA3B6 /* tuning_parameters.h in Headers */,
+				64434A05A451CB7D4FAB066A611FAB60 /* typedef.h in Headers */,
+				72CA56B2939DA8F5D586BA89B4857225 /* vq.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -700,22 +1500,41 @@
 /* Begin PBXNativeTarget section */
 		04BDD72EAE718614B413E19FEAEAA671 /* Pods-Beacon */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 193C82DC30B6FE3E5F862CE96413AF28 /* Build configuration list for PBXNativeTarget "Pods-Beacon" */;
+			buildConfigurationList = 243200B295719FFE914A87F1B7C83E3D /* Build configuration list for PBXNativeTarget "Pods-Beacon" */;
 			buildPhases = (
-				5A80A6921C5EB50AC499FBE072CD6360 /* Headers */,
-				90EFBD62B33E67A0CDFBFB65CB7A2ADE /* Sources */,
-				0BF2AC73C9BFD50C79454984F21B6952 /* Frameworks */,
-				BA1D3CCCA97609E2F1BBC4646C854796 /* Resources */,
+				30FE29D44D83D6635AD2BCB478A264AA /* Headers */,
+				D7BA3F208B7FD289CBD726220089BFC1 /* Sources */,
+				9EE11F834D809DACD117360CDE158257 /* Frameworks */,
+				967E4A271F8439390DBD871A7F23CB79 /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				E4FBAEF3D81368A64519A8C9C043EC19 /* PBXTargetDependency */,
-				7B73D9AC6DD9CE3467A867C021530CBA /* PBXTargetDependency */,
+				15FB170816D5B82FCDE1F9267997C6F3 /* PBXTargetDependency */,
+				01D0E3260CEF578D213C923BDA8C44E6 /* PBXTargetDependency */,
+				55FC834B33FB2B3E48ACA54CBBB0C0A9 /* PBXTargetDependency */,
 			);
 			name = "Pods-Beacon";
 			productName = Pods_Beacon;
 			productReference = FAA9FAF4980655586357B837C578F642 /* Pods-Beacon */;
+			productType = "com.apple.product-type.framework";
+		};
+		7E2A878BA6EF9AC0FE5A8A5A4B34B433 /* Opus */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BCFE97F899B8C2A3910AE9BC5E1534D8 /* Build configuration list for PBXNativeTarget "Opus" */;
+			buildPhases = (
+				73CAA1B0E889A04C142A7CC367895213 /* Headers */,
+				2EE0B956CC997F4CF19AB7F7F24860E1 /* Sources */,
+				88F24FA9D10D5DE3F3204823AB7AE984 /* Frameworks */,
+				3204210A13E025145BFD5F3D6AEA4B53 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Opus;
+			productName = Opus;
+			productReference = B572A643114101930C7B5BB8D686215C /* Opus */;
 			productType = "com.apple.product-type.framework";
 		};
 		BDD643C73C0AE976B68989859B178E1E /* Pods-BeaconTests */ = {
@@ -730,7 +1549,7 @@
 			buildRules = (
 			);
 			dependencies = (
-				FA28CDBE6149DC1571F6CA20E639BA54 /* PBXTargetDependency */,
+				A3AFB7447A840543F449B8BB9727BC15 /* PBXTargetDependency */,
 			);
 			name = "Pods-BeaconTests";
 			productName = Pods_BeaconTests;
@@ -777,11 +1596,12 @@
 			mainGroup = CF1408CF629C7361332E53B88F7BD30C;
 			minimizedProjectReferenceProxies = 0;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 589E6BF95A80AE7EC4035B148E665CA5 /* Products */;
+			productRefGroup = 4C9AAF57AB4F1637540409474D166850 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				D77A98059641D2A99D7DD3EBCA4606AE /* LibSignalClient */,
+				7E2A878BA6EF9AC0FE5A8A5A4B34B433 /* Opus */,
 				04BDD72EAE718614B413E19FEAEAA671 /* Pods-Beacon */,
 				BDD643C73C0AE976B68989859B178E1E /* Pods-BeaconTests */,
 				DDBC7E0BF7FE162EF742772F4DC3D525 /* WebRTC-lib */,
@@ -790,6 +1610,13 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		3204210A13E025145BFD5F3D6AEA4B53 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		47319529CA130DB55AD6C73277940F9C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -797,7 +1624,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		BA1D3CCCA97609E2F1BBC4646C854796 /* Resources */ = {
+		967E4A271F8439390DBD871A7F23CB79 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -1005,11 +1832,148 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		90EFBD62B33E67A0CDFBFB65CB7A2ADE /* Sources */ = {
+		2EE0B956CC997F4CF19AB7F7F24860E1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B006DBE0200AEC321C185D0D33173BCF /* Pods-Beacon-dummy.m in Sources */,
+				847B3A95E61B80F2726AE8D7DB4681D7 /* A2NLSF.c in Sources */,
+				BC3BF89ADC63E1F06599A30EF800023F /* ana_filt_bank_1.c in Sources */,
+				5805B6C48ABA15325BFAC1B5021C2944 /* analysis.c in Sources */,
+				BB08BCA1B4A3FA9DBAB0D42C835E9C3A /* apply_sine_window_FLP.c in Sources */,
+				FD8D07735919FFB9A38F86AFDAE251A4 /* autocorrelation_FLP.c in Sources */,
+				1342C632253ACB72CA0AE320155DABB7 /* bands.c in Sources */,
+				E148B38D609828AC9E7510FDD9C2A034 /* biquad_alt.c in Sources */,
+				00B013DD3D27FAA3BD2EE0A53B5ECB83 /* burg_modified_FLP.c in Sources */,
+				1337D9D7EA5E969F2F3BAD2F41487416 /* bwexpander.c in Sources */,
+				4B6B6098859210BC3AEC4CFF667F9E24 /* bwexpander_32.c in Sources */,
+				B841F7180424332C663A9F577821702B /* bwexpander_FLP.c in Sources */,
+				3AA69A62F869284CF168E3426EEA1CE6 /* celt.c in Sources */,
+				F95F38F11CC67F642DB9AAE8A3FDF0CB /* celt_decoder.c in Sources */,
+				3B893E930B53690E2FDEA98EC32F5120 /* celt_encoder.c in Sources */,
+				CF60F9B273A55923C2844851FCFC989F /* celt_lpc.c in Sources */,
+				F02186DBD564FBD15ECBA9B4F674541E /* check_control_input.c in Sources */,
+				7E04E6221A5CFAC0FD90150DC95036A9 /* CNG.c in Sources */,
+				EEF4C26970CC25071360527D58D0586C /* code_signs.c in Sources */,
+				9DA1A94B7E39A1BAAEB536D9C72ED4BB /* control_audio_bandwidth.c in Sources */,
+				23C1F75A0AFD919F54926CA7D3B93459 /* control_codec.c in Sources */,
+				5CD8D84C0A38FC97112437262FFBA48E /* control_SNR.c in Sources */,
+				B68915102698E6023D5050113C75FFDA /* corrMatrix_FLP.c in Sources */,
+				66ADE510A13323245DD2CDF3F448DC86 /* cwrs.c in Sources */,
+				F04018D69471A8DE998968D8A598FF07 /* debug.c in Sources */,
+				DE2BBC6A564B7DA2445F4DD68360882E /* dec_API.c in Sources */,
+				CAEA4ECD3FA481E267186C71A02BF0CC /* decode_core.c in Sources */,
+				F89D4C91CEF261A20B0FD51AA70A8FD9 /* decode_frame.c in Sources */,
+				5BB911CA1228199828CFCF30A95AF0E5 /* decode_indices.c in Sources */,
+				B7B0635AA9FD432422195AD16716B9B7 /* decode_parameters.c in Sources */,
+				C1204BB3C9A31802ECBC6E7BEEA18945 /* decode_pitch.c in Sources */,
+				0817624DA28E6921873408D4BAAF847C /* decode_pulses.c in Sources */,
+				8946380CA3510CC0930299AF1297F8B1 /* decoder_set_fs.c in Sources */,
+				E2BCCA4BD17C5D7506FFEAA4CA7CCD3F /* enc_API.c in Sources */,
+				FF125D347514C7E503125934938DC5D5 /* encode_frame_FLP.c in Sources */,
+				45A712DB82B6A381753DE0B22013CDCA /* encode_indices.c in Sources */,
+				B525B0E5C04C08CC292A33964FE4DE20 /* encode_pulses.c in Sources */,
+				FE8BCB626995ABB3533C86BC0F4FCD6F /* energy_FLP.c in Sources */,
+				59424F59A3D7502E0A5898C5062FF61B /* entcode.c in Sources */,
+				BB12251506C788D991F76354E02FDEC3 /* entdec.c in Sources */,
+				AAD683C918FC16B63BA32D64A98EA916 /* entenc.c in Sources */,
+				3D597478BAAE6846D34F5FEF1AA89733 /* extensions.c in Sources */,
+				64B35D87D9DD9BEF6D80BCDB25CE2EA5 /* find_LPC_FLP.c in Sources */,
+				44C538325CD53E2B0CC5AFC6B2FAC703 /* find_LTP_FLP.c in Sources */,
+				8183167B37901A47D4C15A7A63C467F3 /* find_pitch_lags_FLP.c in Sources */,
+				CA989358A87AE5DDE29978342E26167C /* find_pred_coefs_FLP.c in Sources */,
+				AEC78E6BF53A720C5F4C73A14A24A5EE /* gain_quant.c in Sources */,
+				5BCF79C2ACDEE7AC15AACF2AD659F5BA /* HP_variable_cutoff.c in Sources */,
+				B43113A7234B2F8C8A0D0B0896439E55 /* init_decoder.c in Sources */,
+				092CBD7A12E5D3613B2E8C34328F81A8 /* init_encoder.c in Sources */,
+				1C27190A18E0088EE3445982499B7683 /* inner_prod_aligned.c in Sources */,
+				96EBD8F258CAC7E7D2A9A0ECDA6C5339 /* inner_product_FLP.c in Sources */,
+				51BDFA83260E3ECA01F4D1559A28B718 /* interpolate.c in Sources */,
+				00F446DAED2E0849D5D0EB334586902B /* k2a_FLP.c in Sources */,
+				06032AACE6AFA9BC811CE3DA52196E4D /* kiss_fft.c in Sources */,
+				BDFD4AA8B05FE00864771DB15113123E /* laplace.c in Sources */,
+				28B0FE15245C7B79B92182FB372063DE /* lin2log.c in Sources */,
+				846EEDEC6173F5B39C2A8EDECB5605B1 /* log2lin.c in Sources */,
+				38F139A2550D1E8506DFC5926A34CB8C /* LP_variable_cutoff.c in Sources */,
+				6963E89B2621A9970F5E76E966BB7F6F /* LPC_analysis_filter.c in Sources */,
+				D03EF0C58FA4A1702274AFE24E6ACC5D /* LPC_analysis_filter_FLP.c in Sources */,
+				4CECF006BA90C02E7F455A5AA66EEEE3 /* LPC_fit.c in Sources */,
+				F329128873792254A4697E907C4D8521 /* LPC_inv_pred_gain.c in Sources */,
+				4A1AB93D7ECBF645CF4A61D4A76F3A86 /* LPC_inv_pred_gain_FLP.c in Sources */,
+				8A1A8C66D8FB179C1147E82CCD0811BB /* LTP_analysis_filter_FLP.c in Sources */,
+				96C6B0CBA36D9E8AAA9A3BA6914E7A1E /* LTP_scale_ctrl_FLP.c in Sources */,
+				8EBABAADC0C7316AD3ABB91705217F17 /* mapping_matrix.c in Sources */,
+				7C53473B369202183721C3FD8EF0B435 /* mathops.c in Sources */,
+				D20E5A90F1A1F07A6531BDBA9E972384 /* mdct.c in Sources */,
+				F8E6331D15A73A56133558B70421D13E /* mlp.c in Sources */,
+				B1B154D05D9B676266734D0BFCF17A4F /* mlp_data.c in Sources */,
+				CADE60CDE744CC856982818588B6C6B5 /* modes.c in Sources */,
+				A6DEAE4A5AEB174F172B546E497ED395 /* NLSF2A.c in Sources */,
+				1853C38D6AA91F3C0DF98C381EB8866C /* NLSF_decode.c in Sources */,
+				EFA19E0C98FF27C5F29CDED97ABAEE34 /* NLSF_del_dec_quant.c in Sources */,
+				76D5E61CF113D8684B96609129450F59 /* NLSF_encode.c in Sources */,
+				FA0049C1F12E975F09B6C6FE788D7B55 /* NLSF_stabilize.c in Sources */,
+				A92A35126C90310F8473D85FC1D71964 /* NLSF_unpack.c in Sources */,
+				4FD793633CFF159A92D8FB702A5E3EE1 /* NLSF_VQ.c in Sources */,
+				7C03437928FBCD9F42A014C9E4E4020C /* NLSF_VQ_weights_laroia.c in Sources */,
+				D4E99302D80853645B6684118715A38E /* noise_shape_analysis_FLP.c in Sources */,
+				EF11028301CE03BB416E73C06B988D9F /* NSQ.c in Sources */,
+				644035050EA7B2198E578475B01A1868 /* NSQ_del_dec.c in Sources */,
+				24B3075A163239846414249E9ED28609 /* opus.c in Sources */,
+				91C691BE66C2A91CB8710DC6F8291008 /* Opus-dummy.m in Sources */,
+				FFF26B631476B61E65FF75870DCBDFE1 /* opus_decoder.c in Sources */,
+				D26B2864A6B1A6CA8FC69873847E867E /* opus_encoder.c in Sources */,
+				2718E047044463F6CBF02AB98E8D4224 /* opus_multistream.c in Sources */,
+				7F96035B50C2E560C7D0B00223C88A1F /* opus_multistream_decoder.c in Sources */,
+				25FA863452148A78062AA1C29B8AC6F6 /* opus_multistream_encoder.c in Sources */,
+				AE0A99C7C5958F0AE7CAF0F824357706 /* opus_projection_decoder.c in Sources */,
+				54AA83AB1058B0ECEE5E15718626A1CC /* opus_projection_encoder.c in Sources */,
+				BA95BE24C3D32F97BE019440130FBF6F /* pitch.c in Sources */,
+				A81EA12A62D0D4CA92EA8ABE8F89137D /* pitch_analysis_core_FLP.c in Sources */,
+				8C94485902EF187C8B6BF6F56184777D /* pitch_est_tables.c in Sources */,
+				ABAC40836253AD2488380513F70803CE /* PLC.c in Sources */,
+				2FFADBC137F63BAB0DB5F1404B18EDED /* process_gains_FLP.c in Sources */,
+				77D6B82CC1443EE0A5E2FB1E8FD8B4EA /* process_NLSFs.c in Sources */,
+				AB5000522E9E125E024189998953FBDF /* quant_bands.c in Sources */,
+				D784C644E7EA24057740210F229CCA44 /* quant_LTP_gains.c in Sources */,
+				31E9880D119F93CD8267DF7AE3FA08BF /* rate.c in Sources */,
+				F4C94D151315C6BD54EC535FB72D7A96 /* regularize_correlations_FLP.c in Sources */,
+				705229F7099D9F0D34A691F7D35616DD /* repacketizer.c in Sources */,
+				915A18743E74D1EA6640B58DB8CDF733 /* resampler.c in Sources */,
+				CC30E74153BB6FCE032968F69DDEA2A0 /* resampler_down2.c in Sources */,
+				3221372D40CA1088BB9E55CF9058614C /* resampler_down2_3.c in Sources */,
+				5D3794A7A421F01E1F383BB3030611C0 /* resampler_private_AR2.c in Sources */,
+				B67C6F118B0971F0548290D765B6992B /* resampler_private_down_FIR.c in Sources */,
+				F2DAEEB1DA67B42DA737B91D7F6FB642 /* resampler_private_IIR_FIR.c in Sources */,
+				939EC7E624ED58608291C7A23765342D /* resampler_private_up2_HQ.c in Sources */,
+				F5AF20D44631E749DE7855A737EA65AA /* resampler_rom.c in Sources */,
+				02C00B066CAEC015734134C6F3A67806 /* residual_energy_FLP.c in Sources */,
+				77536E80DDA1EEA410DC0F43C723EBDB /* scale_copy_vector_FLP.c in Sources */,
+				867153E407C4D7EF15C4011D89E84254 /* scale_vector_FLP.c in Sources */,
+				E6A3059FD2F04D0793C9C4D752B03143 /* schur_FLP.c in Sources */,
+				614767C79D7AFABAA995FFD3952BD3D1 /* shell_coder.c in Sources */,
+				0D0476C7A6C46B08B5063B3E26AD37AF /* sigm_Q15.c in Sources */,
+				6E49AF6A559D8A8BB27CFAEDF2662C8A /* sort.c in Sources */,
+				7725BCE14F945DC5EAFF8E923B1EE8FA /* sort_FLP.c in Sources */,
+				8349D54D17645E1703FF1D990A6E8321 /* stereo_decode_pred.c in Sources */,
+				EB0D3F04B95990AE82461AA67DBBF146 /* stereo_encode_pred.c in Sources */,
+				666544777F650119FA986896B293B1A2 /* stereo_find_predictor.c in Sources */,
+				0334210370378C4F39F14ADE23E1407A /* stereo_LR_to_MS.c in Sources */,
+				0D6C39B37949EEF5572574D929F5B23E /* stereo_MS_to_LR.c in Sources */,
+				55F1E74B8A56ACAF7AEE97E90D8CFFF9 /* stereo_quant_pred.c in Sources */,
+				7DC3081495F87DF05BB71EC22E9B1E53 /* sum_sqr_shift.c in Sources */,
+				471B1B0A3A9249278258378514446635 /* table_LSF_cos.c in Sources */,
+				E371BB9CD00FFEC5F69EF42A98088365 /* tables_gain.c in Sources */,
+				D9DBC0CEB584D4161A21B9476EA5EA7D /* tables_LTP.c in Sources */,
+				80173E544A159EC71EC4E6E2C8F76B72 /* tables_NLSF_CB_NB_MB.c in Sources */,
+				2CB0D714C94F329C317ACB5C2ACF31BB /* tables_NLSF_CB_WB.c in Sources */,
+				FCB21EC19D11A63B786E1FF628841C76 /* tables_other.c in Sources */,
+				8E4581C039F0A7913D3DF694ED56C5E8 /* tables_pitch_lag.c in Sources */,
+				EF0F59BD45B473D38AC65C712E0D8979 /* tables_pulses_per_block.c in Sources */,
+				21B679C80ACD3F8DBFAEF0C0246375C3 /* VAD.c in Sources */,
+				3007BAFF74419D7B0012B5108AE906B6 /* vq.c in Sources */,
+				4409CB11362961A619ED582FF9F57FD0 /* VQ_WMat_EC.c in Sources */,
+				F342489BC09E448C89D8E92F47DE0DB8 /* warped_autocorrelation_FLP.c in Sources */,
+				545ED7D7ED5D890D74DA3049537899AE /* wrappers_FLP.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1021,33 +1985,47 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D7BA3F208B7FD289CBD726220089BFC1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E8E846E48F27E8621DF5156AF81FAD91 /* Pods-Beacon-dummy.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		7B73D9AC6DD9CE3467A867C021530CBA /* PBXTargetDependency */ = {
+		01D0E3260CEF578D213C923BDA8C44E6 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			name = "WebRTC-lib";
-			target = DDBC7E0BF7FE162EF742772F4DC3D525 /* WebRTC-lib */;
-			targetProxy = 3AAF1B89EE22AF5CA7A2AD4561858535 /* PBXContainerItemProxy */;
+			name = Opus;
+			target = 7E2A878BA6EF9AC0FE5A8A5A4B34B433 /* Opus */;
+			targetProxy = 31A86EDB9AFB61DC37630311BCC6CDF6 /* PBXContainerItemProxy */;
 		};
-		E4FBAEF3D81368A64519A8C9C043EC19 /* PBXTargetDependency */ = {
+		15FB170816D5B82FCDE1F9267997C6F3 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = LibSignalClient;
 			target = D77A98059641D2A99D7DD3EBCA4606AE /* LibSignalClient */;
-			targetProxy = F751FE16790C19CAF77D333997BAB3C0 /* PBXContainerItemProxy */;
+			targetProxy = 22CECE28F7C1745D3A7B71E73A43C9C0 /* PBXContainerItemProxy */;
 		};
-		FA28CDBE6149DC1571F6CA20E639BA54 /* PBXTargetDependency */ = {
+		55FC834B33FB2B3E48ACA54CBBB0C0A9 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = "WebRTC-lib";
+			target = DDBC7E0BF7FE162EF742772F4DC3D525 /* WebRTC-lib */;
+			targetProxy = 50CC1BF82295FFDE7E1BCB3349AF3D99 /* PBXContainerItemProxy */;
+		};
+		A3AFB7447A840543F449B8BB9727BC15 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = "Pods-Beacon";
 			target = 04BDD72EAE718614B413E19FEAEAA671 /* Pods-Beacon */;
-			targetProxy = B77C14AE96B47F29B434B3FBEA753F43 /* PBXContainerItemProxy */;
+			targetProxy = 89C3D4AE55227E56491FE9B3C2280FFA /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		1943084EBD7EEC215BE5E0E1F6225D5E /* Release */ = {
+		1BDB321A9D1A19C5AFF168816560473B /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = A4819E3B555F34A695AA38AD26BC22CC /* Pods-Beacon.release.xcconfig */;
+			baseConfigurationReference = BA33B13ACACF13DD3FB929588D247B3F /* Pods-Beacon.debug.xcconfig */;
 			buildSettings = {
 				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
 				CLANG_ENABLE_OBJC_WEAK = NO;
@@ -1083,6 +2061,45 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_INCLUDE_PATHS = "$(inherited) \"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		1D750290036FCC70ABD0E67EFACD2090 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 02F42D9A96D07AD3D6B3939C9B35AB9F /* Opus.release.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_PREFIX_HEADER = "Target Support Files/Opus/Opus-prefix.pch";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Target Support Files/Opus/Opus-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MODULEMAP_FILE = "Target Support Files/Opus/Opus.modulemap";
+				PRODUCT_MODULE_NAME = Opus;
+				PRODUCT_NAME = Opus;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ";
+				SWIFT_INSTALL_OBJC_HEADER = YES;
+				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
 				VERSIONING_SYSTEM = "apple-generic";
@@ -1245,6 +2262,90 @@
 			};
 			name = Debug;
 		};
+		D33062B967173AA4C314BE04D50DBB97 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F19781570DC40EC317E08CB63340420A /* Opus.debug.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_PREFIX_HEADER = "Target Support Files/Opus/Opus-prefix.pch";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Target Support Files/Opus/Opus-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MODULEMAP_FILE = "Target Support Files/Opus/Opus.modulemap";
+				PRODUCT_MODULE_NAME = Opus;
+				PRODUCT_NAME = Opus;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) ";
+				SWIFT_INSTALL_OBJC_HEADER = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
+		D5EE88F951892E3FA2D842598BEA972A /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A4819E3B555F34A695AA38AD26BC22CC /* Pods-Beacon.release.xcconfig */;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
+				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"",
+				);
+				INFOPLIST_FILE = "Target Support Files/Pods-Beacon/Pods-Beacon-Info.plist";
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACH_O_TYPE = staticlib;
+				MODULEMAP_FILE = "Target Support Files/Pods-Beacon/Pods-Beacon.modulemap";
+				OTHER_LDFLAGS = "";
+				OTHER_LIBTOOLFLAGS = "";
+				PODS_ROOT = "$(SRCROOT)";
+				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_INCLUDE_PATHS = "$(inherited) \"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"";
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Release;
+		};
 		DF75378C3EBD63312257B52577834BF2 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = D4F3617E01C3B5D962C2BA516EBD4E4D /* WebRTC-lib.debug.xcconfig */;
@@ -1383,50 +2484,6 @@
 			};
 			name = Release;
 		};
-		FD0CB5C31164F0A243AC7C38649A7F2C /* Debug */ = {
-			isa = XCBuildConfiguration;
-			baseConfigurationReference = BA33B13ACACF13DD3FB929588D247B3F /* Pods-Beacon.debug.xcconfig */;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				CLANG_ENABLE_OBJC_WEAK = NO;
-				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "";
-				"CODE_SIGN_IDENTITY[sdk=watchos*]" = "";
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				DYLIB_COMPATIBILITY_VERSION = 1;
-				DYLIB_CURRENT_VERSION = 1;
-				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				ENABLE_MODULE_VERIFIER = NO;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"\"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"",
-				);
-				INFOPLIST_FILE = "Target Support Files/Pods-Beacon/Pods-Beacon-Info.plist";
-				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@loader_path/Frameworks",
-				);
-				MACH_O_TYPE = staticlib;
-				MODULEMAP_FILE = "Target Support Files/Pods-Beacon/Pods-Beacon.modulemap";
-				OTHER_LDFLAGS = "";
-				OTHER_LIBTOOLFLAGS = "";
-				PODS_ROOT = "$(SRCROOT)";
-				PRODUCT_BUNDLE_IDENTIFIER = "org.cocoapods.${PRODUCT_NAME:rfc1034identifier}";
-				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				SWIFT_INCLUDE_PATHS = "$(inherited) \"${PODS_ROOT}/LibSignalClient/swift/Sources/SignalFfi\"";
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VERSIONING_SYSTEM = "apple-generic";
-				VERSION_INFO_PREFIX = "";
-			};
-			name = Debug;
-		};
 		FDC43C7ED72026F6CC3C5F75B92DFAFC /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A98FA2FDF5E2126C2D3B89F6EB6EEDAE /* LibSignalClient.release.xcconfig */;
@@ -1470,11 +2527,11 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		193C82DC30B6FE3E5F862CE96413AF28 /* Build configuration list for PBXNativeTarget "Pods-Beacon" */ = {
+		243200B295719FFE914A87F1B7C83E3D /* Build configuration list for PBXNativeTarget "Pods-Beacon" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				FD0CB5C31164F0A243AC7C38649A7F2C /* Debug */,
-				1943084EBD7EEC215BE5E0E1F6225D5E /* Release */,
+				1BDB321A9D1A19C5AFF168816560473B /* Debug */,
+				D5EE88F951892E3FA2D842598BEA972A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -1493,6 +2550,15 @@
 			buildConfigurations = (
 				DF75378C3EBD63312257B52577834BF2 /* Debug */,
 				F57B6F8C437F5FB769A87941E0ED2B84 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BCFE97F899B8C2A3910AE9BC5E1534D8 /* Build configuration list for PBXNativeTarget "Opus" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D33062B967173AA4C314BE04D50DBB97 /* Debug */,
+				1D750290036FCC70ABD0E67EFACD2090 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

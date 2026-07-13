@@ -13,6 +13,12 @@ target 'Beacon' do
   # existing sealed channel (kinds 8-10).
   pod 'WebRTC-lib', '= 149.0.0'
 
+  # Opus 1.5.2 for 1:1 sealed push-to-talk voice. Vendored from the Xiph
+  # upstream release, SHA-256-verified (Vendor/opus/VENDORING.md) — same
+  # pinned-reputable-source posture as LibSignalClient / WebRTC-lib, rather
+  # than a stale third-party CocoaPods vendoring.
+  pod 'Opus', :path => 'Vendor/opus'
+
   target 'BeaconTests' do
     inherit! :search_paths
   end
