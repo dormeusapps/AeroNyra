@@ -498,7 +498,10 @@ struct StreamView: View {
         Task {
             await recorder.start()
             if recorder.permissionDenied {
-                showMicDenied = true
+                // In walkie mode the StreamView alert hides behind the cover, so
+                // the globe surfaces denial itself (via recorder.permissionDenied).
+                // Only raise the alert for the composer path (cover not up).
+                if !showWalkie { showMicDenied = true }
                 pttHolding = false
             }
         }
@@ -1712,21 +1715,35 @@ private struct WalkieGlobeView: View {
         return 0
     }
 
+    /// Mic permission denied — surfaced INSIDE the cover, since the StreamView
+    /// alert hides behind it. Flips true after a hold hits a denied recorder.
+    private var micDenied: Bool { recorder.permissionDenied }
+
+    private var hintText: String {
+        if micDenied { return "microphone off" }
+        return holding ? "transmitting…" : "hold to talk"
+    }
+    private var hintColor: Color {
+        if micDenied { return Stillwater.Palette.mistDim }
+        return holding ? Stillwater.Palette.biolume : Stillwater.Palette.mistDimmest
+    }
+
     var body: some View {
         ZStack {
             Stillwater.Palette.abyss.ignoresSafeArea()
 
             sphere
+                .opacity(micDenied ? 0.4 : 1)
+                .animation(.easeOut(duration: 0.25), value: micDenied)
 
             VStack {
                 header
                 Spacer()
-                Text(holding ? "transmitting…" : "hold to talk")
-                    .stillwaterMono(8.5, trackingEm: 0.28,
-                                    color: holding ? Stillwater.Palette.biolume
-                                                   : Stillwater.Palette.mistDimmest)
+                Text(hintText)
+                    .stillwaterMono(8.5, trackingEm: 0.28, color: hintColor)
                     .padding(.bottom, 54)
                     .animation(.easeOut(duration: 0.16), value: holding)
+                    .animation(.easeOut(duration: 0.25), value: micDenied)
             }
         }
     }
