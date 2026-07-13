@@ -149,6 +149,7 @@ struct StreamView: View {
             // over the shipped media path. Peer inherited from this chat; no
             // picker; dismiss returns here.
             WalkieGlobeView(peerName: peerName,
+                            recorder: recorder,
                             onPressDown: { beginPTT() },
                             onPressUp: { endPTT() })
         }
@@ -1656,36 +1657,42 @@ private struct RecordingWaveform: View {
         .environment(presence)
 }
 
-// MARK: - Walkie mode (full-screen globe · Step 2: hold-to-talk wired)
+// MARK: - Walkie mode (full-screen particle sphere · Step 1: idle render)
 /// A full-screen "walkie mode" surface for the ONE peer this conversation is
-/// bound to. Idle globe (Step 1) + hold-to-talk (Step 2): pressing the orb
-/// drives the SAME `beginPTT()`/`endPTT()` the composer button uses, so a
-/// release sends an ordinary `isPushToTalk: true` voice note over the shipped
-/// media path. This view adds NO recorder, transport, or send code — it only
-/// forwards press-down / release. The audio-reactive pulse (recorder/player
-/// meters) is still Steps 3–4; the held state here is a fixed transmit
-/// brightness.
+/// bound to. The visual is a fibonacci-sphere particle core (`WalkieCore`,
+/// transplanted from the reference `DeckCore` and recolored to the app accent);
+/// the whole field is the push-to-talk target, driving the SAME
+/// `beginPTT()`/`endPTT()` the composer button uses, so a release sends an
+/// `isPushToTalk: true` note over the shipped media path. This view adds NO
+/// recorder, transport, or send code — it forwards press/release only.
+///
+/// Step 1 renders the sphere IDLE (`level: 0`); the live mic drive
+/// (`recorder.levels`) lands in Step 2. The inbound pulse (player meter) is a
+/// later step.
 private struct WalkieGlobeView: View {
     let peerName: String
-    /// Forwarded to StreamView's `beginPTT`/`endPTT`. The globe never touches
-    /// the recorder or the wire — it only reports press-down and release.
+    /// The composer's recorder — its live `levels` meter drives the sphere in
+    /// Step 2 (unused at idle). StreamView owns start/stop/send.
+    let recorder: VoiceRecorder
+    /// Forwarded to StreamView's `beginPTT`/`endPTT`. This view never touches
+    /// the recorder's lifecycle or the wire — it only reports press/release.
     let onPressDown: () -> Void
     let onPressUp: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Idle breathing driver — a single accent, brightness/scale only (never a
-    /// second hue), per the design language. Held static under reduce-motion.
-    @State private var breathing = false
-    /// True while the orb is pressed — drives the transmit brightness and swaps
-    /// the hint to "transmitting…". Purely local; the send is StreamView's.
+    /// True while the field is pressed — swaps the hint to "transmitting…".
+    /// Purely local; the send is StreamView's.
     @State private var holding = false
+    /// The particle engine. A PLAIN reference type held in `@State` and mutated
+    /// inside the `Canvas` closure — NOT @Observable (see `WalkieCore` §2).
+    @State private var core = WalkieCore()
 
     var body: some View {
         ZStack {
             Stillwater.Palette.abyss.ignoresSafeArea()
 
-            globe
+            sphere
 
             VStack {
                 header
@@ -1696,12 +1703,6 @@ private struct WalkieGlobeView: View {
                                                    : Stillwater.Palette.mistDimmest)
                     .padding(.bottom, 54)
                     .animation(.easeOut(duration: 0.16), value: holding)
-            }
-        }
-        .onAppear {
-            guard !reduceMotion else { breathing = true; return }   // static, mid-brightness
-            withAnimation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true)) {
-                breathing = true
             }
         }
     }
@@ -1729,46 +1730,158 @@ private struct WalkieGlobeView: View {
         .padding(.top, 18)
     }
 
-    // MARK: The globe — idle breathing (Step 1) + hold-to-talk (Step 2)
-    /// Held brightens/enlarges the orb as a fixed transmit state (the meter-
-    /// driven pulse is Step 3). `holding` overrides the idle breathing values.
-    private var globe: some View {
-        ZStack {
-            // Soft outer glow — the "field" the globe sits in.
-            Circle()
-                .fill(RadialGradient(
-                    colors: [Stillwater.Palette.biolume.opacity(0.22), .clear],
-                    center: .center, startRadius: 2, endRadius: 190))
-                .frame(width: 340, height: 340)
-                .blur(radius: 26)
-                .opacity(holding ? 1.0 : (breathing ? 0.9 : 0.55))
-
-            // Core body — a translucent bioluminescent sphere.
-            Circle()
-                .fill(RadialGradient(
-                    colors: [Stillwater.Palette.biolume.opacity(holding ? 0.6 : 0.35),
-                             Stillwater.Palette.biolume.opacity(0.04)],
-                    center: .init(x: 0.42, y: 0.38), startRadius: 4, endRadius: 150))
-                .frame(width: 210, height: 210)
-                .scaleEffect(holding ? 1.12 : (breathing ? 1.06 : 1.0))
-
-            // Rim — the crisp edge that reads as an orb, not a blob.
-            Circle()
-                .strokeBorder(Stillwater.Palette.biolume.opacity(holding ? 0.95 : (breathing ? 0.7 : 0.4)),
-                              lineWidth: holding ? 2 : 1.5)
-                .frame(width: 210, height: 210)
-                .scaleEffect(holding ? 1.12 : (breathing ? 1.06 : 1.0))
+    // MARK: The sphere — fibonacci particle core (Step 1: idle render)
+    /// Full-bleed, centered, under the existing hold gesture. Step 1 draws idle
+    /// only (`level: 0`); the mic drive lands in Step 2. Frame-capped at 30fps
+    /// and paused under reduce-motion so the idle sphere holds near-static
+    /// (§2/§3). The `contentShape(Circle())` keeps the press target on the orb,
+    /// clear of the header and the bottom hint.
+    private var sphere: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { tl in
+            Canvas { ctx, size in
+                var c = ctx
+                core.draw(context: &c, size: size,
+                          time: tl.date.timeIntervalSinceReferenceDate,
+                          level: 0)   // Step 1: idle only — no mic drive yet
+            }
         }
-        // The whole orb is the push-to-talk button. Zero-distance drag detects
-        // press/release (matches the composer `pttButton`); release sends.
+        .ignoresSafeArea()
         .contentShape(Circle())
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in if !holding { holding = true; onPressDown() } }
                 .onEnded { _ in holding = false; onPressUp() }
         )
-        .animation(.easeOut(duration: 0.16), value: holding)
         .accessibilityLabel("Hold to talk")
         .accessibilityHint("Press and hold to send a walkie-talkie voice note")
+    }
+}
+
+// MARK: - Walkie particle sphere (plain class — safe to mutate inside Canvas)
+/// A fibonacci-sphere point cloud rendered additively in a `Canvas`,
+/// transplanted from the reference `DeckCore` and rewired to the walkie's
+/// single live signal: `level` (mic amplitude 0…1, 0 when idle) in place of the
+/// reference's 4-state voice machine. Recolored from amber to the app accent.
+///
+/// ⚠️ AttributeGraph safety (preserved verbatim from the reference's
+/// "ORB-SAFETY, Handoff Bible §3") — do NOT "clean up" any of these three:
+///   1. The evolving state (rotation, interpolated params, amp) lives in THIS
+///      plain reference type held in `@State` and is mutated INSIDE the
+///      `Canvas` draw closure. It must NOT become @Observable/@Published —
+///      mutating a plain class inside the closure is what avoids the
+///      AttributeGraph invalidation storm.
+///   2. The driving `TimelineView` is frame-capped at 30fps.
+///   3. No `.drawingGroup()`.
+private final class WalkieCore {
+    private struct Pt { var x, y, z: Double; var s: Double; var seed: Double; var sp: Double }
+
+    private var pts: [Pt] = []
+    private var rot = 0.0
+    private var t = 0.0
+    private var last = 0.0
+    private var amp = 0.1
+    private var ampTarget = 0.1
+    private var spread = 1.0, swirl = 0.14, jitter = 0.02, bright = 0.5
+    private var tSpread = 1.0, tSwirl = 0.14, tJitter = 0.02, tBright = 0.5
+
+    init() {
+        let n = 460
+        for i in 0..<n {
+            let phi = acos(1 - 2 * (Double(i) + 0.5) / Double(n))
+            let theta = Double.pi * (1 + sqrt(5.0)) * Double(i)
+            pts.append(Pt(x: sin(phi) * cos(theta), y: cos(phi), z: sin(phi) * sin(theta),
+                          s: 0.5 + Double.random(in: 0..<0.9),
+                          seed: Double.random(in: 0..<6.28),
+                          sp: 0.6 + Double.random(in: 0..<0.8)))
+        }
+    }
+
+    /// Map the walkie's two conditions onto the reference's tunables: level 0 →
+    /// the calm idle breathe/rotation (the reference's `.idle` numbers); rising
+    /// level pushes spread/jitter/brightness up and expands the amp envelope
+    /// toward its `.listening`/`.speaking` targets. The existing `dt`-based
+    /// smoothing below keeps it a breathe, not a stutter.
+    private func setTargets(level: Double) {
+        let lv = max(0, min(1, level))
+        tSpread   = 1.00 + lv * 0.18   // 1.00 → 1.18
+        tSwirl    = 0.14 + lv * 0.08   // 0.14 → 0.22
+        tJitter   = 0.02 + lv * 0.05   // 0.02 → 0.07
+        tBright   = 0.50 + lv * 0.42   // 0.50 → 0.92
+        ampTarget = 0.10 + lv * 0.40   // 0.10 → 0.50
+    }
+
+    func draw(context ctx: inout GraphicsContext, size: CGSize, time: Double, level: Double) {
+        setTargets(level: level)
+
+        let dt = min(0.05, last == 0 ? 0.016 : time - last)
+        last = time; t += dt
+
+        let k = min(1.0, dt * 4)
+        spread += (tSpread - spread) * k
+        swirl  += (tSwirl  - swirl)  * k
+        jitter += (tJitter - jitter) * k
+        bright += (tBright - bright) * k
+        amp    += (ampTarget - amp) * min(1.0, dt * 6)
+        rot    += dt * swirl
+
+        let W = size.width, H = size.height
+        let cx = W / 2, cy = H * 0.46
+        let R = min(W, H) * 0.205
+        let breathe = sin(t * 0.9) * 0.03
+        let rr = R * spread * (1 + breathe)
+
+        // The selected app accent (Settings-themeable `Palette.biolume`),
+        // resolved ONCE per frame. Single hue everywhere; depth and level are
+        // carried by opacity + the additive blend, exactly like the orb did and
+        // like the rest of the app — so the sphere follows the active accent.
+        let bio = Stillwater.Palette.biolume
+
+        // Background glow (normal blend) — the accent, fading out.
+        let bg = Gradient(stops: [
+            .init(color: bio.opacity(0.14 * bright), location: 0),
+            .init(color: bio.opacity(0.06 * bright), location: 0.3),
+            .init(color: bio.opacity(0), location: 1),
+        ])
+        ctx.fill(
+            Path(ellipseIn: CGRect(x: cx - rr * 2.6, y: cy - rr * 2.6, width: rr * 5.2, height: rr * 5.2)),
+            with: .radialGradient(bg, center: CGPoint(x: cx, y: cy), startRadius: 0, endRadius: rr * 2.6)
+        )
+
+        // Additive layers.
+        ctx.blendMode = .plusLighter
+
+        // Particles — accent hue held; depth carries size + brightness (opacity)
+        // only, never a second hue.
+        let cosR = cos(rot), sinR = sin(rot)
+        let ct = cos(0.34), st = sin(0.34)
+        for p in pts {
+            let x0 = p.x * cosR + p.z * sinR
+            let z0 = -p.x * sinR + p.z * cosR
+            let y0 = p.y
+            let y = y0 * ct - z0 * st
+            let z = y0 * st + z0 * ct
+            let wob = sin(t * p.sp + p.seed)
+            let disp = 1 + amp * (0.18 + 0.12 * wob) + jitter * wob
+            let sx = cx + x0 * rr * disp
+            let sy = cy + y * rr * disp * 0.94
+            let depth = (z + 1) / 2
+            let a = (0.12 + 0.78 * depth) * bright
+            guard a > 0.015 else { continue }
+            let sz = p.s * (0.5 + depth * 1.5)
+            ctx.fill(Path(ellipseIn: CGRect(x: sx - sz, y: sy - sz, width: sz * 2, height: sz * 2)),
+                     with: .color(bio.opacity(a)))
+        }
+
+        // Core glow — a bright accent center → accent → clear. The additive
+        // blend already drives the center toward white-hot without a 2nd hue.
+        let core = Gradient(stops: [
+            .init(color: bio.opacity(0.55 * bright), location: 0),
+            .init(color: bio.opacity(0.18 * bright), location: 0.5),
+            .init(color: bio.opacity(0), location: 1),
+        ])
+        ctx.fill(
+            Path(ellipseIn: CGRect(x: cx - rr * 0.5, y: cy - rr * 0.5, width: rr, height: rr)),
+            with: .radialGradient(core, center: CGPoint(x: cx, y: cy), startRadius: 0, endRadius: rr * 0.5)
+        )
     }
 }
