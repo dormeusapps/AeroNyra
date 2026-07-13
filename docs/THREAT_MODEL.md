@@ -307,3 +307,91 @@ before any archive.**
 | Identity in app logs | local | **Closed** — `RedactLog`, Release-verified |
 | Identity in OS URL-router logs | local | **Accepted/documented** (§9.3) |
 | Locked-Keychain identity overwrite via BLE restoration | — | **Closed** — `BootRouter` single-preimage routing + `load()` error taxonomy, regression-tested (§9.3) |
+
+## 10. Push-to-talk (PTT) live voice — per-frame session crypto
+
+*(Added 2026-07-13 with the BLE-live PTT crypto. Scope of this chapter: the
+per-frame confidentiality/integrity/authenticity of a live voice stream —
+`Core/Media/PTTSessionCrypto.swift`. The handshake that delivers the session
+secret rides the existing sealed Signal channel and is covered by §4.1; audio
+capture/transport is out of scope here.)*
+
+### 10.1 Construction
+
+A live voice stream cannot ride the per-message Double Ratchet — ratcheting
+25–50 frames/sec is the wrong primitive and would explode the skipped-key store.
+Instead:
+
+- **Handshake.** The initiator draws a random 32-byte session secret `S` and
+  seals it to the peer over the established Signal session — the same sealed,
+  verified-contact channel as text/calls (§4.1). No new admission path: a
+  stranger cannot open a PTT session (the 7f verified gate applies identically).
+- **Directional keys.** Both sides derive two keys with HKDF-SHA256 (salt empty;
+  version + direction in the `info` label):
+  `K_i→r = HKDF(S, "aeronyra.ptt.v1|initiator->responder")` and
+  `K_r→i = HKDF(S, "aeronyra.ptt.v1|responder->initiator")`.
+- **Per-frame AEAD.** Each 20 ms frame is `ChaCha20-Poly1305(frame,
+  key = K_dir, nonce = 0x00000000‖BE64(counter), aad = BE64(seq))`, `counter` a
+  monotonic UInt64 incremented once per frame.
+
+Every frame is thus confidential, integrity-protected, and authenticated as
+coming from the verified paired contact — the same trust root as the rest of the
+app.
+
+### 10.2 Nonce-uniqueness argument (the load-bearing invariant)
+
+ChaCha20-Poly1305 is catastrophically broken by a single (key, nonce) reuse, so
+uniqueness is argued, not assumed — and pinned by test:
+
+1. **Fresh key per session.** `S` is random per PTT session ⇒ the derived keys
+   are new each session, so counters restarting at 0 across sessions reuse no
+   (key, nonce) pair.
+2. **Directional separation.** The two directions use *different* keys, so both
+   parties starting their own counter at 0 cannot collide — exactly why a single
+   shared key was rejected.
+3. **Monotonic counter, no wrap.** Within a direction the counter strictly
+   increases and the sealer **throws at the ceiling** rather than wrap (a session
+   re-handshakes long before 2⁶⁴ frames). So each nonce is used once per key.
+
+Pinned by `PTTSessionCryptoTests` (distinct/monotonic nonces; ceiling throws)
+and by the external KAT vectors (`tools/ptt_kat_gen.py` → RFC 8439/5869 ground
+truth).
+
+### 10.3 Replay + reorder
+
+The receiver runs a 64-wide anti-replay window (RFC 6479 bitmap in one UInt64):
+it **rejects duplicates and frames older than 64 behind the highest accepted**,
+while **permitting in-window reorder** (the lossy BLE path reorders slightly).
+The window advances **only on authenticated frames** — a forged counter fails the
+AEAD verify before it can shift the window, so an attacker cannot use a bogus
+high counter to starve legitimate frames. Bound: a frame more than 64
+newer-frames stale is indistinguishable from loss and dropped, which is
+acceptable for real-time voice (a stale frame is useless anyway).
+
+### 10.4 Scope: 1:1 sealed only
+
+PTT is **1:1 to a paired, verified contact only**. Public-channel (`meshRoom`)
+PTT is explicitly **out of scope** — it would be plaintext voice on the air to
+anyone in range and requires separate operator sign-off. Nothing in
+`PTTSessionCrypto` is reachable from an unsealed channel.
+
+### 10.5 What a relay / on-air observer sees (adversaries A, B, C)
+
+The frames carry no plaintext and no identity: an on-air BLE observer or a relay
+sees a stream of **opaque ChaCha20-Poly1305 frames** — ciphertext + 16-byte tag,
+each ~voice-frame-sized, at ~50/sec while a party transmits. Residual leakage is
+**traffic analysis only**: frame sizes, timing, and who-transmits-when (talk vs
+silence cadence), plus the BLE-link linkability already tracked in §9.4. No key
+material, no cross-session linkage beyond that, no frame content. The session
+secret itself never crosses the air in the clear — it is sealed over the Signal
+channel (§4.1).
+
+### 10.6 Disposition
+
+| Exposure | Adversary | Disposition |
+|----------|-----------|-------------|
+| PTT frame content on air | A, B | **Closed** — per-frame ChaCha20-Poly1305 under a fresh per-session directional key (§10.1–10.2) |
+| PTT frame replay / injection | A, B | **Closed** — AEAD auth + RFC 6479 window; advances only on authentic frames (§10.3) |
+| PTT nonce reuse | A, B | **Closed** — fresh key/session + directional keys + monotonic no-wrap counter; KAT-pinned (§10.2) |
+| PTT talk/silence + timing metadata | A, B, C | **Accepted/tracked** — traffic analysis only; content sealed (§10.5) |
+| Public-channel PTT (plaintext voice) | any-in-range | **Out of scope** — 1:1 sealed only; needs separate sign-off (§10.4) |
