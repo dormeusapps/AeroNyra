@@ -317,9 +317,9 @@ struct StreamView: View {
             } else if !isVerified {
                 verifyGate
             } else if recorder.isRecording && !pttHolding {
-                // Tap-record shows the full recording bar. A PTT HOLD keeps the
-                // normal composer mounted (so the hold gesture isn't torn down)
-                // and shows its state on the PTT button itself.
+                // Tap-record (mic button) shows the full recording bar. A walkie
+                // PTT session (globe hold) also records, but must NOT swap the
+                // composer to the recording bar — hence the !pttHolding guard.
                 recordingBar
             } else {
                 normalComposer
@@ -405,7 +405,6 @@ struct StreamView: View {
             Spacer(minLength: 8)
 
             if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                pttButton
                 micButton
             } else {
                 sendButton
@@ -464,32 +463,6 @@ struct StreamView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    /// Hold-to-talk (walkie-talkie). Press begins capture; release sends the
-    /// utterance as a PTT voice note (`isPushToTalk: true`) over the same
-    /// `sendMedia(.m4a)` path — the router picks BLE-near / relay-apart. A
-    /// zero-distance drag detects press/release; `pttHolding` keeps the normal
-    /// composer mounted so the gesture is never torn down (see `composer`).
-    private var pttButton: some View {
-        ZStack {
-            Circle()
-                .fill(pttHolding ? Stillwater.Palette.biolume : Stillwater.Palette.biolume.opacity(0.14))
-                .frame(width: 38, height: 38)
-                .overlay(Circle().strokeBorder(Stillwater.Palette.biolume.opacity(pttHolding ? 0 : 0.35)))
-            Image(systemName: "dot.radiowaves.left.and.right")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(pttHolding ? Stillwater.Palette.onAccent : Stillwater.Palette.biolume)
-        }
-        .scaleEffect(pttHolding ? 1.28 : 1.0)
-        .animation(.easeOut(duration: 0.14), value: pttHolding)
-        .contentShape(Circle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in if !pttHolding { beginPTT() } }
-                .onEnded { _ in endPTT() }
-        )
-        .accessibilityLabel("Hold to talk")
     }
 
     @MainActor
