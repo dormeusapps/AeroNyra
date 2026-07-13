@@ -49,6 +49,13 @@ struct StreamView: View {
 
     /// Media send (mirrors the old composer's proven pattern).
     @State private var recorder = VoiceRecorder()
+
+    /// PTT (walkie-talkie): true while the hold-to-talk button is held. Gates
+    /// the composer OUT of the tap-record `recordingBar` swap so the press
+    /// gesture is never torn down mid-hold. `pttAutoPlay` serializes inbound
+    /// PTT playback so two clips never overlap (ignore-if-busy).
+    @State private var pttHolding = false
+    @State private var pttAutoPlay = PTTAutoPlay()
     @State private var pickedItem: PhotosPickerItem?
 
     /// Plus-button intents: a plain tap presents the chat picker (the send
@@ -284,7 +291,10 @@ struct StreamView: View {
                 selectionBar
             } else if !isVerified {
                 verifyGate
-            } else if recorder.isRecording {
+            } else if recorder.isRecording && !pttHolding {
+                // Tap-record shows the full recording bar. A PTT HOLD keeps the
+                // normal composer mounted (so the hold gesture isn't torn down)
+                // and shows its state on the PTT button itself.
                 recordingBar
             } else {
                 normalComposer
@@ -370,6 +380,7 @@ struct StreamView: View {
             Spacer(minLength: 8)
 
             if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                pttButton
                 micButton
             } else {
                 sendButton
@@ -428,6 +439,54 @@ struct StreamView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// Hold-to-talk (walkie-talkie). Press begins capture; release sends the
+    /// utterance as a PTT voice note (`isPushToTalk: true`) over the same
+    /// `sendMedia(.m4a)` path — the router picks BLE-near / relay-apart. A
+    /// zero-distance drag detects press/release; `pttHolding` keeps the normal
+    /// composer mounted so the gesture is never torn down (see `composer`).
+    private var pttButton: some View {
+        ZStack {
+            Circle()
+                .fill(pttHolding ? Stillwater.Palette.biolume : Stillwater.Palette.biolume.opacity(0.14))
+                .frame(width: 38, height: 38)
+                .overlay(Circle().strokeBorder(Stillwater.Palette.biolume.opacity(pttHolding ? 0 : 0.35)))
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(pttHolding ? Stillwater.Palette.onAccent : Stillwater.Palette.biolume)
+        }
+        .scaleEffect(pttHolding ? 1.28 : 1.0)
+        .animation(.easeOut(duration: 0.14), value: pttHolding)
+        .contentShape(Circle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in if !pttHolding { beginPTT() } }
+                .onEnded { _ in endPTT() }
+        )
+        .accessibilityLabel("Hold to talk")
+    }
+
+    @MainActor
+    private func beginPTT() {
+        pttHolding = true
+        Task {
+            await recorder.start()
+            if recorder.permissionDenied {
+                showMicDenied = true
+                pttHolding = false
+            }
+        }
+    }
+
+    @MainActor
+    private func endPTT() {
+        guard pttHolding else { return }
+        pttHolding = false
+        // Release before start finished, or nothing captured → nothing to send.
+        guard let data = recorder.stop(), let inbox else { return }
+        let convo = currentConversation()
+        Task { await inbox.sendMedia(data, mime: .m4a, in: convo, isPushToTalk: true) }
     }
 
     private var sendButton: some View {
@@ -747,6 +806,7 @@ struct StreamView: View {
             case .some(.m4a):
                 StillwaterVoiceNote(message: m,
                                     isOutbound: m.isOutbound,
+                                    autoPlay: pttAutoPlay,
                                     stampListened: { stampListened(m) },
                                     wipe: { wipeMedia(m) })
             case .some(.mp4):
@@ -875,9 +935,27 @@ struct StreamView: View {
 }
 
 // MARK: - Stillwater voice note (real waveform + ephemeral self-destruct)
+/// PTT auto-play serializer — IGNORE-IF-BUSY, so two inbound walkie clips never
+/// overlap. One claim at a time (keyed by message id); a PTT note that arrives
+/// while another is auto-playing simply does not auto-play (the user can tap
+/// it). Released when the holder's playback stops or it scrolls away.
+@Observable final class PTTAutoPlay {
+    private(set) var busyID: UUID?
+    func claim(_ id: UUID) -> Bool {
+        guard busyID == nil else { return false }
+        busyID = id
+        return true
+    }
+    func release(_ id: UUID) {
+        if busyID == id { busyID = nil }
+    }
+}
+
 private struct StillwaterVoiceNote: View {
     let message: Message
     let isOutbound: Bool
+    /// PTT: the shared no-overlap serializer for inbound walkie auto-play.
+    let autoPlay: PTTAutoPlay
     let stampListened: () -> Void
     let wipe: () -> Void
 
@@ -885,16 +963,21 @@ private struct StillwaterVoiceNote: View {
     @State private var bars: [CGFloat]
     @State private var loadedBars = false
     @State private var expiredNow = false
+    /// PTT auto-play bookkeeping: try once per view lifetime; track whether we
+    /// hold the serializer claim so we release it when playback stops.
+    @State private var autoPlayTried = false
+    @State private var autoPlayClaimed = false
 
     private static let barCount = 30
     /// Listen-armed self-destruct window — shared with the MessageInbox reaper
     /// via MediaEphemeralityPolicy (SEC-6), so view and reaper can't drift.
     private static var listenWindow: TimeInterval { MediaEphemeralityPolicy.voiceListenWindow }
 
-    init(message: Message, isOutbound: Bool,
+    init(message: Message, isOutbound: Bool, autoPlay: PTTAutoPlay,
          stampListened: @escaping () -> Void, wipe: @escaping () -> Void) {
         self.message = message
         self.isOutbound = isOutbound
+        self.autoPlay = autoPlay
         self.stampListened = stampListened
         self.wipe = wipe
         _player = State(initialValue: VoicePlayer(data: message.mediaData ?? Data()))
@@ -911,11 +994,14 @@ private struct StillwaterVoiceNote: View {
         Group {
             if expired { tombstone } else { controls }
         }
-        .task { await setup() }
+        .task { await setup(); await maybeAutoPlay() }
+        .onDisappear { releaseAutoPlay() }
     }
 
     private var tombstone: some View {
-        Text(isOutbound ? "voice note · heard" : "voice note · gone")
+        Text(isOutbound
+             ? (message.isPushToTalk ? "walkie · heard" : "voice note · heard")
+             : (message.isPushToTalk ? "walkie · gone" : "voice note · gone"))
             .stillwaterMono(8.5, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
     }
 
@@ -930,14 +1016,46 @@ private struct StillwaterVoiceNote: View {
             }
             .buttonStyle(.plain)
 
-            waveform.frame(width: 128, height: 26)
+            // Walkie mark: a PTT note reads as radio, not a filed voice note.
+            if message.isPushToTalk {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Stillwater.Palette.biolume.opacity(0.85))
+            }
+
+            waveform.frame(width: message.isPushToTalk ? 112 : 128, height: 26)
 
             Text(timeString)
                 .stillwaterMono(8.5, trackingEm: 0.15, color: Stillwater.Palette.mistDim)
                 .monospacedDigit()
         }
         .onChange(of: player.isPlaying) { _, playing in
-            if !playing && player.progress >= 0.99 { handleFinished() }
+            if !playing {
+                releaseAutoPlay()   // free the serializer as soon as this clip stops
+                if player.progress >= 0.99 { handleFinished() }
+            }
+        }
+    }
+
+    /// Auto-play an INBOUND PTT note that JUST arrived (in-thread walkie feel),
+    /// once per view lifetime, and only if no other PTT clip is playing
+    /// (ignore-if-busy via the shared serializer). Recency gate keeps scrolling
+    /// through history from replaying old clips.
+    @MainActor
+    private func maybeAutoPlay() async {
+        guard message.isPushToTalk, !isOutbound, !autoPlayTried, !expired,
+              message.mediaData != nil else { return }
+        autoPlayTried = true
+        let justArrived = Date.now.timeIntervalSince(message.timestamp) < 12
+        guard justArrived, autoPlay.claim(message.id) else { return }
+        autoPlayClaimed = true
+        player.play()
+    }
+
+    private func releaseAutoPlay() {
+        if autoPlayClaimed {
+            autoPlay.release(message.id)
+            autoPlayClaimed = false
         }
     }
 
