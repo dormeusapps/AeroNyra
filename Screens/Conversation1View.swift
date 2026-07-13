@@ -150,6 +150,7 @@ struct StreamView: View {
             // picker; dismiss returns here.
             WalkieGlobeView(peerName: peerName,
                             recorder: recorder,
+                            autoPlay: pttAutoPlay,
                             onPressDown: { beginPTT() },
                             onPressUp: { endPTT() })
         }
@@ -965,13 +966,18 @@ struct StreamView: View {
 /// it). Released when the holder's playback stops or it scrolls away.
 @Observable final class PTTAutoPlay {
     private(set) var busyID: UUID?
+    /// Live playback level (0...1) of the currently auto-playing inbound clip —
+    /// pushed by the claiming note from its player's meter, read by the walkie
+    /// globe so the sphere reacts to the peer's voice. 0 when nothing auto-plays
+    /// (`busyID == nil` gates the read, so a stale value can't leak).
+    var inboundLevel: CGFloat = 0
     func claim(_ id: UUID) -> Bool {
         guard busyID == nil else { return false }
         busyID = id
         return true
     }
     func release(_ id: UUID) {
-        if busyID == id { busyID = nil }
+        if busyID == id { busyID = nil; inboundLevel = 0 }
     }
 }
 
@@ -1058,6 +1064,12 @@ private struct StillwaterVoiceNote: View {
                 releaseAutoPlay()   // free the serializer as soon as this clip stops
                 if player.progress >= 0.99 { handleFinished() }
             }
+        }
+        // While THIS note holds the auto-play claim, feed its live playback
+        // level into the shared serializer so the walkie globe can react to the
+        // peer's voice. Only the claim holder writes (never a tapped note).
+        .onChange(of: player.level) { _, lvl in
+            if autoPlayClaimed { autoPlay.inboundLevel = lvl }
         }
     }
 
@@ -1671,9 +1683,13 @@ private struct RecordingWaveform: View {
 /// (the peer's voice, off the player meter) is a later step.
 private struct WalkieGlobeView: View {
     let peerName: String
-    /// The composer's recorder — its live `levels` meter drives the sphere in
-    /// Step 2 (unused at idle). StreamView owns start/stop/send.
+    /// The composer's recorder — its live `levels` meter drives the sphere
+    /// while holding (outbound). StreamView owns start/stop/send.
     let recorder: VoiceRecorder
+    /// The inbound auto-play serializer — when a received PTT note is playing
+    /// (`busyID != nil`), its `inboundLevel` drives the sphere so it reacts to
+    /// the peer's voice the same way it reacts to mine.
+    let autoPlay: PTTAutoPlay
     /// Forwarded to StreamView's `beginPTT`/`endPTT`. This view never touches
     /// the recorder's lifecycle or the wire — it only reports press/release.
     let onPressDown: () -> Void
@@ -1687,6 +1703,14 @@ private struct WalkieGlobeView: View {
     /// The particle engine. A PLAIN reference type held in `@State` and mutated
     /// inside the `Canvas` closure — NOT @Observable (see `WalkieCore` §2).
     @State private var core = WalkieCore()
+
+    /// The single signal the sphere reacts to: my mic while holding, else the
+    /// peer's playback level when a received clip is auto-playing, else idle.
+    private var liveLevel: Double {
+        if holding { return Double(recorder.levels.last ?? 0) }
+        if autoPlay.busyID != nil { return Double(autoPlay.inboundLevel) }
+        return 0
+    }
 
     var body: some View {
         ZStack {
@@ -1730,23 +1754,25 @@ private struct WalkieGlobeView: View {
         .padding(.top, 18)
     }
 
-    // MARK: The sphere — fibonacci particle core (Step 2: voice-reactive)
-    /// Full-bleed, centered, under the existing hold gesture. While held, the
-    /// live mic level (`recorder.levels.last`, 0…1) drives the sphere so it
-    /// expands + brightens to your voice in real time; idle passes `level: 0`
-    /// for the calm breathe. Frame-capped at 30fps — that TimelineView tick is
-    /// the redraw clock, so the sphere samples the meter each frame rather than
-    /// via Observation (keeps the §2 safety). Paused under reduce-motion ONLY
-    /// while idle, so the transmit reaction (functional feedback) keeps running
-    /// when held (§3). `contentShape(Circle())` keeps the press target on the
-    /// orb, clear of the header and the bottom hint.
+    // MARK: The sphere — fibonacci particle core (Step 3: two-way voice-reactive)
+    /// Full-bleed, centered, under the existing hold gesture. ONE `level` feeds
+    /// the sphere: while I hold, my live mic (`recorder.levels.last`); otherwise,
+    /// if an inbound PTT clip is auto-playing (`autoPlay.busyID != nil`), the
+    /// peer's playback level (`autoPlay.inboundLevel`); else idle breathe. So the
+    /// same sphere reacts to their voice like it does to mine. Frame-capped at
+    /// 30fps — that tick is the redraw clock, so the sphere samples the meters
+    /// each frame rather than via Observation (keeps the §2 safety). Paused under
+    /// reduce-motion ONLY when neither transmitting nor receiving, so both
+    /// functional reactions keep running (§3). `contentShape(Circle())` keeps the
+    /// press target on the orb, clear of the header and the bottom hint.
     private var sphere: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion && !holding)) { tl in
+        let paused = reduceMotion && !holding && autoPlay.busyID == nil
+        return TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: paused)) { tl in
             Canvas { ctx, size in
                 var c = ctx
                 core.draw(context: &c, size: size,
                           time: tl.date.timeIntervalSinceReferenceDate,
-                          level: holding ? Double(recorder.levels.last ?? 0) : 0)
+                          level: liveLevel)
             }
         }
         .ignoresSafeArea()
