@@ -106,8 +106,11 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     private var peers: [UUID: CBPeripheral] = [:]
     private var writeTargets: [UUID: CBCharacteristic] = [:]
     /// Reassembly buffers for inbound notifications (peripheral → us), keyed by
-    /// the remote peripheral's id.
-    private var notifyReassembly: [UUID: ReassemblyState] = [:]
+    /// link id THEN characteristic uuid — so two characteristics on one link
+    /// never share a byte-buffer (interleaving corruption). The per-link cleanup
+    /// (`notifyReassembly[id] = nil`) still drops the whole inner map. Private;
+    /// the reassembly desk tests reach it via the `#if DEBUG` hooks below.
+    private var notifyReassembly: [UUID: [CBUUID: ReassemblyState]] = [:]
     /// Consecutive FAILED FRAMES per peripheral, keyed by its id (ISSUE-11).
     /// A media transfer is thousands of chunked writes; a single transient ATT
     /// error mid-burst must NOT tear the link down (that aborts the transfer and
@@ -166,8 +169,9 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     private var peripheral: CBPeripheralManager?
     private var mailbox: CBMutableCharacteristic?
     private var subscribedCentrals: Set<UUID> = []
-    /// Reassembly buffers for inbound writes (central → us), keyed by central id.
-    private var writeReassembly: [UUID: ReassemblyState] = [:]
+    /// Reassembly buffers for inbound writes (central → us), keyed by central id
+    /// THEN characteristic uuid (see `notifyReassembly`). Private; DEBUG hooks.
+    private var writeReassembly: [UUID: [CBUUID: ReassemblyState]] = [:]
     /// Notifications waiting because `updateValue` returned false (TX queue full).
     private var pendingNotifications: [Data] = []
 
@@ -295,6 +299,48 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
         state = ReassemblyState()   // reset for the next frame from this source
         return (type, payload)
     }
+
+    /// Per-(link, characteristic) reassembly for inbound NOTIFICATIONS. Keying by
+    /// the characteristic keeps two characteristics on one link from sharing a
+    /// byte-buffer. Fetch inner map → fetch state → ingest → write both back.
+    /// Private; the `#if DEBUG` hooks below let the desk tests drive it.
+    private func ingestNotify(link: UUID, char: CBUUID, _ value: Data) -> (FrameType, Data)? {
+        var linkMap = notifyReassembly[link] ?? [:]
+        var state = linkMap[char] ?? ReassemblyState()
+        let completed = ingest(value, into: &state)
+        linkMap[char] = state
+        notifyReassembly[link] = linkMap
+        return completed
+    }
+
+    /// Per-(link, characteristic) reassembly for inbound WRITES. Fetched fresh and
+    /// written back each request so sequential writes for the same central+char
+    /// compose. See `ingestNotify`.
+    private func ingestWrite(link: UUID, char: CBUUID, _ value: Data) -> (FrameType, Data)? {
+        var linkMap = writeReassembly[link] ?? [:]
+        var state = linkMap[char] ?? ReassemblyState()
+        let completed = ingest(value, into: &state)
+        linkMap[char] = state
+        writeReassembly[link] = linkMap
+        return completed
+    }
+
+    #if DEBUG
+    // Test-only accessors — DEBUG builds ONLY, never compiled into Release, so
+    // the shipping reassembly surface stays private. They give the desk tests
+    // @testable reach into `ingestNotify`/`ingestWrite` and the inner map, and
+    // return the FrameType as its raw byte so `FrameType` itself stays private.
+    func _testIngestNotify(link: UUID, char: CBUUID, _ v: Data) -> (UInt8, Data)? {
+        ingestNotify(link: link, char: char, v).map { ($0.0.rawValue, $0.1) }
+    }
+    func _testIngestWrite(link: UUID, char: CBUUID, _ v: Data) -> (UInt8, Data)? {
+        ingestWrite(link: link, char: char, v).map { ($0.0.rawValue, $0.1) }
+    }
+    /// Live inner-char entries for a link's NOTIFY reassembly (0 if none).
+    func _testNotifyCharCount(_ link: UUID) -> Int { notifyReassembly[link]?.count ?? 0 }
+    /// Runs the exact per-link disconnect cleanup the delegate uses.
+    func _testDropNotifyLink(_ link: UUID) { notifyReassembly[link] = nil }
+    #endif
 
     // MARK: - Transmit: Envelope (relayable) — broadcast to all links
     public func send(_ envelope: Envelope) async throws {
@@ -643,10 +689,8 @@ extension BLEMeshTransport: CBPeripheralDelegate {
             return
         }
         guard let value = characteristic.value else { return }
-        var state = notifyReassembly[peripheral.identifier] ?? ReassemblyState()
-        let completed = ingest(value, into: &state)
-        notifyReassembly[peripheral.identifier] = state
-        if let (type, payload) = completed {
+        if let (type, payload) = ingestNotify(link: peripheral.identifier,
+                                              char: characteristic.uuid, value) {
             dispatchFrame(type, payload, from: peripheral.identifier)
         }
     }
@@ -831,10 +875,8 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
                                   didReceiveWrite requests: [CBATTRequest]) {
         for r in requests {
             guard let value = r.value else { continue }
-            var state = writeReassembly[r.central.identifier] ?? ReassemblyState()
-            let completed = ingest(value, into: &state)
-            writeReassembly[r.central.identifier] = state
-            if let (type, payload) = completed {
+            if let (type, payload) = ingestWrite(link: r.central.identifier,
+                                                 char: r.characteristic.uuid, value) {
                 dispatchFrame(type, payload, from: r.central.identifier)
             }
         }
