@@ -40,6 +40,7 @@ public struct MediaReassembler {
         /// arrival time; pure reassembly logic doesn't own a trusted clock.
         public let sentAt: Date?
         public let isStory: Bool
+        public let isPushToTalk: Bool
     }
 
     private let chunker: MediaChunker
@@ -103,6 +104,7 @@ public struct MediaReassembler {
         manifests[id] = nil
         chunks[id] = nil
         return Completed(mediaID: id, mime: manifest.mime, data: blob,
-                         sentAt: manifest.sentAt, isStory: manifest.isStory)
+                         sentAt: manifest.sentAt, isStory: manifest.isStory,
+                         isPushToTalk: manifest.isPushToTalk)
     }
 }

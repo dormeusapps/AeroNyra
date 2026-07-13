@@ -248,6 +248,13 @@ public final class Message {
     /// work (lightweight migration, same pattern as `nostrRedriveDone`).
     public var isStory: Bool = false
 
+    /// PUSH-TO-TALK: true when this `.m4a` row is a walkie-talkie utterance, so
+    /// the transcript renders/auto-plays it as PTT rather than a tap-to-play
+    /// voice note. Additive metadata only — expiry and routing are identical to
+    /// an ordinary voice note. Inline `= false` default backfills existing rows
+    /// (lightweight migration, same pattern as `isStory`).
+    public var isPushToTalk: Bool = false
+
     /// STORIES: when the SENDER first sent this media — the anchor the story
     /// expiry window counts from. Outbound: this row's `timestamp`, stamped at
     /// first send and REUSED on resend/re-drive so a retry can't extend the
@@ -267,6 +274,7 @@ public final class Message {
                 mediaMimeRaw: String? = nil,
                 listenedAt: Date? = nil,
                 isStory: Bool = false,
+                isPushToTalk: Bool = false,
                 sentAt: Date? = nil,
                 timestamp: Date = .now,
                 id: UUID = UUID()) {
@@ -280,6 +288,7 @@ public final class Message {
         self.mediaMimeRaw = mediaMimeRaw
         self.listenedAt = listenedAt
         self.isStory = isStory
+        self.isPushToTalk = isPushToTalk
         self.sentAt = sentAt
         // Initialize the decomposed fields, then route through the bridge.
         self.deliveryStateRaw = "sent"

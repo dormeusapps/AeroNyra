@@ -69,13 +69,21 @@ public struct MediaManifest: Equatable, Sendable, Codable {
     /// legacy manifest → false (see the custom decoder below).
     public let isStory: Bool
 
+    /// True when this `.m4a` transfer is a push-to-talk utterance (walkie-
+    /// talkie), so the receiver renders/auto-plays it as PTT rather than a
+    /// tap-to-play voice note. Additive metadata ONLY — expiry, sealing, and
+    /// routing are identical to an ordinary voice note. Absent on a legacy
+    /// manifest → false; old peers decode a PTT note as an ordinary voice note.
+    public let isPushToTalk: Bool
+
     public init(mediaID: String,
                 mime: MediaMimeType,
                 totalBytes: Int,
                 chunkCount: Int,
                 sha256: String,
                 sentAt: Date? = nil,
-                isStory: Bool = false) {
+                isStory: Bool = false,
+                isPushToTalk: Bool = false) {
         self.mediaID = mediaID
         self.mime = mime
         self.totalBytes = totalBytes
@@ -83,6 +91,7 @@ public struct MediaManifest: Equatable, Sendable, Codable {
         self.sha256 = sha256
         self.sentAt = sentAt
         self.isStory = isStory
+        self.isPushToTalk = isPushToTalk
     }
 
     // MARK: Wire compatibility
@@ -97,18 +106,19 @@ public struct MediaManifest: Equatable, Sendable, Codable {
     /// JSONDecoder, so a story manifest decodes on a legacy build as ordinary
     /// media.
     private enum CodingKeys: String, CodingKey {
-        case mediaID, mime, totalBytes, chunkCount, sha256, sentAt, isStory
+        case mediaID, mime, totalBytes, chunkCount, sha256, sentAt, isStory, isPushToTalk
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        mediaID    = try c.decode(String.self, forKey: .mediaID)
-        mime       = try c.decode(MediaMimeType.self, forKey: .mime)
-        totalBytes = try c.decode(Int.self, forKey: .totalBytes)
-        chunkCount = try c.decode(Int.self, forKey: .chunkCount)
-        sha256     = try c.decode(String.self, forKey: .sha256)
-        sentAt     = try c.decodeIfPresent(Date.self, forKey: .sentAt)
-        isStory    = try c.decodeIfPresent(Bool.self, forKey: .isStory) ?? false
+        mediaID      = try c.decode(String.self, forKey: .mediaID)
+        mime         = try c.decode(MediaMimeType.self, forKey: .mime)
+        totalBytes   = try c.decode(Int.self, forKey: .totalBytes)
+        chunkCount   = try c.decode(Int.self, forKey: .chunkCount)
+        sha256       = try c.decode(String.self, forKey: .sha256)
+        sentAt       = try c.decodeIfPresent(Date.self, forKey: .sentAt)
+        isStory      = try c.decodeIfPresent(Bool.self, forKey: .isStory) ?? false
+        isPushToTalk = try c.decodeIfPresent(Bool.self, forKey: .isPushToTalk) ?? false
     }
 }
 

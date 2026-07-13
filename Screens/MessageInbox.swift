@@ -94,9 +94,9 @@ final class MessageInbox {
                 handleEstablished(peerKey: key)
             case .received(let key, let plaintext, let wireID):
                 handleReceived(peerKey: key, plaintext: plaintext, wireID: wireID)
-            case .receivedMedia(let key, let data, let mime, let wireID, let sentAt, let isStory):
+            case .receivedMedia(let key, let data, let mime, let wireID, let sentAt, let isStory, let isPushToTalk):
                 handleReceivedMedia(peerKey: key, data: data, mime: mime, wireID: wireID,
-                                    sentAt: sentAt, isStory: isStory)
+                                    sentAt: sentAt, isStory: isStory, isPushToTalk: isPushToTalk)
             case .learnedNostrIdentity(let key, let nostrPubkey):
                 handleLearnedNostrIdentity(peerKey: key, nostrPubkey: nostrPubkey)
             case .reconnected(let key):
@@ -149,7 +149,7 @@ final class MessageInbox {
     /// Deduped on the mediaID-derived wireID, so a re-sent transfer is ignored.
     private func handleReceivedMedia(peerKey: Data, data: Data,
                                      mime: MediaMimeType, wireID: MessageID,
-                                     sentAt: Date?, isStory: Bool) {
+                                     sentAt: Date?, isStory: Bool, isPushToTalk: Bool) {
         guard !alreadyStored(wireID) else { return }
 
         let peer = peer(forRawKey: peerKey)
@@ -163,7 +163,8 @@ final class MessageInbox {
                               wireID: wireID,
                               mediaData: data,
                               mediaMimeRaw: mime.rawValue,
-                              isStory: isStory)
+                              isStory: isStory,
+                              isPushToTalk: isPushToTalk)
         // CLAMP (SEC-6 stories): the manifest's `sentAt` is the SENDER's clock —
         // attacker-controlled. Unclamped, a future-dated stamp makes a story
         // that NEVER expires (now − future < window, forever). Take the earlier
@@ -298,7 +299,7 @@ final class MessageInbox {
     /// `sentAt` = its own `timestamp` (the ONE first-send instant), and both
     /// fields ride the manifest so the receiver expires on the same anchor.
     func sendMedia(_ data: Data, mime: MediaMimeType, in conversation: Conversation,
-                   isStory: Bool = false) async {
+                   isStory: Bool = false, isPushToTalk: Bool = false) async {
         guard let peer = conversation.peer else {
             print("inbox: cannot send media — conversation has no peer")
             return
@@ -311,7 +312,8 @@ final class MessageInbox {
                               deliveryState: .sent,
                               mediaData: data,
                               mediaMimeRaw: mime.rawValue,
-                              isStory: isStory)
+                              isStory: isStory,
+                              isPushToTalk: isPushToTalk)
         // One instant is the expiry anchor everywhere: row insert time.
         if isStory { message.sentAt = message.timestamp }
         modelContext.insert(message)
@@ -331,7 +333,8 @@ final class MessageInbox {
             let wireID = try await coordinator.sendMedia(data, mime: mime, toRawKey: rawKey,
                                                          nostrRecipient: nostrRecipient,
                                                          sentAt: message.sentAt,
-                                                         isStory: isStory)
+                                                         isStory: isStory,
+                                                         isPushToTalk: isPushToTalk)
             message.wireIDData = Data(wireID.bytes)
             // .sent over BLE (90s timer armed), or .cast over Nostr (no timer —
             // the transfer will surface when the peer reconnects).
@@ -414,7 +417,8 @@ final class MessageInbox {
                                                          nostrRecipient: nostrRecipient,
                                                          reuseID: reuse,
                                                          sentAt: message.sentAt,
-                                                         isStory: message.isStory)
+                                                         isStory: message.isStory,
+                                                         isPushToTalk: message.isPushToTalk)
             } else {
                 wireID = try await coordinator.send(message.content, toRawKey: rawKey,
                                                     nostrRecipient: nostrRecipient,
@@ -532,7 +536,8 @@ final class MessageInbox {
                                                              nostrRecipient: nostrRecipient,
                                                              reuseID: reuse, redrive: true,
                                                              sentAt: message.sentAt,
-                                                             isStory: message.isStory)
+                                                             isStory: message.isStory,
+                                                             isPushToTalk: message.isPushToTalk)
                 // Same mediaID (reuse), so the row's wireID is unchanged; re-stamp
                 // it anyway for parity with the other send paths. A re-drive always
                 // commits over Nostr, so the router reports `.cast` — reflect that

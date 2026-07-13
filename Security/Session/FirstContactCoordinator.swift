@@ -87,7 +87,7 @@ enum SessionEvent: Sendable {
     /// derived from the 16-byte mediaID (stable across the transfer) so dedup
     /// works the same as for text. Partial transfers never surface here.
     case receivedMedia(peerKey: Data, data: Data, mime: MediaMimeType, wireID: MessageID,
-                       sentAt: Date?, isStory: Bool)
+                       sentAt: Date?, isStory: Bool, isPushToTalk: Bool)
     /// A sealed, VERIFIED-contact call-signaling frame (FaceTime v1). Routed
     /// to the call layer, never persisted as a Message.
     case callSignal(peerKey: Data, signal: CallSignal)
@@ -891,7 +891,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                    reuseID: MessageID? = nil,
                    redrive: Bool = false,
                    sentAt: Date? = nil,
-                   isStory: Bool = false) async throws -> MessageID {
+                   isStory: Bool = false,
+                   isPushToTalk: Bool = false) async throws -> MessageID {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
@@ -938,7 +939,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let idBytes = (reuseID ?? .random()).bytes
         let mediaWireID = MessageID(bytes: idBytes)!
         let (manifest, chunks) = try chunker.split(blob, mime: mime, mediaID: idBytes,
-                                                   sentAt: sentAt, isStory: isStory)
+                                                   sentAt: sentAt, isStory: isStory,
+                                                   isPushToTalk: isPushToTalk)
         
         // Register the transfer for delivery tracking up front, so an ack that
         // races back before the burst finishes still matches.
@@ -1286,7 +1288,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
               let wireID = MessageID(bytes: idBytes) else { return nil }
         eventsContinuation.yield(
             .receivedMedia(peerKey: rawKey, data: done.data, mime: done.mime, wireID: wireID,
-                           sentAt: done.sentAt, isStory: done.isStory)
+                           sentAt: done.sentAt, isStory: done.isStory,
+                           isPushToTalk: done.isPushToTalk)
         )
         print("first-contact: MEDIA complete \(done.data.count)B (\(done.mime.rawValue))")
         return wireID

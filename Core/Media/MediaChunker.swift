@@ -123,7 +123,8 @@ public struct MediaChunker {
                       mime: MediaMimeType,
                       mediaID: [UInt8]? = nil,
                       sentAt: Date? = nil,
-                      isStory: Bool = false) throws -> (manifest: MediaManifest, chunks: [Data]) {
+                      isStory: Bool = false,
+                      isPushToTalk: Bool = false) throws -> (manifest: MediaManifest, chunks: [Data]) {
         guard !blob.isEmpty else { throw MediaChunkerError.emptyBlob }
 
         let idBytes = try mediaID ?? Self.randomID()
@@ -157,7 +158,8 @@ public struct MediaChunker {
             chunkCount: payloads.count,
             sha256: MediaManifest.hashHex(blob),
             sentAt: sentAt,
-            isStory: isStory)
+            isStory: isStory,
+            isPushToTalk: isPushToTalk)
 
         return (manifest, chunks)
     }
