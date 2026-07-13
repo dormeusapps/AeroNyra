@@ -49,6 +49,9 @@ struct StreamView: View {
 
     /// Media send (mirrors the old composer's proven pattern).
     @State private var recorder = VoiceRecorder()
+    /// The globe's PTT capture (AVAudioEngine tap → Opus + .m4a). Separate from
+    /// `recorder`, which the composer's mic-record path still owns.
+    @State private var pttCapture = PTTCaptureEngine()
 
     /// PTT (walkie-talkie): true while the hold-to-talk button is held. Gates
     /// the composer OUT of the tap-record `recordingBar` swap so the press
@@ -149,7 +152,7 @@ struct StreamView: View {
             // over the shipped media path. Peer inherited from this chat; no
             // picker; dismiss returns here.
             WalkieGlobeView(peerName: peerName,
-                            recorder: recorder,
+                            capture: pttCapture,
                             autoPlay: pttAutoPlay,
                             onPressDown: { beginPTT() },
                             onPressUp: { endPTT() })
@@ -469,10 +472,10 @@ struct StreamView: View {
     private func beginPTT() {
         pttHolding = true
         Task {
-            await recorder.start()
-            if recorder.permissionDenied {
+            await pttCapture.start()
+            if pttCapture.permissionDenied {
                 // In walkie mode the StreamView alert hides behind the cover, so
-                // the globe surfaces denial itself (via recorder.permissionDenied).
+                // the globe surfaces denial itself (via pttCapture.permissionDenied).
                 // Only raise the alert for the composer path (cover not up).
                 if !showWalkie { showMicDenied = true }
                 pttHolding = false
@@ -485,7 +488,7 @@ struct StreamView: View {
         guard pttHolding else { return }
         pttHolding = false
         // Release before start finished, or nothing captured → nothing to send.
-        guard let data = recorder.stop(), let inbox else { return }
+        guard let data = pttCapture.stop(), let inbox else { return }
         let convo = currentConversation()
         Task { await inbox.sendMedia(data, mime: .m4a, in: convo, isPushToTalk: true) }
     }
@@ -1655,13 +1658,13 @@ private struct RecordingWaveform: View {
 /// recorder, transport, or send code — it forwards press/release only.
 ///
 /// While held, the sphere expands + brightens to the live mic level
-/// (`recorder.levels`); idle it settles to a calm breathe. The inbound pulse
+/// (`capture.levels`); idle it settles to a calm breathe. The inbound pulse
 /// (the peer's voice, off the player meter) is a later step.
 private struct WalkieGlobeView: View {
     let peerName: String
-    /// The composer's recorder — its live `levels` meter drives the sphere
-    /// while holding (outbound). StreamView owns start/stop/send.
-    let recorder: VoiceRecorder
+    /// The globe's PTT capture engine — its live `levels` meter drives the
+    /// sphere while holding (outbound). StreamView owns start/stop/send.
+    let capture: PTTCaptureEngine
     /// The inbound auto-play serializer — when a received PTT note is playing
     /// (`busyID != nil`), its `inboundLevel` drives the sphere so it reacts to
     /// the peer's voice the same way it reacts to mine.
@@ -1683,14 +1686,14 @@ private struct WalkieGlobeView: View {
     /// The single signal the sphere reacts to: my mic while holding, else the
     /// peer's playback level when a received clip is auto-playing, else idle.
     private var liveLevel: Double {
-        if holding { return Double(recorder.levels.last ?? 0) }
+        if holding { return Double(capture.levels.last ?? 0) }
         if autoPlay.busyID != nil { return Double(autoPlay.inboundLevel) }
         return 0
     }
 
     /// Mic permission denied — surfaced INSIDE the cover, since the StreamView
-    /// alert hides behind it. Flips true after a hold hits a denied recorder.
-    private var micDenied: Bool { recorder.permissionDenied }
+    /// alert hides behind it. Flips true after a hold hits a denied capture.
+    private var micDenied: Bool { capture.permissionDenied }
 
     private var hintText: String {
         if micDenied { return "microphone off" }
@@ -1746,7 +1749,7 @@ private struct WalkieGlobeView: View {
 
     // MARK: The sphere — fibonacci particle core (Step 3: two-way voice-reactive)
     /// Full-bleed, centered, under the existing hold gesture. ONE `level` feeds
-    /// the sphere: while I hold, my live mic (`recorder.levels.last`); otherwise,
+    /// the sphere: while I hold, my live mic (`capture.levels.last`); otherwise,
     /// if an inbound PTT clip is auto-playing (`autoPlay.busyID != nil`), the
     /// peer's playback level (`autoPlay.inboundLevel`); else idle breathe. So the
     /// same sphere reacts to their voice like it does to mine. Frame-capped at
