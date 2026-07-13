@@ -23,13 +23,21 @@ final class VoicePlayer {
     private(set) var isPlaying = false
     private(set) var progress: Double = 0      // 0...1
     private(set) var duration: TimeInterval = 0
+    /// Live playback level (0...1), published from the existing tick while
+    /// playing so a visualizer can react to the clip. Metering only — playback
+    /// behavior is unchanged. 0 whenever not playing.
+    private(set) var level: CGFloat = 0
 
     private var player: AVAudioPlayer?
     private var tickTask: Task<Void, Never>?
 
+    /// dBFS at which playback reads as silent (mirrors `VoiceRecorder`).
+    private static let silenceFloor: Float = -50
+
     init(data: Data) {
         if let player = try? AVAudioPlayer(data: data) {
             player.prepareToPlay()
+            player.isMeteringEnabled = true
             duration = player.duration
             self.player = player
         }
@@ -54,6 +62,7 @@ final class VoicePlayer {
     func pause() {
         player?.pause()
         isPlaying = false
+        level = 0
         stopTicking()
         // Hand the audio session back so any music we took over resumes. The
         // note re-takes it on the next play().
@@ -106,6 +115,7 @@ final class VoicePlayer {
         if !player.isPlaying {
             isPlaying = false
             progress = 1
+            level = 0
             stopTicking()
             // Clip finished — release the session so the user's music resumes.
             deactivateSession()
@@ -114,6 +124,15 @@ final class VoicePlayer {
         if player.duration > 0 {
             progress = player.currentTime / player.duration
         }
+        player.updateMeters()
+        level = Self.normalized(player.averagePower(forChannel: 0))
+    }
+
+    /// Map dBFS to a 0...1 level; silenceFloor → 0, 0 dB → 1, non-finite → 0.
+    private static func normalized(_ db: Float) -> CGFloat {
+        guard db.isFinite else { return 0 }
+        let clamped = max(silenceFloor, min(0, db))
+        return CGFloat((clamped - silenceFloor) / -silenceFloor)
     }
 
     private func stopTicking() {
