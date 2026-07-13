@@ -1657,7 +1657,7 @@ private struct RecordingWaveform: View {
         .environment(presence)
 }
 
-// MARK: - Walkie mode (full-screen particle sphere · Step 1: idle render)
+// MARK: - Walkie mode (full-screen particle sphere · Step 2: voice-reactive)
 /// A full-screen "walkie mode" surface for the ONE peer this conversation is
 /// bound to. The visual is a fibonacci-sphere particle core (`WalkieCore`,
 /// transplanted from the reference `DeckCore` and recolored to the app accent);
@@ -1666,9 +1666,9 @@ private struct RecordingWaveform: View {
 /// `isPushToTalk: true` note over the shipped media path. This view adds NO
 /// recorder, transport, or send code — it forwards press/release only.
 ///
-/// Step 1 renders the sphere IDLE (`level: 0`); the live mic drive
-/// (`recorder.levels`) lands in Step 2. The inbound pulse (player meter) is a
-/// later step.
+/// While held, the sphere expands + brightens to the live mic level
+/// (`recorder.levels`); idle it settles to a calm breathe. The inbound pulse
+/// (the peer's voice, off the player meter) is a later step.
 private struct WalkieGlobeView: View {
     let peerName: String
     /// The composer's recorder — its live `levels` meter drives the sphere in
@@ -1730,19 +1730,23 @@ private struct WalkieGlobeView: View {
         .padding(.top, 18)
     }
 
-    // MARK: The sphere — fibonacci particle core (Step 1: idle render)
-    /// Full-bleed, centered, under the existing hold gesture. Step 1 draws idle
-    /// only (`level: 0`); the mic drive lands in Step 2. Frame-capped at 30fps
-    /// and paused under reduce-motion so the idle sphere holds near-static
-    /// (§2/§3). The `contentShape(Circle())` keeps the press target on the orb,
-    /// clear of the header and the bottom hint.
+    // MARK: The sphere — fibonacci particle core (Step 2: voice-reactive)
+    /// Full-bleed, centered, under the existing hold gesture. While held, the
+    /// live mic level (`recorder.levels.last`, 0…1) drives the sphere so it
+    /// expands + brightens to your voice in real time; idle passes `level: 0`
+    /// for the calm breathe. Frame-capped at 30fps — that TimelineView tick is
+    /// the redraw clock, so the sphere samples the meter each frame rather than
+    /// via Observation (keeps the §2 safety). Paused under reduce-motion ONLY
+    /// while idle, so the transmit reaction (functional feedback) keeps running
+    /// when held (§3). `contentShape(Circle())` keeps the press target on the
+    /// orb, clear of the header and the bottom hint.
     private var sphere: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { tl in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion && !holding)) { tl in
             Canvas { ctx, size in
                 var c = ctx
                 core.draw(context: &c, size: size,
                           time: tl.date.timeIntervalSinceReferenceDate,
-                          level: 0)   // Step 1: idle only — no mic drive yet
+                          level: holding ? Double(recorder.levels.last ?? 0) : 0)
             }
         }
         .ignoresSafeArea()
