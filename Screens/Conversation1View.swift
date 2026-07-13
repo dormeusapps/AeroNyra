@@ -56,6 +56,10 @@ struct StreamView: View {
     /// PTT playback so two clips never overlap (ignore-if-busy).
     @State private var pttHolding = false
     @State private var pttAutoPlay = PTTAutoPlay()
+
+    /// Full-screen "walkie mode" (globe surface) for this ONE peer. Rides the
+    /// shipped async `isPushToTalk` path — presentation only, no new transport.
+    @State private var showWalkie = false
     @State private var pickedItem: PhotosPickerItem?
 
     /// Plus-button intents: a plain tap presents the chat picker (the send
@@ -139,6 +143,11 @@ struct StreamView: View {
         .sheet(isPresented: $showSettings) {
             PeerSettingsView(conversation: currentConversation())
         }
+        .fullScreenCover(isPresented: $showWalkie) {
+            // Step 1: presentation + idle globe only. The peer is inherited
+            // from this conversation — no picker; dismiss returns to this chat.
+            WalkieGlobeView(peerName: peerName)
+        }
         .sheet(isPresented: $showVerify) {
             SASVerifySheet(peerName: peerName,
                            rawKey: peer.publicKeyData,
@@ -202,6 +211,16 @@ struct StreamView: View {
                 }
                 .buttonStyle(.plain)
             }
+
+            // Walkie mode (full-screen globe). NOT gated on callEngine — it
+            // rides the shipped async push-to-talk path, not the call stack.
+            Button { showWalkie = true } label: {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Stillwater.Palette.biolume)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Walkie mode")
         }
         .padding(.bottom, 16)
         .overlay(alignment: .bottom) {
@@ -1631,4 +1650,95 @@ private struct RecordingWaveform: View {
     return NavigationStack { StreamView(peer: maya) }
         .modelContainer(container)
         .environment(presence)
+}
+
+// MARK: - Walkie mode (full-screen globe · Step 1: presentation + idle pulse)
+/// A full-screen "walkie mode" surface for the ONE peer this conversation is
+/// bound to. Step 1 is PRESENTATION ONLY: Stillwater dark field, the peer named
+/// up top, a slow idle breathing globe (timer-driven, no audio), and a dismiss
+/// back to the same chat. The hold-to-talk send and the audio-reactive pulse
+/// (recorder/player meters) land in Steps 2–4 — this view touches nothing on
+/// the wire, the send path, or the calling stack.
+private struct WalkieGlobeView: View {
+    let peerName: String
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Idle breathing driver — a single accent, brightness/scale only (never a
+    /// second hue), per the design language. Held static under reduce-motion.
+    @State private var breathing = false
+
+    var body: some View {
+        ZStack {
+            Stillwater.Palette.abyss.ignoresSafeArea()
+
+            globe
+
+            VStack {
+                header
+                Spacer()
+                Text("hold to talk")
+                    .stillwaterMono(8.5, trackingEm: 0.28, color: Stillwater.Palette.mistDimmest)
+                    .padding(.bottom, 54)
+            }
+        }
+        .onAppear {
+            guard !reduceMotion else { breathing = true; return }   // static, mid-brightness
+            withAnimation(.easeInOut(duration: 3.4).repeatForever(autoreverses: true)) {
+                breathing = true
+            }
+        }
+    }
+
+    // MARK: Header — who you're aimed at + exit
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(peerName)
+                    .stillwaterSerif(22, color: Stillwater.Palette.foam)
+                Text("walkie")
+                    .stillwaterMono(8.5, trackingEm: 0.3, color: Stillwater.Palette.mistDim)
+            }
+            Spacer()
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Stillwater.Palette.mistDim)
+                    .frame(width: 34, height: 34)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 26)
+        .padding(.top, 18)
+    }
+
+    // MARK: The globe — idle breathing (Step 1)
+    private var globe: some View {
+        ZStack {
+            // Soft outer glow — the "field" the globe sits in.
+            Circle()
+                .fill(RadialGradient(
+                    colors: [Stillwater.Palette.biolume.opacity(0.22), .clear],
+                    center: .center, startRadius: 2, endRadius: 190))
+                .frame(width: 340, height: 340)
+                .blur(radius: 26)
+                .opacity(breathing ? 0.9 : 0.55)
+
+            // Core body — a translucent bioluminescent sphere.
+            Circle()
+                .fill(RadialGradient(
+                    colors: [Stillwater.Palette.biolume.opacity(0.35),
+                             Stillwater.Palette.biolume.opacity(0.04)],
+                    center: .init(x: 0.42, y: 0.38), startRadius: 4, endRadius: 150))
+                .frame(width: 210, height: 210)
+                .scaleEffect(breathing ? 1.06 : 1.0)
+
+            // Rim — the crisp edge that reads as an orb, not a blob.
+            Circle()
+                .strokeBorder(Stillwater.Palette.biolume.opacity(breathing ? 0.7 : 0.4), lineWidth: 1.5)
+                .frame(width: 210, height: 210)
+                .scaleEffect(breathing ? 1.06 : 1.0)
+        }
+    }
 }
