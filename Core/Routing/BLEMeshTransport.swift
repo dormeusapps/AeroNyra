@@ -78,11 +78,14 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
         case envelope = 0x01   // relayable sealed payload
         case bundle   = 0x02   // link-local prekey bundle (first contact)
         case reconnect = 0x03  // link-local reconnect handshake (closed-contact auth)
+        case audioFrame = 0x04 // lossy PTT audio (4b: inert — dropped until 4c playout)
     }
 
     // MARK: - Protocol constants (permanent, like a port number — NOT placeholder)
     static let serviceUUID = CBUUID(string: "5218EF92-305F-41B0-B29E-D0215FF59B8D")
     static let characteristicUUID = CBUUID(string: "2496E79A-7D3F-4AB1-B6AE-DE940F1597D1")
+    /// Lossy PTT audio characteristic (4b) — separate from the reliable mailbox.
+    static let audioCharacteristicUUID = CBUUID(string: "0B66CE08-73F2-4CA2-AB6A-82685E626D61")
 
     /// Bytes of length-prefix framing after the 1-byte type tag.
     private static let lengthPrefixBytes = 4   // UInt32 big-endian payload length
@@ -105,6 +108,10 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     private var central: CBCentralManager?
     private var peers: [UUID: CBPeripheral] = [:]
     private var writeTargets: [UUID: CBCharacteristic] = [:]
+    /// Per-link handle for the peer's AUDIO characteristic (lossy PTT). Parallel
+    /// to `writeTargets`; populated at discovery, torn down wherever writeTargets
+    /// is. Does NOT gate reachability — that stays mailbox-only.
+    private var audioWriteTargets: [UUID: CBCharacteristic] = [:]
     /// Reassembly buffers for inbound notifications (peripheral → us), keyed by
     /// link id THEN characteristic uuid — so two characteristics on one link
     /// never share a byte-buffer (interleaving corruption). The per-link cleanup
@@ -168,6 +175,9 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     // MARK: - Peripheral (advertiser) side
     private var peripheral: CBPeripheralManager?
     private var mailbox: CBMutableCharacteristic?
+    /// The AUDIO characteristic we publish alongside `mailbox` (lossy PTT:
+    /// .writeWithoutResponse + .notify, no .write). Held so 4c can notify on it.
+    private var audioMailbox: CBMutableCharacteristic?
     private var subscribedCentrals: Set<UUID> = []
     /// Reassembly buffers for inbound writes (central → us), keyed by central id
     /// THEN characteristic uuid (see `notifyReassembly`). Private; DEBUG hooks.
@@ -225,6 +235,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             for p in self.peers.values { self.central?.cancelPeripheralConnection(p) }
             self.peers.removeAll()
             self.writeTargets.removeAll()
+            self.audioWriteTargets.removeAll()
             self.subscribedCentrals.removeAll()
             self.notifyReassembly.removeAll()
             self.writeReassembly.removeAll()
@@ -583,6 +594,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
             log.error("central state not poweredOn: \(central.state.rawValue) → clearing central-side presence")
             peers.removeAll()
             writeTargets.removeAll()
+            audioWriteTargets.removeAll()
             notifyReassembly.removeAll()
             writeErrorCounts.removeAll()
             writeQueues.removeAll()
@@ -638,6 +650,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
         log.info("disconnected \(peripheral.identifier) → rescanning")
         peers[peripheral.identifier] = nil
         writeTargets[peripheral.identifier] = nil
+        audioWriteTargets[peripheral.identifier] = nil
         notifyReassembly[peripheral.identifier] = nil
         writeErrorCounts[peripheral.identifier] = nil
         writeQueues[peripheral.identifier] = nil
@@ -654,7 +667,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
     public func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard let services = peripheral.services else { return }
         for service in services where service.uuid == Self.serviceUUID {
-            peripheral.discoverCharacteristics([Self.characteristicUUID], for: service)
+            peripheral.discoverCharacteristics([Self.characteristicUUID, Self.audioCharacteristicUUID], for: service)
         }
     }
 
@@ -662,11 +675,23 @@ extension BLEMeshTransport: CBPeripheralDelegate {
                            didDiscoverCharacteristicsFor service: CBService,
                            error: Error?) {
         guard let chars = service.characteristics else { return }
-        for ch in chars where ch.uuid == Self.characteristicUUID {
-            writeTargets[peripheral.identifier] = ch
-            emitReachable()
-            peripheral.setNotifyValue(true, for: ch)
-            log.info("LINK READY → mailbox on \(peripheral.identifier). Ready + subscribing.")
+        for ch in chars {
+            switch ch.uuid {
+            case Self.characteristicUUID:
+                writeTargets[peripheral.identifier] = ch
+                emitReachable()
+                peripheral.setNotifyValue(true, for: ch)
+                log.info("LINK READY → mailbox on \(peripheral.identifier). Ready + subscribing.")
+            case Self.audioCharacteristicUUID:
+                // Lossy PTT audio char — a separate per-link capability, NOT a
+                // reachability signal (reachability stays mailbox-gated: no
+                // emitReachable, no writeTargets write here).
+                audioWriteTargets[peripheral.identifier] = ch
+                peripheral.setNotifyValue(true, for: ch)
+                log.info("AUDIO char ready on \(peripheral.identifier) → subscribing (lossy).")
+            default:
+                break
+            }
         }
     }
 
@@ -786,6 +811,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         log.error("write failed to \(id): \(error.localizedDescription) (\(reason)) → dropping dead link")
         peers[id] = nil
         writeTargets[id] = nil
+        audioWriteTargets[id] = nil
         notifyReassembly[id] = nil
         writeErrorCounts[id] = nil
         writeQueues[id] = nil
@@ -833,6 +859,7 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
             writeReassembly.removeAll()
             pendingNotifications.removeAll()
             mailbox = nil
+            audioMailbox = nil
             emitReachable()
             return
         }
@@ -842,9 +869,18 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
             value: nil,
             permissions: [.writeable]
         )
+        // Lossy PTT audio char: writeWithoutResponse + notify, NO .write (audio
+        // is never reliable). Same service; advertising unchanged (service-only).
+        let audio = CBMutableCharacteristic(
+            type: Self.audioCharacteristicUUID,
+            properties: [.writeWithoutResponse, .notify],
+            value: nil,
+            permissions: [.writeable]
+        )
         let service = CBMutableService(type: Self.serviceUUID, primary: true)
-        service.characteristics = [mailbox]
+        service.characteristics = [mailbox, audio]
         self.mailbox = mailbox
+        self.audioMailbox = audio
         peripheral.add(service)
         peripheral.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [Self.serviceUUID],
@@ -920,6 +956,9 @@ extension BLEMeshTransport {
         case .reconnect:
             log.info("RX reconnect \(payload.count) bytes from link \(link) → yielding")
             reconnectsCont.yield((link: link, data: payload))
+        case .audioFrame:
+            // 4b: inert — audio playout arrives in a later step. Log and drop.
+            log.info("RX audio frame \(payload.count)B from \(link) — dropped (no playout yet)")
         }
     }
 }
