@@ -91,6 +91,14 @@ enum SessionEvent: Sendable {
     /// A sealed, VERIFIED-contact call-signaling frame (FaceTime v1). Routed
     /// to the call layer, never persisted as a Message.
     case callSignal(peerKey: Data, signal: CallSignal)
+
+    /// A VERIFIED contact opened a live PTT (walkie) session to us: the recv
+    /// context is already seeded on the receiver (S never leaves the coordinator).
+    /// A UI notification only — `pttID` correlates open→close; NO key material.
+    case pttOpened(peerKey: Data, pttID: Data)
+    /// A VERIFIED contact closed the PTT session with this `pttID`; its recv
+    /// context has been evicted. UI notification only.
+    case pttClosed(peerKey: Data, pttID: Data)
     
     /// This peer announced their raw 32-byte x-only secp256k1 Nostr public key
     /// over the established sealed channel (Phase 8d npub-bootstrap — never from
@@ -181,7 +189,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// the number of distinct links seen this session; UUIDs are never reused
     /// for a different peer.
     private var linkPeers: [UUID: PublicIdentity] = [:]
-    
+
+    /// The live PTT (walkie) receive pipeline — per-link replay/key state + Opus
+    /// decoder. Owned HERE, inside the one actor that holds the session keys, so
+    /// the derived recv key (from S) never crosses an actor boundary. A `.pttOpen`
+    /// seeds it via `openSession`; `.pttClose` and link-loss evict via `dropLink`.
+    /// No audio content flows in Part A (playout wiring is a later step).
+    private let pttReceiver = PTTReceiver()
+
     /// The most recent set of reachable BLE links (ephemeral CoreBluetooth ids)
     /// from the transport. Remembered between ticks so `onBundle` can recompute
     /// presence when a link becomes identified, and so `emitReachablePeers`
@@ -1099,6 +1114,19 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
         return exclusions
     }
+
+    /// Every currently-known BLE link to the peer with raw identity `rawKey` — one
+    /// per GATT role in `linkPeers`. PTT audio can arrive on either role's link, so
+    /// a `.pttOpen` seeds the recv context on each; a `.pttClose` evicts each.
+    private func linksFor(rawKey: Data) -> [UUID] {
+        linkPeers.compactMap { store.rawPublicKey(of: $0.value) == rawKey ? $0.key : nil }
+    }
+
+    /// Short hex of a pttID for logs. pttID is a NON-secret random session id (like
+    /// a callID) — safe to log; S is never passed here.
+    private func pttIDLog(_ id: Data) -> String {
+        id.prefix(4).map { String(format: "%02x", $0) }.joined()
+    }
     
     /// The router's `EnvelopeReceiver` entry point: an inbound envelope that
     /// survived dedup (and was relayed onward if it had hop budget) is handed
@@ -1272,6 +1300,52 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     return
                 }
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
+
+            case .pttOpen(let body):
+                // F1 (7f STRICT-VERIFIED): a PTT session-secret handover is
+                // user-reaching — an unverified session-holder must not open a live
+                // audio session to us. Gated exactly like .callRequest; drop, no reply.
+                guard verifiedIdentities.contains(rawKey) else {
+                    RedactLog.event("first-contact: DROP ptt-open from unverified", "\(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                guard let (pttID, secret) = MessagePayload.parsePTTOpen(body) else {
+                    RedactLog.event("first-contact: malformed ptt-open", "from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                // We RECEIVED the open → we are the RESPONDER, the sender is the
+                // INITIATOR. Our recv key is therefore the initiator→responder
+                // directional key (the initiator seals audio with it, we open with
+                // it). S is used here and IMMEDIATELY dropped — NEVER logged (pttID,
+                // which is a non-secret random session id, is the only thing logged).
+                let recvKey = PTTSessionCrypto.directionalKeys(
+                    secret: SymmetricKey(data: secret)).initiatorToResponder
+                let links = linksFor(rawKey: rawKey)
+                guard !links.isEmpty else {
+                    RedactLog.event("first-contact: ptt-open with no live link", "pttID \(pttIDLog(pttID)) from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                for link in links {
+                    do { try pttReceiver.openSession(link: link, recvKey: recvKey) }
+                    catch { RedactLog.event("first-contact: ptt-open session failed", "\(type(of: error))") }
+                }
+                eventsContinuation.yield(.pttOpened(peerKey: rawKey, pttID: pttID))
+                RedactLog.event("first-contact: PTT OPEN", "pttID \(pttIDLog(pttID)) from \(peer.userIDHex.prefix(16))…")
+
+            case .pttClose(let body):
+                // Gated exactly like .pttOpen — a close from an unverified holder is
+                // dropped, no state touched.
+                guard verifiedIdentities.contains(rawKey) else {
+                    RedactLog.event("first-contact: DROP ptt-close from unverified", "\(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                guard let pttID = MessagePayload.parsePTTClose(body) else {
+                    RedactLog.event("first-contact: malformed ptt-close", "from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                for link in linksFor(rawKey: rawKey) { pttReceiver.dropLink(link) }
+                eventsContinuation.yield(.pttClosed(peerKey: rawKey, pttID: pttID))
+                RedactLog.event("first-contact: PTT CLOSE", "pttID \(pttIDLog(pttID)) from \(peer.userIDHex.prefix(16))…")
             }
         } catch {
             RedactLog.event("first-contact: open failed", "\(type(of: error))")

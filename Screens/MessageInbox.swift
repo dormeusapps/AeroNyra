@@ -83,6 +83,12 @@ final class MessageInbox {
     /// the composition root; nil (frames silently ignored) until calls wire.
     var onCallSignal: ((CallSignal, _ peerKey: Data) -> Void)?
 
+    /// PTT (walkie) session open/close notifications (PTT Part A): the walkie
+    /// layer's tap on the events stream. Set by the composition root; nil (events
+    /// silently ignored) until PTT playout wires. `opened == false` is a close.
+    /// pttID is a non-secret session id — never key material.
+    var onPTTSession: ((_ opened: Bool, _ peerKey: Data, _ pttID: Data) -> Void)?
+
     /// Consume coordinator events for the app's lifetime, writing SwiftData on
     /// the main actor. Started once from the composition root (a `.task`).
     /// `events` is unbounded-buffered, so anything emitted before this starts
@@ -106,6 +112,12 @@ final class MessageInbox {
                 // persisted. The inbox stays the events stream's SINGLE
                 // consumer; CallEngine hangs off this hook.
                 onCallSignal?(signal, key)
+            case .pttOpened(let key, let pttID):
+                // PTT Part A: walkie session up — forwarded, never persisted
+                // (same single-consumer pattern as .callSignal). No-op until wired.
+                onPTTSession?(true, key, pttID)
+            case .pttClosed(let key, let pttID):
+                onPTTSession?(false, key, pttID)
             }
         }
     }

@@ -70,6 +70,7 @@
 //
 
 import Foundation
+import Security   // SecRandomCopyBytes (pttID CSPRNG mint)
 
 // MARK: - WirePayloadKind
 
@@ -87,6 +88,8 @@ public enum WirePayloadKind: UInt8, Sendable, CaseIterable {
     case callAnswer    = 9   // call signaling: callID(16) ‖ complete SDP answer
     case callDecline   = 10  // call signaling: callID(16) — decline / cancel-before-connect
     case inviteEchoV2  = 11  // remote-invite echo v2: inviteID(16) ‖ redeemer npub(32)
+    case pttOpen       = 12  // PTT session open: pttID(16) ‖ S(32) — 32-byte session-secret handover
+    case pttClose      = 13  // PTT session close: pttID(16)
 }
 
 // MARK: - MessagePayload
@@ -106,6 +109,8 @@ public enum MessagePayload: Sendable, Equatable {
     case callAnswer(Data)      // call signaling body: callID(16) ‖ SDP answer
     case callDecline(Data)     // call signaling body: callID(16)
     case inviteEchoV2(Data)    // remote-invite echo v2: inviteID(16) ‖ npub(32)
+    case pttOpen(Data)         // PTT open: pttID(16) ‖ S(32) — session-secret handover
+    case pttClose(Data)        // PTT close: pttID(16)
 
     public var kind: WirePayloadKind {
         switch self {
@@ -120,6 +125,8 @@ public enum MessagePayload: Sendable, Equatable {
         case .callAnswer:    return .callAnswer
         case .callDecline:   return .callDecline
         case .inviteEchoV2:  return .inviteEchoV2
+        case .pttOpen:       return .pttOpen
+        case .pttClose:      return .pttClose
         }
     }
 
@@ -136,7 +143,9 @@ public enum MessagePayload: Sendable, Equatable {
              .callRequest(let d),
              .callAnswer(let d),
              .callDecline(let d),
-             .inviteEchoV2(let d):
+             .inviteEchoV2(let d),
+             .pttOpen(let d),
+             .pttClose(let d):
             return d
         }
     }
@@ -162,7 +171,8 @@ public enum MessagePayload: Sendable, Equatable {
         case .mediaManifest, .mediaChunk:
             return encoded()                        // already bucket-shaped
         case .text, .ack, .nostrIdentity, .reconnectHello, .inviteEcho,
-             .inviteEchoV2, .callRequest, .callAnswer, .callDecline:
+             .inviteEchoV2, .callRequest, .callAnswer, .callDecline,
+             .pttOpen, .pttClose:
             return PayloadPadding.pad(encoded())    // collapse length to a bucket
         }
     }
@@ -193,6 +203,17 @@ public enum MessagePayload: Sendable, Equatable {
         case .callAnswer:    return .callAnswer(body)
         case .callDecline:   return .callDecline(body)
         case .inviteEchoV2:  return .inviteEchoV2(body)
+        // pttOpen/pttClose are the ONE deviation from this switch's otherwise
+        // length-permissive contract: a `.pttOpen` carries the raw 32-byte session
+        // secret S, so a malformed handover is rejected at the EARLIEST boundary
+        // (reject bodies ≠ 48 / 16) rather than deferred to a parser. parsePTTOpen /
+        // parsePTTClose re-check and split the fields.
+        case .pttOpen:
+            guard body.count == pttOpenBodyByteCount else { return nil }
+            return .pttOpen(body)
+        case .pttClose:
+            guard body.count == pttIDByteCount else { return nil }
+            return .pttClose(body)
         }
     }
 
@@ -364,5 +385,64 @@ public extension MessagePayload {
         guard body.count == inviteEchoV2ByteCount else { return nil }
         return (Data(body.prefix(inviteEchoIDByteCount)),
                 Data(body.suffix(nostrPubkeyByteCount)))
+    }
+}
+
+// MARK: - PTT handshake body  (PTT Part A — open/close + session-secret S handover)
+
+public extension MessagePayload {
+
+    /// Byte length of a PTT session id — 16 CSPRNG bytes, the SAME 16-byte shape as
+    /// `CallSignal.callID` / a mediaID, minted fresh per PTT session by the
+    /// initiator and carried in both the `.pttOpen` and its matching `.pttClose`.
+    static var pttIDByteCount: Int { 16 }
+
+    /// Byte length of the session secret S handed over in a `.pttOpen`. 32 bytes —
+    /// the input keying material for `PTTSessionCrypto.directionalKeys`.
+    static var pttSecretByteCount: Int { PTTSessionCrypto.keyByteCount }
+
+    /// Byte length of a `.pttOpen` body: pttID(16) ‖ S(32) = 48.
+    static var pttOpenBodyByteCount: Int { pttIDByteCount + pttSecretByteCount }
+
+    /// Mint a fresh 16-byte PTT session id (CSPRNG) — same pattern as the caller's
+    /// callID mint (`SecRandomCopyBytes`, `CallSignal.callIDByteCount`).
+    static func newPTTID() -> Data {
+        var bytes = [UInt8](repeating: 0, count: pttIDByteCount)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        precondition(status == errSecSuccess, "CSPRNG (SecRandomCopyBytes) failed")
+        return Data(bytes)
+    }
+
+    /// Build a `.pttOpen`: the session-secret handover. Body = pttID(16) ‖ S(32).
+    ///
+    /// SECURITY: `secret` is the raw 32-byte session secret S. This payload is
+    /// sealed under the existing VERIFIED Signal session (the ONLY path S ever
+    /// travels — never the link-local reconnect route) and S is NEVER logged.
+    /// Named distinctly from the `.pttOpen` case (cf. `deliveryAck` vs `.ack`) so
+    /// call sites read intent without colliding with the case label.
+    static func pttOpenV1(pttID: Data, secret: Data) -> MessagePayload {
+        .pttOpen(pttID + secret)
+    }
+
+    /// Build a `.pttClose` carrying the SAME pttID as its `.pttOpen`. Body = pttID(16).
+    static func pttCloseV1(pttID: Data) -> MessagePayload {
+        .pttClose(pttID)
+    }
+
+    /// Parse a `.pttOpen` body into `(pttID, S)`. Returns nil unless EXACTLY 48
+    /// bytes. Unlike the other kinds here, `decode()` ALSO length-checks pttOpen
+    /// (S is security-critical), but this parser re-checks and is what SPLITS the
+    /// two fields. S is returned as raw `Data` — the crypto layer wraps it in a
+    /// `SymmetricKey` for `PTTSessionCrypto.directionalKeys`.
+    static func parsePTTOpen(_ body: Data) -> (pttID: Data, secret: Data)? {
+        guard body.count == pttOpenBodyByteCount else { return nil }
+        return (Data(body.prefix(pttIDByteCount)),
+                Data(body.suffix(pttSecretByteCount)))
+    }
+
+    /// Parse a `.pttClose` body into its pttID. Returns nil unless EXACTLY 16 bytes.
+    static func parsePTTClose(_ body: Data) -> Data? {
+        guard body.count == pttIDByteCount else { return nil }
+        return body
     }
 }
