@@ -211,6 +211,14 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     /// .writeWithoutResponse + .notify, no .write). Held so 4c can notify on it.
     private var audioMailbox: CBMutableCharacteristic?
     private var subscribedCentrals: Set<UUID> = []
+    /// Per-link handle to the subscribed CBCentral OBJECT (PTT Part B) — the
+    /// peripheral-role mirror of `audioWriteTargets`, so `sendAudioSealed` can
+    /// address ONE central by link id (`subscribedCentrals` keeps only the ids;
+    /// `didSubscribeTo` discards the object). Populated alongside every
+    /// `subscribedCentrals.insert`, torn down at every site that clears it
+    /// (unsubscribe / power-off / stop). ADDITIVE ONLY (I5): never gates
+    /// reachability, never touches the fairness ring.
+    private var audioCentrals: [UUID: CBCentral] = [:]
     /// Reassembly buffers for inbound writes (central → us), keyed by central id
     /// THEN characteristic uuid (see `notifyReassembly`). Private; DEBUG hooks.
     private var writeReassembly: [UUID: [CBUUID: ReassemblyState]] = [:]
@@ -273,6 +281,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             self.writeTargets.removeAll()
             self.audioWriteTargets.removeAll()
             self.subscribedCentrals.removeAll()
+            self.audioCentrals.removeAll()
             self.notifyReassembly.removeAll()
             self.writeReassembly.removeAll()
             self.pendingNotifications.removeAll()
@@ -574,6 +583,48 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
                 sent += 1
             }
             audioNotifyRing[key] = buf.frames.isEmpty ? nil : buf
+        }
+    }
+
+    /// Role-agnostic sealed-audio send to ONE link (PTT Part B): resolve which
+    /// GATT role addresses `id` — central-write (`audioWriteTargets`) or
+    /// peripheral-notify (`audioCentrals`) — and hand the frame to that role's
+    /// existing lossy path. Neither → not audio-addressable; drop silently
+    /// (lossy contract — the receiver's replay window tolerates the gap).
+    ///
+    /// THREADING (I1): fire-and-forget off the caller's (render) thread. The
+    /// role state is cbQueue-confined, so the read hops here; sendAudioFrame /
+    /// sendAudioNotify then re-hop internally. That second hop on the same
+    /// serial queue is redundant but harmless — FIFO order is preserved because
+    /// every frame takes the same two-hop path — and it keeps the ring guards in
+    /// exactly one place each (I5: this method never touches ring state itself).
+    public func sendAudioSealed(_ framed: Data, toLink id: UUID) {
+        cbQueue.async { [weak self] in
+            guard let self else { return }
+            if self.audioWriteTargets[id] != nil {
+                self.sendAudioFrame(framed, toLink: id)            // central role
+            } else if let central = self.audioCentrals[id] {
+                self.sendAudioNotify(framed, toCentral: central)   // peripheral role
+            }
+            // neither → not audio-addressable; drop (lossy contract)
+        }
+    }
+
+    /// Resolve which ONE of a peer's (up to two — dual GATT role) links is
+    /// audio-addressable, PREFERRING the central-write role (PTT Part B, I6:
+    /// the talker sends on exactly one link; sending on both would open two
+    /// independent far-side sessions → doubled audio). nil → no audio path.
+    /// Async because the role maps are cbQueue-confined.
+    public func resolveAudioLink(among ids: [UUID]) async -> UUID? {
+        await withCheckedContinuation { (cont: CheckedContinuation<UUID?, Never>) in
+            cbQueue.async { [weak self] in
+                guard let self, self.started else { cont.resume(returning: nil); return }
+                if let id = ids.first(where: { self.audioWriteTargets[$0] != nil }) {
+                    cont.resume(returning: id)                      // central-write preferred
+                } else {
+                    cont.resume(returning: ids.first(where: { self.audioCentrals[$0] != nil }))
+                }
+            }
         }
     }
 
@@ -1006,6 +1057,7 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
             // re-advertises, repopulating subscribers when the radio returns.
             log.error("peripheral state not poweredOn: \(peripheral.state.rawValue) → clearing peripheral-side presence")
             subscribedCentrals.removeAll()
+            audioCentrals.removeAll()
             writeReassembly.removeAll()
             pendingNotifications.removeAll()
             audioNotifyRing.removeAll()
@@ -1044,6 +1096,7 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
                                   central: CBCentral,
                                   didSubscribeTo characteristic: CBCharacteristic) {
         subscribedCentrals.insert(central.identifier)
+        audioCentrals[central.identifier] = central
         emitReachable()
         log.info("central \(central.identifier) subscribed → peripheral-side presence")
     }
@@ -1052,6 +1105,7 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
                                   central: CBCentral,
                                   didUnsubscribeFrom characteristic: CBCharacteristic) {
         subscribedCentrals.remove(central.identifier)
+        audioCentrals[central.identifier] = nil
         writeReassembly[central.identifier] = nil
         audioNotifyRing[central.identifier] = nil
         emitReachable()
