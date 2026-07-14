@@ -197,6 +197,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// No audio content flows in Part A (playout wiring is a later step).
     private let pttReceiver = PTTReceiver()
 
+    /// The single long-lived consumer of `transport.audioFrames` (B-4 receive
+    /// live-drive). Started once via `startPTTAudioDrive()`; its guard keeps this
+    /// SINGLE-consumer — the stream is single-consumer, and a second iterator would
+    /// split/race it. Cancelled in `deinit`. The drive runs INSIDE this actor so
+    /// `pttReceiver.receive` (recvKey + replay state) never leaves the coordinator's
+    /// isolation — the whole reason `pttReceiver` is owned here.
+    private var pttAudioTask: Task<Void, Never>?
+
     /// The most recent set of reachable BLE links (ephemeral CoreBluetooth ids)
     /// from the transport. Remembered between ticks so `onBundle` can recompute
     /// presence when a link becomes identified, and so `emitReachablePeers`
@@ -284,7 +292,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         self.reachablePeers = rStream
         self.reachablePeersContinuation = rContinuation
     }
-    
+
+    deinit {
+        pttAudioTask?.cancel()   // B-4: never leak / re-spawn a competing audio consumer
+    }
+
     /// Wire the mesh router in (Phase 7b.1). Called once by the composition root
     /// right after it registers this actor as the router's `EnvelopeReceiver`.
     func setRouter(_ router: MessageRouter) {
@@ -296,7 +308,30 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     func setInviteRedeemer(_ redeemer: InviteRedeeming) {
         self.inviteRedeemer = redeemer
     }
-    
+
+    /// Start the SINGLE long-lived consumer of the transport's sealed-audio stream
+    /// (B-4 receive live-drive). Called ONCE by the composition root. Idempotent:
+    /// the guard makes a second call a no-op, so `audioFrames` (single-consumer) is
+    /// never split. The stream is captured into the task at creation (one iterator);
+    /// each frame hops back onto THIS actor via `ingestPTTAudio`, so `receive` — and
+    /// the recvKey/replay state it mutates — only ever runs on the coordinator.
+    func startPTTAudioDrive() {
+        guard pttAudioTask == nil else { return }
+        pttAudioTask = Task { [weak self, frames = transport.audioFrames] in
+            for await frame in frames {
+                await self?.ingestPTTAudio(frame)
+            }
+        }
+    }
+
+    /// Decode-only ingest of one sealed audio frame (B-4). Actor-isolated, so
+    /// `pttReceiver.receive` (recvKey + replay window) stays confined to this actor.
+    /// `receive` is synchronous — this awaits nothing. NO playout here: decoded PCM
+    /// is discarded until Part C wires a player.
+    private func ingestPTTAudio(_ frame: (link: UUID, sealed: Data)) {
+        pttReceiver.receive(link: frame.link, sealed: frame.sealed)
+    }
+
     /// Inject our Nostr public key (Phase 8d npub-bootstrap). Called once by the
     /// composition root after it load-or-creates the device's NostrIdentity,
     /// alongside `setRouter`. A nil key (no Nostr identity) leaves the announce

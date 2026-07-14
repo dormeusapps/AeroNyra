@@ -560,6 +560,7 @@ struct ContentView: View {
             await coord.setRouter(mesh)
             await coord.setNostrPublicKey(ourNostrPubkey)   // Phase 8d npub-bootstrap
             await coord.setInviteRedeemer(enroll)           // STEP 7c-2 invite-echo redeem (weak)
+            await coord.startPTTAudioDrive()                // B-4: single consumer of transport.audioFrames → receive/decode
             
             // Closed-contact reconnect (5d). Warm the trial-decrypt cache from the
             // allowlist (Invariant #1) BEFORE any 0x03 frame can arrive, then
