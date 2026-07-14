@@ -91,7 +91,8 @@ final class PTTCapturePipeline: @unchecked Sendable {
     private let converter: AVAudioConverter
     private let targetFormat: AVAudioFormat
     private let hwSampleRate: Double
-    private let file: AVAudioFile
+    /// Optional so `finalize()` can nil the sole reference and close the file.
+    private var file: AVAudioFile?
     private let codec: OpusVoiceCodec.Encoder
     private var slicer = OpusFrameSlicer()
     private let onLevel: (CGFloat) -> Void
@@ -128,7 +129,7 @@ final class PTTCapturePipeline: @unchecked Sendable {
         let samples = Array(UnsafeBufferPointer(start: ch[0], count: Int(out.frameLength)))
 
         // (a) .m4a note — the same converted audio.
-        try? file.write(from: out)
+        try? file?.write(from: out)
 
         // (b) Opus — exact 960-sample frames across seams; encode + discard
         // (no transport this step).
@@ -139,6 +140,12 @@ final class PTTCapturePipeline: @unchecked Sendable {
         // meter — same dB→0…1 mapping the sphere binds.
         onLevel(PTTCaptureDSP.meterLevel(rms: PTTCaptureDSP.rms(samples)))
     }
+
+    /// Flush + close the .m4a. Nil-ing the SOLE `AVAudioFile` reference runs its
+    /// deinit synchronously, writing the AAC moov/trailer and closing the file
+    /// before this returns. Must be called AFTER the tap is removed (no more
+    /// `process()` can run), so a late buffer can't be dropped.
+    func finalize() { file = nil }
 }
 
 enum PTTCaptureError: Error { case converterUnavailable, targetFormatUnavailable }
@@ -212,8 +219,9 @@ final class PTTCaptureEngine {
     /// as `VoiceRecorder.stop()`.
     func stop() -> Data? {
         guard isRecording, let url = fileURL else { finish(); return nil }
-        teardownEngine()
-        pipeline = nil                          // release → AVAudioFile flushes + closes
+        teardownEngine()                        // tap removed → no more process() calls
+        pipeline?.finalize()                    // close the AVAudioFile: moov written BEFORE we read
+        pipeline = nil                          // now release the pipeline object
         isRecording = false
         let data = try? Data(contentsOf: url)
         try? FileManager.default.removeItem(at: url)
