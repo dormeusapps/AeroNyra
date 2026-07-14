@@ -163,6 +163,31 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     /// Resend attempts per chunk on a transient error before the frame fails.
     private static let chunkRetryLimit = 2
 
+    // MARK: - Audio-fairness ring (lossy PTT audio vs. a saturating reliable path)
+    // INVARIANT: audio is bounded-latency, NEVER lossless. The ring is drop-OLDEST
+    // and hard-capped at `audioRingCapacity`. The reliable path (writeQueues /
+    // pendingNotifications) never loses a chunk — it only PACES: it yields at most
+    // `audioDrainPerReady` audio frames per ACK / ready callback, and audio never
+    // delays a reliable chunk beyond that bounded N-per-ACK slice. Without this, a
+    // back-to-back file transfer holds the shared connection TX budget continuously,
+    // so every `.withoutResponse` / notify audio frame finds the queue full and is
+    // dropped (measured on hardware: sent=0 dropped=2579).
+    //
+    // K and N are the tunables: raise K to ride out longer reliable bursts at the
+    // cost of audio latency; raise N to give audio more air at the cost of reliable
+    // throughput.
+    private static let audioRingCapacity = 8   // K: max buffered audio frames per peer / central
+    private static let audioDrainPerReady = 2  // N: audio frames yielded per reliable ACK / ready callback
+    /// Central role: per-link pending audio frames, already framed (.audioFrame),
+    /// awaiting `.withoutResponse` capacity. Drained on send, on write-ACK, and on
+    /// `peripheralIsReady(toSendWriteWithoutResponse:)`.
+    private var audioRing: [UUID: [Data]] = [:]
+    /// Peripheral role: per-central pending audio frames, already framed, awaiting
+    /// notify capacity. Drained on send and on `peripheralManagerIsReady`. Holds the
+    /// CBCentral so the drain addresses the same subscriber the frame targeted.
+    private struct AudioNotifyBuffer { let central: CBCentral; var frames: [Data] }
+    private var audioNotifyRing: [UUID: AudioNotifyBuffer] = [:]
+
     // MARK: - Reconnect backoff after a dead-link teardown (central side)
     /// Consecutive write-failure teardowns per peripheral id (ISSUE-11).
     /// Without a holdoff, teardown → rescan → rediscover → re-greet → fail
@@ -254,6 +279,8 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             self.writeErrorCounts.removeAll()
             self.writeQueues.removeAll()
             self.writeInFlight.removeAll()
+            self.audioRing.removeAll()
+            self.audioNotifyRing.removeAll()
             self.chunkRetriesLeft.removeAll()
             self.reconnectAttempts.removeAll()
             self.reconnectHoldoff.removeAll()
@@ -458,23 +485,95 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     public func sendAudioFrame(_ sealed: Data, toLink id: UUID) {
         cbQueue.async { [weak self] in
             guard let self, self.started,
-                  let ch = self.audioWriteTargets[id], let peer = self.peers[id] else { return }
-            guard peer.canSendWriteWithoutResponse else { return }   // full → DROP
-            peer.writeValue(Self.frame(.audioFrame, sealed), for: ch, type: .withoutResponse)
+                  self.audioWriteTargets[id] != nil, self.peers[id] != nil else { return }
+            // Enqueue into the drop-oldest ring, then opportunistically send one: on
+            // an idle link this delivers immediately (today's fast path); under a
+            // reliable burst the frame waits for the ACK loop / peripheralIsReady.
+            self.enqueueAudio(Self.frame(.audioFrame, sealed), id: id)
+            self.drainAudioRing(id, limit: 1)
         }
     }
 
-    /// Peripheral → a SINGLE central: one sealed audio frame notified on the AUDIO
-    /// characteristic. DROP on `updateValue == false` (queue full) — never stash,
-    /// never route through `pendingNotifications`/`peripheralManagerIsReady`.
-    /// Fully separate from the reliable notify FIFO. cbQueue.
+    /// Enqueue one already-framed audio frame for a link; drop the OLDEST past K.
+    /// cbQueue.
+    private func enqueueAudio(_ framed: Data, id: UUID) {
+        var q = audioRing[id] ?? []
+        q.append(framed)
+        if q.count > Self.audioRingCapacity { q.removeFirst(q.count - Self.audioRingCapacity) }
+        audioRing[id] = q
+    }
+
+    /// Central role: send up to `limit` framed audio frames to a link while it has
+    /// `.withoutResponse` capacity. The reliable pump calls this with N per ACK; the
+    /// send path with 1. cbQueue.
+    private func drainAudioRing(_ id: UUID, limit: Int) {
+        guard let peer = peers[id], let ch = audioWriteTargets[id] else { return }
+        // CONCURRENCY / no double-send: all ring state is mutated ONLY on cbQueue, and
+        // the write + removeFirst below run in ONE synchronous block with NO await
+        // between them. Both the ACK-branch drain and peripheralIsReady call this, but
+        // cbQueue serializes them — no second drain can observe a frame a first drain
+        // has written but not yet removed. Each frame is written exactly once.
+        var sent = 0
+        while sent < limit, peer.canSendWriteWithoutResponse, let framed = audioRing[id]?.first {
+            peer.writeValue(framed, for: ch, type: .withoutResponse)
+            audioRing[id]?.removeFirst()
+            sent += 1
+        }
+        if audioRing[id]?.isEmpty == true { audioRing[id] = nil }
+    }
+
+    /// Peripheral → a subscribed central: one sealed audio frame notified on the
+    /// AUDIO characteristic. Buffered in the drop-OLDEST `audioNotifyRing` (its OWN
+    /// per-central ring — NOT the reliable `pendingNotifications` FIFO) and drained
+    /// a bounded N per `peripheralManagerIsReady`, so a saturating reliable notify
+    /// backlog can't starve it. Lossy by design: overflow drops the oldest audio,
+    /// never a reliable slice. cbQueue.
     public func sendAudioNotify(_ sealed: Data, toCentral central: CBCentral) {
         cbQueue.async { [weak self] in
             guard let self, self.started,
-                  let peripheral = self.peripheral, let audio = self.audioMailbox else { return }
-            let ok = peripheral.updateValue(Self.frame(.audioFrame, sealed),
-                                            for: audio, onSubscribedCentrals: [central])
-            if !ok { self.log.debug("audio notify dropped (queue full) → \(central.identifier)") }
+                  self.peripheral != nil, self.audioMailbox != nil else { return }
+            // Peripheral-role twin of the central ring: enqueue drop-oldest, then try
+            // one now (idle fast path). Under a reliable notify backlog the frame
+            // waits for `peripheralManagerIsReady` to yield it its N-per-callback slice.
+            self.enqueueAudioNotify(Self.frame(.audioFrame, sealed), to: central)
+            self.drainAudioNotifyRing(limit: 1)
+        }
+    }
+
+    /// Enqueue one already-framed audio frame for a central; drop the OLDEST past K.
+    /// Holds the CBCentral so the drain addresses the same subscriber. cbQueue.
+    private func enqueueAudioNotify(_ framed: Data, to central: CBCentral) {
+        var buf = audioNotifyRing[central.identifier] ?? AudioNotifyBuffer(central: central, frames: [])
+        buf.frames.append(framed)
+        if buf.frames.count > Self.audioRingCapacity {
+            buf.frames.removeFirst(buf.frames.count - Self.audioRingCapacity)
+        }
+        audioNotifyRing[central.identifier] = buf
+    }
+
+    /// Peripheral role: notify up to `limit` framed audio frames per subscribed
+    /// central, stopping a central the moment `updateValue` reports its TX queue
+    /// full. `peripheralManagerIsReady` calls this with N; the send path with 1.
+    /// cbQueue.
+    private func drainAudioNotifyRing(limit: Int) {
+        guard let peripheral, let audio = audioMailbox else { return }
+        // CONCURRENCY / no double-send: same cbQueue-serial guarantee as drainAudioRing
+        // — all mutation on cbQueue, no await inside the loop. NOTE this path is
+        // send-then-pop (not pop-then-send): removeFirst runs ONLY after updateValue
+        // reports success, so a frame the TX queue rejected stays queued (not lost),
+        // and a delivered frame is removed in the same synchronous block before any
+        // other drain can run. Written exactly once.
+        for key in Array(audioNotifyRing.keys) {
+            guard var buf = audioNotifyRing[key] else { continue }
+            var sent = 0
+            while sent < limit, let framed = buf.frames.first {
+                if !peripheral.updateValue(framed, for: audio, onSubscribedCentrals: [buf.central]) {
+                    break   // TX queue full → wait for the next ready callback
+                }
+                buf.frames.removeFirst()
+                sent += 1
+            }
+            audioNotifyRing[key] = buf.frames.isEmpty ? nil : buf
         }
     }
 
@@ -639,6 +738,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
             writeErrorCounts.removeAll()
             writeQueues.removeAll()
             writeInFlight.removeAll()
+            audioRing.removeAll()
             chunkRetriesLeft.removeAll()
             reconnectAttempts.removeAll()
             reconnectHoldoff.removeAll()
@@ -695,6 +795,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
         writeErrorCounts[peripheral.identifier] = nil
         writeQueues[peripheral.identifier] = nil
         writeInFlight.remove(peripheral.identifier)
+        audioRing[peripheral.identifier] = nil
         chunkRetriesLeft[peripheral.identifier] = nil
         emitReachable()
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
@@ -760,11 +861,11 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         }
     }
 
-    /// The peer's `.withoutResponse` TX buffer drained. Audio uses drop-on-full
-    /// (not buffering), so there's nothing to flush — wired only so CoreBluetooth
-    /// doesn't warn about the unimplemented callback.
+    /// The peer's `.withoutResponse` TX buffer drained → yield a bounded slice to
+    /// buffered audio for this link. The reliable pump is ACK-driven and untouched
+    /// here; this only re-drives the lossy audio ring when capacity re-opens.
     public func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
-        // no-op: audio frames are dropped, never queued for a later flush.
+        drainAudioRing(peripheral.identifier, limit: Self.audioDrainPerReady)
     }
 
     public func peripheral(_ peripheral: CBPeripheral,
@@ -782,6 +883,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
             chunkRetriesLeft[id] = nil
             reconnectAttempts[id] = nil   // proven alive → backoff starts over
             advanceWriteQueue(id)
+            drainAudioRing(id, limit: Self.audioDrainPerReady)   // yield a bounded audio slice per ACK
             return
         }
 
@@ -862,6 +964,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         notifyReassembly[id] = nil
         writeErrorCounts[id] = nil
         writeQueues[id] = nil
+        audioRing[id] = nil
         chunkRetriesLeft[id] = nil
         central?.cancelPeripheralConnection(peripheral)
         emitReachable()
@@ -905,6 +1008,7 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
             subscribedCentrals.removeAll()
             writeReassembly.removeAll()
             pendingNotifications.removeAll()
+            audioNotifyRing.removeAll()
             mailbox = nil
             audioMailbox = nil
             emitReachable()
@@ -949,6 +1053,7 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
                                   didUnsubscribeFrom characteristic: CBCharacteristic) {
         subscribedCentrals.remove(central.identifier)
         writeReassembly[central.identifier] = nil
+        audioNotifyRing[central.identifier] = nil
         emitReachable()
         log.info("central \(central.identifier) unsubscribed → presence removed")
     }
@@ -970,6 +1075,16 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
 
     /// TX queue drained — flush any notifications we stashed under backpressure.
     public func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+        // Yield a bounded audio slice FIRST — audio-first is REQUIRED, not cosmetic:
+        // draining the reliable `pendingNotifications` FIFO first would RE-STARVE
+        // audio whenever that backlog never fully empties (a sustained media
+        // transfer), because the loop below only exits on empty-or-TX-full, so audio
+        // would never get a turn. Do NOT "simplify" this back to reliable-first /
+        // symmetric ordering — it reintroduces the exact starvation this fixes.
+        // Reliable loses nothing: its FIFO still drains in full below, just paced by
+        // N audio frames per ready callback (the peripheral-role twin of the ACK-loop
+        // fairness).
+        drainAudioNotifyRing(limit: Self.audioDrainPerReady)
         guard let mailbox else { return }
         while !pendingNotifications.isEmpty {
             let slice = pendingNotifications[0]
