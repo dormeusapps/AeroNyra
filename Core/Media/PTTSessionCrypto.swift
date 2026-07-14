@@ -112,6 +112,22 @@ public final class PTTFrameSealer {
     }
 }
 
+// MARK: - The live-send seam (initiator-open → capture pipeline, Part B)
+
+/// The ONE-SHOT handoff from the coordinator's initiator-open to the capture
+/// pipeline: the per-session frame sealer plus a role-agnostic send closure
+/// already bound to ONE resolved BLE link (I6 — never both GATT roles).
+///
+/// `@unchecked Sendable`: `PTTFrameSealer` is a non-Sendable class, but the
+/// sealer is render-thread-confined (I2) — the coordinator derives the send key
+/// and constructs the sealer INSIDE its actor, hands this handle out exactly
+/// once at session-open, and retains no reference; thereafter only the capture
+/// tap thread touches it. `send` is fire-and-forget into the transport's queue.
+struct PTTLiveSend: @unchecked Sendable {
+    let sealer: PTTFrameSealer
+    let send: @Sendable (Data) -> Void
+}
+
 // MARK: - Receiver: authenticate-then-anti-replay opener
 
 /// One opener per (session, direction). Not thread-safe — driven on the receive

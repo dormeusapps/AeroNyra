@@ -205,6 +205,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// isolation — the whole reason `pttReceiver` is owned here.
     private var pttAudioTask: Task<Void, Never>?
 
+    /// pttID of OUR open initiator-side PTT session, per peer raw key (Part B) —
+    /// kept so `closePTTInitiator(toPeer:)` can send the matching `.pttClose`
+    /// without the caller threading the id. pttID is a NON-secret random session
+    /// id (safe to log); S / the derived keys / the sealer are NEVER stored here
+    /// (I2 — the sealer transfers to the capture pipeline at open and this actor
+    /// retains no crypto material past `openPTTInitiator`'s return).
+    private var pttInitiatorIDs: [Data: Data] = [:]
+
     /// The most recent set of reachable BLE links (ephemeral CoreBluetooth ids)
     /// from the transport. Remembered between ticks so `onBundle` can recompute
     /// presence when a link becomes identified, and so `emitReachablePeers`
@@ -1099,6 +1107,88 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let sealed = try session.seal(MessagePayload.callSignal(signal).sealedPlaintext())
         try await routeOut(Envelope(ciphertext: sealed), tracked: false,
                            peerKey: rawKey, nostrRecipient: nostrRecipient)
+    }
+
+    /// Open a live PTT (walkie) session AS INITIATOR to a verified peer (Part B):
+    /// mint the session id + 32-byte secret S, hand S over SEALED on the reliable
+    /// E2E rail (the same untracked addressed path as `sendCallSignal`), and
+    /// return the live-send seam the capture pipeline consumes.
+    ///
+    /// DIRECTIONALITY (security pin): audio flows initiator→responder ONLY. Our
+    /// SEND key is `initiatorToResponder` — the SAME directional field the
+    /// responder derives as its recv key on `.pttOpen` (see `receive`). Never
+    /// `.responderToInitiator`.
+    ///
+    /// SECURITY (I2/I4): S and the derived key are consumed HERE, inside the
+    /// actor, into a `PTTFrameSealer`; only the sealer object + send closure
+    /// cross out, exactly once, and this actor retains neither. S / keys /
+    /// sealer material are NEVER logged in any config — pttID only.
+    ///
+    /// ONE LINK (I6): a peer can be audio-addressable over both GATT roles;
+    /// sending on both would spawn two independent far-side openers → doubled
+    /// audio. The transport resolves ONE link, preferring central-write.
+    func openPTTInitiator(toPeer rawKey: Data) async throws -> PTTLiveSend {
+        // Session id (non-secret, loggable) + secret S — same CSPRNG mint
+        // pattern as `MessagePayload.newPTTID`.
+        let pttID = MessagePayload.newPTTID()
+        var sBytes = [UInt8](repeating: 0, count: MessagePayload.pttSecretByteCount)
+        let status = SecRandomCopyBytes(kSecRandomDefault, sBytes.count, &sBytes)
+        precondition(status == errSecSuccess, "CSPRNG (SecRandomCopyBytes) failed")
+        let secret = Data(sBytes)
+
+        let sendKey = PTTSessionCrypto.directionalKeys(
+            secret: SymmetricKey(data: secret)).initiatorToResponder
+        let sealer = PTTFrameSealer(key: sendKey)
+
+        // Resolve exactly ONE audio-addressable link (I6). None → no audio path.
+        guard let chosenLink = await transport.resolveAudioLink(among: linksFor(rawKey: rawKey)) else {
+            RedactLog.event("first-contact: ptt-open (initiator) no audio link",
+                            "pttID \(pttIDLog(pttID))")
+            throw TransportError.noReachablePeers
+        }
+
+        // Hand S over sealed under the VERIFIED Signal session — the ONLY path
+        // S ever travels (mirrors sendCallSignal exactly).
+        let peer = store.peerIdentity(fromRawKey: rawKey)
+        let session = try store.session(with: peer)
+        let sealed = try session.seal(
+            MessagePayload.pttOpenV1(pttID: pttID, secret: secret).sealedPlaintext())
+        try await routeOut(Envelope(ciphertext: sealed), tracked: false, peerKey: rawKey)
+
+        pttInitiatorIDs[rawKey] = pttID
+        RedactLog.event("first-contact: PTT OPEN (initiator)",
+                        "pttID \(pttIDLog(pttID)) → \(peer.userIDHex.prefix(16))…")
+
+        // The send closure is role-agnostic and bound to the ONE resolved link;
+        // fire-and-forget (I1 — the render thread never blocks on transport).
+        let send: @Sendable (Data) -> Void = { [transport] framed in
+            transport.sendAudioSealed(framed, toLink: chosenLink)
+        }
+        // Sealer ownership TRANSFERS with this return (I2) — not retained here.
+        return PTTLiveSend(sealer: sealer, send: send)
+    }
+
+    /// Close OUR initiator-side PTT session to `rawKey` (Part B): send the
+    /// matching `.pttClose` over the same untracked sealed rail as the open.
+    /// The pttID is looked up from `pttInitiatorIDs` (recorded at open) so the
+    /// caller doesn't thread it; a no-op if no open session is on record.
+    /// NEVER touches the sealer — the capture pipeline owns it (I2). Best-effort
+    /// like a delivery ack: a lost close is healed by the responder's link-loss
+    /// eviction. Logs pttID only (I4).
+    func closePTTInitiator(toPeer rawKey: Data) async {
+        guard let pttID = pttInitiatorIDs.removeValue(forKey: rawKey) else { return }
+        do {
+            let peer = store.peerIdentity(fromRawKey: rawKey)
+            let session = try store.session(with: peer)
+            let sealed = try session.seal(
+                MessagePayload.pttCloseV1(pttID: pttID).sealedPlaintext())
+            try await routeOut(Envelope(ciphertext: sealed), tracked: false, peerKey: rawKey)
+            RedactLog.event("first-contact: PTT CLOSE (initiator)",
+                            "pttID \(pttIDLog(pttID)) → \(peer.userIDHex.prefix(16))…")
+        } catch {
+            RedactLog.event("first-contact: ptt-close (initiator) failed",
+                            "pttID \(pttIDLog(pttID)) — \(type(of: error))")
+        }
     }
 
     /// Announce OUR Nostr public key to an established peer over the sealed
