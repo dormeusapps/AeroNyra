@@ -96,9 +96,18 @@ final class PTTCapturePipeline: @unchecked Sendable {
     private let codec: OpusVoiceCodec.Encoder
     private var slicer = OpusFrameSlicer()
     private let onLevel: (CGFloat) -> Void
+    /// Live-session seal seam (PTT Part B). BOTH nil on the note-only path,
+    /// which then behaves exactly as before (encode + discard). The sealer is
+    /// render-thread-confined after the coordinator's one-shot handoff (I2);
+    /// this thread is serial, so its counter needs no lock (I3). `send` is the
+    /// fire-and-forget transport closure (I1 — never blocks this thread).
+    private let sealer: PTTFrameSealer?
+    private let send: (@Sendable (Data) -> Void)?
 
     init(hwFormat: AVAudioFormat, targetFormat: AVAudioFormat, fileURL: URL,
-         onLevel: @escaping (CGFloat) -> Void) throws {
+         onLevel: @escaping (CGFloat) -> Void,
+         sealer: PTTFrameSealer? = nil,
+         send: (@Sendable (Data) -> Void)? = nil) throws {
         guard let conv = AVAudioConverter(from: hwFormat, to: targetFormat) else {
             throw PTTCaptureError.converterUnavailable
         }
@@ -112,6 +121,8 @@ final class PTTCapturePipeline: @unchecked Sendable {
                                     commonFormat: .pcmFormatFloat32, interleaved: false)
         self.codec = try OpusVoiceCodec.Encoder()
         self.onLevel = onLevel
+        self.sealer = sealer
+        self.send = send
     }
 
     func process(_ hwBuffer: AVAudioPCMBuffer) {
@@ -131,10 +142,23 @@ final class PTTCapturePipeline: @unchecked Sendable {
         // (a) .m4a note — the same converted audio.
         try? file?.write(from: out)
 
-        // (b) Opus — exact 960-sample frames across seams; encode + discard
-        // (no transport this step).
+        // (b) Opus — exact 960-sample frames across seams. With a live session,
+        // seal + pack + send ON THIS RENDER THREAD (I1: fire-and-forget, no
+        // await, no actor hop, no per-frame Task). Without one (note-only),
+        // encoded frames are not sent — today's behavior, unchanged.
         for frame in slicer.push(samples) {
-            _ = try? codec.encode(PTTCaptureDSP.int16Frame(frame))
+            guard let opus = try? codec.encode(PTTCaptureDSP.int16Frame(frame)) else { continue }
+            if let sealer, let send {                                   // live session present
+                // Peek-then-seal, NEVER split: `nextCounter` is the counter this
+                // seal consumes (serial render thread — I3), so the AAD seq and
+                // the packed seq are identical bytes. Splitting the idiom makes
+                // every frame fail authentication on the far side.
+                let seq = sealer.nextCounter                            // peek; == returned counter
+                if let s = try? sealer.seal(opus, aad: PTTAudioWire.aad(forSeq: seq)) {
+                    send(PTTAudioWire.pack(seq: s.counter, ciphertext: s.ciphertext, tag: s.tag))
+                }
+            }
+            // sealer == nil → note-only path; encoded frame not sent (fallback unchanged)
         }
 
         // meter — same dB→0…1 mapping the sphere binds.
@@ -171,7 +195,10 @@ final class PTTCaptureEngine {
 
     // MARK: Lifecycle
 
-    func start() async {
+    /// `live` (PTT Part B): the coordinator's one-shot sealer + send handoff for
+    /// a live walkie session. Defaults nil — note-only callers pass nothing and
+    /// get today's behavior exactly (encode + discard, .m4a note unchanged).
+    func start(live: PTTLiveSend? = nil) async {
         guard !isRecording else { return }
         guard await ensurePermission() else { permissionDenied = true; return }
         permissionDenied = false
@@ -192,9 +219,12 @@ final class PTTCaptureEngine {
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent("ptt-\(UUID().uuidString).m4a")
             let pipe = try PTTCapturePipeline(hwFormat: hwFormat, targetFormat: target,
-                                              fileURL: url) { [weak self] level in
-                Task { @MainActor in self?.appendLevel(level) }
-            }
+                                              fileURL: url,
+                                              onLevel: { [weak self] level in
+                                                  Task { @MainActor in self?.appendLevel(level) }
+                                              },
+                                              sealer: live?.sealer,
+                                              send: live?.send)
             // The tap runs `pipe.process` on the render thread; its buffer size is
             // a hint iOS overrides — the slicer's ring buffer absorbs that.
             input.installTap(onBus: 0, bufferSize: 4096, format: hwFormat) { [pipe] buffer, _ in
