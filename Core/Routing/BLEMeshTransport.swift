@@ -73,6 +73,13 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     public let reachabilityUpdates: AsyncStream<[UUID]>
     private let reachabilityCont: AsyncStream<[UUID]>.Continuation
 
+    /// Raw sealed PTT audio frames, demuxed by frame type and handed UP — the
+    /// transport stays carrier-neutral (it never opens/replay-checks/decodes).
+    /// Consumed by the PTT-receive layer (`PTTReceiver`), mirroring how
+    /// `incoming` carries envelopes.
+    public let audioFrames: AsyncStream<(link: UUID, sealed: Data)>
+    private let audioFramesCont: AsyncStream<(link: UUID, sealed: Data)>.Continuation
+
     // MARK: - Frame tags
     private enum FrameType: UInt8 {
         case envelope = 0x01   // relayable sealed payload
@@ -212,6 +219,10 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
         var rch: AsyncStream<[UUID]>.Continuation!
         self.reachabilityUpdates = AsyncStream<[UUID]> { rch = $0 }
         self.reachabilityCont = rch
+
+        var aud: AsyncStream<(link: UUID, sealed: Data)>.Continuation!
+        self.audioFrames = AsyncStream<(link: UUID, sealed: Data)> { aud = $0 }
+        self.audioFramesCont = aud
 
         super.init()
     }
@@ -435,6 +446,35 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
                     cont.resume(throwing: TransportError.noReachablePeers)
                 }
             }
+        }
+    }
+
+    // MARK: - Transmit: lossy PTT audio (4c) — separate from the reliable path
+    /// Central → peripheral: one sealed audio frame over `.withoutResponse` on the
+    /// AUDIO characteristic. DROP-on-backpressure — no queue, no stash, never
+    /// touches `pendingNotifications`. The caller sealed upstream (which already
+    /// advanced the nonce counter), so a drop is simply a gap the receiver's
+    /// replay window tolerates. Fire-and-forget; cbQueue.
+    public func sendAudioFrame(_ sealed: Data, toLink id: UUID) {
+        cbQueue.async { [weak self] in
+            guard let self, self.started,
+                  let ch = self.audioWriteTargets[id], let peer = self.peers[id] else { return }
+            guard peer.canSendWriteWithoutResponse else { return }   // full → DROP
+            peer.writeValue(Self.frame(.audioFrame, sealed), for: ch, type: .withoutResponse)
+        }
+    }
+
+    /// Peripheral → a SINGLE central: one sealed audio frame notified on the AUDIO
+    /// characteristic. DROP on `updateValue == false` (queue full) — never stash,
+    /// never route through `pendingNotifications`/`peripheralManagerIsReady`.
+    /// Fully separate from the reliable notify FIFO. cbQueue.
+    public func sendAudioNotify(_ sealed: Data, toCentral central: CBCentral) {
+        cbQueue.async { [weak self] in
+            guard let self, self.started,
+                  let peripheral = self.peripheral, let audio = self.audioMailbox else { return }
+            let ok = peripheral.updateValue(Self.frame(.audioFrame, sealed),
+                                            for: audio, onSubscribedCentrals: [central])
+            if !ok { self.log.debug("audio notify dropped (queue full) → \(central.identifier)") }
         }
     }
 
@@ -720,6 +760,13 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         }
     }
 
+    /// The peer's `.withoutResponse` TX buffer drained. Audio uses drop-on-full
+    /// (not buffering), so there's nothing to flush — wired only so CoreBluetooth
+    /// doesn't warn about the unimplemented callback.
+    public func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        // no-op: audio frames are dropped, never queued for a later flush.
+    }
+
     public func peripheral(_ peripheral: CBPeripheral,
                            didWriteValueFor characteristic: CBCharacteristic,
                            error: Error?) {
@@ -957,8 +1004,10 @@ extension BLEMeshTransport {
             log.info("RX reconnect \(payload.count) bytes from link \(link) → yielding")
             reconnectsCont.yield((link: link, data: payload))
         case .audioFrame:
-            // 4b: inert — audio playout arrives in a later step. Log and drop.
-            log.info("RX audio frame \(payload.count)B from \(link) — dropped (no playout yet)")
+            // Carrier-neutral: hand the sealed bytes UP; the PTT-receive layer
+            // unpacks / opens / replay-checks / decodes. The transport never
+            // interprets audio — same as envelopes yielding to `incoming`.
+            audioFramesCont.yield((link: link, sealed: payload))
         }
     }
 }
