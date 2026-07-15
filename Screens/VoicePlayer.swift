@@ -95,6 +95,7 @@ final class VoicePlayer {
     /// resumes. `.notifyOthersOnDeactivation` is the signal Music/Spotify use to
     /// pick their playback back up after we took over for the note.
     private func deactivateSession() {
+        guard !PTTSessionOwner.isLive else { return }
         try? AVAudioSession.sharedInstance()
             .setActive(false, options: [.notifyOthersOnDeactivation])
     }

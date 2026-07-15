@@ -919,6 +919,7 @@ struct StoryComposerView: View {
     private func deactivatePreviewAudio() {
         guard previewAudioActive else { return }
         previewAudioActive = false
+        guard !PTTSessionOwner.isLive else { return }
         try? AVAudioSession.sharedInstance()
             .setActive(false, options: [.notifyOthersOnDeactivation])
     }

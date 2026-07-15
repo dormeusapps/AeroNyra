@@ -1399,6 +1399,7 @@ private struct StoryViewer: View {
     private func deactivateAudio() {
         guard audioActive else { return }
         audioActive = false
+        guard !PTTSessionOwner.isLive else { return }
         try? AVAudioSession.sharedInstance()
             .setActive(false, options: [.notifyOthersOnDeactivation])
     }

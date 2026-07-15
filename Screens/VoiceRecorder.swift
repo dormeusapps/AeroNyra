@@ -170,6 +170,7 @@ final class VoiceRecorder {
     // MARK: - Teardown
 
     private func deactivateSession() {
+        guard !PTTSessionOwner.isLive else { return }
         try? AVAudioSession.sharedInstance()
             .setActive(false, options: [.notifyOthersOnDeactivation])
     }
