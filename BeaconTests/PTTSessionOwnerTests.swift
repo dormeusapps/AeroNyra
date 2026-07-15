@@ -2,14 +2,16 @@
 //  PTTSessionOwnerTests.swift
 //  BeaconTests
 //
-//  PTT C-3a, exercised HARDWARE-FREE: the session side effects and the player
-//  go behind the owner's injectable seams (`PTTAudioSessionControlling`,
-//  `PTTLivePlayout`), so these tests never touch the real `AVAudioSession`
-//  (whose setCategory/setActive can throw on the simulator) and never build
-//  an AVAudioEngine graph. Covered: the IC8 flag transitions, open/close
-//  idempotency, the opened() ordering contract (activate → flag → pre-empt →
-//  ready), the fail-closed activation-failure contract (§2.1 point 2), the
-//  last-close release, and the interruption ending policy.
+//  PTT C-3a (re-keyed by C-3b′ §3.5), exercised HARDWARE-FREE: the session
+//  side effects go behind the owner's injectable seam
+//  (`PTTAudioSessionControlling`), so these tests never touch the real
+//  `AVAudioSession` (whose setCategory/setActive can throw on the simulator).
+//  The owner is keyed by SESSION (pttID) and holds no player — player
+//  eviction is the coordinator's, link-keyed at `.pttClose` (C-3c). Covered:
+//  the IC8 flag transitions, open/close idempotency per pttID, the opened()
+//  ordering contract (activate → flag → pre-empt), the fail-closed
+//  activation-failure contract (§2.1 point 2), the last-close release, and
+//  the interruption ending policy.
 //
 
 import XCTest
@@ -26,8 +28,8 @@ final class PTTSessionOwnerTests: XCTestCase {
         super.tearDown()
     }
 
-    /// One shared, ordered record of every side effect across both spies and
-    /// the pre-empt closure — call ORDERING is the contract under test.
+    /// One shared, ordered record of every side effect across the session spy
+    /// and the pre-empt closure — call ORDERING is the contract under test.
     private final class Recorder {
         var log: [String] = []
         func note(_ s: String) { log.append(s) }
@@ -45,25 +47,23 @@ final class PTTSessionOwnerTests: XCTestCase {
         func deactivate() { rec.note("deactivate") }
     }
 
-    private final class PlayoutSpy: PTTLivePlayout {
-        let rec: Recorder
-        init(_ rec: Recorder) { self.rec = rec }
-        func readyForSession() { rec.note("ready") }
-        func drop(link: UUID) { rec.note("drop(\(link.uuidString.prefix(4)))") }
-    }
-
     private func makeOwner(throwOnActivate: Bool = false)
         -> (PTTSessionOwner, Recorder) {
         let rec = Recorder()
         let session = SessionSpy(rec)
         session.throwOnActivate = throwOnActivate
-        let owner = PTTSessionOwner(player: PlayoutSpy(rec), audioSession: session)
+        let owner = PTTSessionOwner(audioSession: session)
         return (owner, rec)
     }
 
+    /// A deterministic 16-byte session id, the shape of a wire pttID.
+    private func pttID(_ byte: UInt8) -> Data { Data(repeating: byte, count: 16) }
+    /// A stand-in raw peer key (identity — never the refcount key).
+    private let peer = Data(repeating: 0xAB, count: 32)
+
     // MARK: Open — ordering + flag
 
-    func testOpenActivatesRaisesFlagPreemptsThenReadies() {
+    func testOpenActivatesRaisesFlagThenPreempts() {
         let (owner, rec) = makeOwner()
         var flagAtPreempt: Bool?
         owner.preemptPlayback = { [weak owner] in
@@ -72,72 +72,74 @@ final class PTTSessionOwnerTests: XCTestCase {
         }
 
         XCTAssertFalse(owner.isLive)
-        owner.opened(link: UUID())
+        owner.opened(pttID: pttID(1), peerKey: peer)
 
-        // The tested contract: activate, then pre-empt, then ready — never
-        // the player before the pre-empt.
-        XCTAssertEqual(rec.log, ["activate", "preempt", "ready"])
+        // The tested contract: activate, then pre-empt — the pre-empt never
+        // runs before the session is really active.
+        XCTAssertEqual(rec.log, ["activate", "preempt"])
         XCTAssertTrue(owner.isLive)
         // IC8 flag was already up when the pre-empt ran (activate → flag → preempt).
         XCTAssertEqual(flagAtPreempt, true)
     }
 
-    func testOpenWithoutPreemptClosureStillReadies() {
+    func testOpenWithoutPreemptClosureStillActivates() {
         let (owner, rec) = makeOwner()               // preemptPlayback stays nil (inert)
-        owner.opened(link: UUID())
-        XCTAssertEqual(rec.log, ["activate", "ready"])
+        owner.opened(pttID: pttID(1), peerKey: peer)
+        XCTAssertEqual(rec.log, ["activate"])
         XCTAssertTrue(owner.isLive)
     }
 
     func testActivationFailureFailsClosed() {
         // §2.1 point 2: the IC8 flag asserts a fact about the AUDIO SESSION,
-        // not the wire. A throw must not raise the flag, pre-empt, or ready —
-        // a raised flag over a phantom session would suppress VoicePlayer's
+        // not the wire. A throw must not raise the flag or pre-empt — a
+        // raised flag over a phantom session would suppress VoicePlayer's
         // setActive(false) and background music would never resume (F2).
         let (owner, rec) = makeOwner(throwOnActivate: true)
         owner.preemptPlayback = { rec.note("preempt") }
-        owner.opened(link: UUID())
+        owner.opened(pttID: pttID(1), peerKey: peer)
         XCTAssertEqual(rec.log, ["activate"])        // attempted, nothing else
         XCTAssertFalse(owner.isLive)
     }
 
     func testActivationFailureIsNotTrackedSoNextOpenRetries() {
-        // Activate-then-commit: a failed FIRST-link activation must not leave
-        // the link in `openLinks` (that would make every later open look like
+        // Activate-then-commit: a failed FIRST activation must not leave the
+        // pttID in `openSessions` (that would make every later open look like
         // a join and never retry — a permanently phantom session). The next
         // open is a 0→1 edge again and retries activation, which self-heals.
         let rec = Recorder()
         let session = SessionSpy(rec)
         session.throwOnActivate = true
-        let owner = PTTSessionOwner(player: PlayoutSpy(rec), audioSession: session)
+        let owner = PTTSessionOwner(audioSession: session)
         owner.preemptPlayback = { rec.note("preempt") }
 
-        let link = UUID()
-        owner.opened(link: link)                     // fails — link not tracked
+        let id = pttID(1)
+        owner.opened(pttID: id, peerKey: peer)       // fails — pttID not tracked
         XCTAssertEqual(rec.log, ["activate"])
         XCTAssertFalse(owner.isLive)
 
         session.throwOnActivate = false              // transient failure clears
-        owner.opened(link: link)                     // same link retries the 0→1 edge
-        XCTAssertEqual(rec.log, ["activate", "activate", "preempt", "ready"])
+        owner.opened(pttID: id, peerKey: peer)       // same session retries the 0→1 edge
+        XCTAssertEqual(rec.log, ["activate", "activate", "preempt"])
         XCTAssertTrue(owner.isLive)
 
-        owner.closed(link: link)                     // and closes cleanly
+        owner.closed(pttID: id)                      // and closes cleanly
         XCTAssertFalse(owner.isLive)
         XCTAssertEqual(rec.log.last, "deactivate")
     }
 
     // MARK: Close — flag + release
 
-    func testCloseDropsLowersFlagThenDeactivates() {
+    func testCloseLowersFlagThenDeactivates() {
         let (owner, rec) = makeOwner()
-        let link = UUID()
-        owner.opened(link: link)
+        let id = pttID(1)
+        owner.opened(pttID: id, peerKey: peer)
         rec.log.removeAll()
 
-        owner.closed(link: link)
+        owner.closed(pttID: id)
 
-        XCTAssertEqual(rec.log, ["drop(\(link.uuidString.prefix(4)))", "deactivate"])
+        // No player eviction here — that is the coordinator's, link-keyed at
+        // `.pttClose` (§3.5). The owner only releases the audio session.
+        XCTAssertEqual(rec.log, ["deactivate"])
         XCTAssertFalse(owner.isLive)
     }
 
@@ -146,46 +148,48 @@ final class PTTSessionOwnerTests: XCTestCase {
     func testDoubleOpenIsIdempotent() {
         let (owner, rec) = makeOwner()
         owner.preemptPlayback = { rec.note("preempt") }
-        let link = UUID()
-        owner.opened(link: link)
-        owner.opened(link: link)                     // second open: no-op
-        XCTAssertEqual(rec.log, ["activate", "preempt", "ready"])
+        let id = pttID(1)
+        owner.opened(pttID: id, peerKey: peer)
+        owner.opened(pttID: id, peerKey: peer)       // second open: no-op
+        XCTAssertEqual(rec.log, ["activate", "preempt"])
         XCTAssertTrue(owner.isLive)
     }
 
     func testDoubleCloseIsIdempotent() {
         let (owner, rec) = makeOwner()
-        let link = UUID()
-        owner.opened(link: link)
-        owner.closed(link: link)
+        let id = pttID(1)
+        owner.opened(pttID: id, peerKey: peer)
+        owner.closed(pttID: id)
         let after = rec.log
-        owner.closed(link: link)                     // second close: no-op
-        owner.closed(link: UUID())                   // never-opened link: no-op
-        XCTAssertEqual(rec.log, after)               // no extra drop/deactivate
+        owner.closed(pttID: id)                      // second close: no-op
+        owner.closed(pttID: pttID(9))                // never-opened session: no-op
+        XCTAssertEqual(rec.log, after)               // no extra deactivate
         XCTAssertFalse(owner.isLive)
     }
 
     func testCloseWithoutOpenIsNoop() {
         let (owner, rec) = makeOwner()
-        owner.closed(link: UUID())
+        owner.closed(pttID: pttID(1))
         XCTAssertEqual(rec.log, [])
         XCTAssertFalse(owner.isLive)
     }
 
     // MARK: Concurrent wire sessions (activate on first, release on last)
 
-    func testSecondLinkJoinsWithoutReactivationAndLastCloseReleases() {
+    func testSecondSessionJoinsWithoutReactivationAndLastCloseReleases() {
+        // Two DISTINCT pttIDs from the SAME peer count as two sessions —
+        // the refcount is keyed by session, not identity (§3.5).
         let (owner, rec) = makeOwner()
-        let a = UUID(), b = UUID()
-        owner.opened(link: a)
-        owner.opened(link: b)                        // joins; no second activate
-        XCTAssertEqual(rec.log, ["activate", "ready"])
+        let a = pttID(1), b = pttID(2)
+        owner.opened(pttID: a, peerKey: peer)
+        owner.opened(pttID: b, peerKey: peer)        // joins; no second activate
+        XCTAssertEqual(rec.log, ["activate"])
 
-        owner.closed(link: a)                        // one still live → no release
+        owner.closed(pttID: a)                       // one still live → no release
         XCTAssertTrue(owner.isLive)
         XCTAssertFalse(rec.log.contains("deactivate"))
 
-        owner.closed(link: b)                        // last close → flag down + release
+        owner.closed(pttID: b)                       // last close → flag down + release
         XCTAssertFalse(owner.isLive)
         XCTAssertEqual(rec.log.last, "deactivate")
         XCTAssertEqual(rec.log.filter { $0 == "deactivate" }.count, 1)
@@ -195,17 +199,14 @@ final class PTTSessionOwnerTests: XCTestCase {
 
     func testInterruptionBeganEndsAllSessionsAndReleases() {
         let (owner, rec) = makeOwner()
-        let a = UUID(), b = UUID()
-        owner.opened(link: a)
-        owner.opened(link: b)
+        owner.opened(pttID: pttID(1), peerKey: peer)
+        owner.opened(pttID: pttID(2), peerKey: peer)
         rec.log.removeAll()
 
         owner.interruptionBegan()
 
         XCTAssertFalse(owner.isLive)                 // flag lowered
-        XCTAssertEqual(rec.log.filter { $0.hasPrefix("drop(") }.count, 2)
-        XCTAssertEqual(rec.log.last, "deactivate")   // session released once
-        XCTAssertEqual(rec.log.filter { $0 == "deactivate" }.count, 1)
+        XCTAssertEqual(rec.log, ["deactivate"])      // session released exactly once
     }
 
     func testInterruptionWhileIdleIsNoop() {
@@ -218,7 +219,7 @@ final class PTTSessionOwnerTests: XCTestCase {
     // MARK: Static lookup (§2.1 point 5 — the guard-site accessor)
 
     func testStaticIsLiveIsFalseWhenSharedIsNil() {
-        PTTSessionOwner.shared = nil                 // C-3b's world: unwired
+        PTTSessionOwner.shared = nil                 // pre-C-3c world: unwired
         XCTAssertFalse(PTTSessionOwner.isLive)       // guard inert by construction
     }
 
@@ -227,17 +228,17 @@ final class PTTSessionOwnerTests: XCTestCase {
         PTTSessionOwner.shared = owner
         XCTAssertFalse(PTTSessionOwner.isLive)       // wired but not live yet
 
-        let link = UUID()
-        owner.opened(link: link)
+        let id = pttID(1)
+        owner.opened(pttID: id, peerKey: peer)
         XCTAssertTrue(PTTSessionOwner.isLive)        // tracks the instance flag…
-        owner.closed(link: link)
+        owner.closed(pttID: id)
         XCTAssertFalse(PTTSessionOwner.isLive)       // …in both directions: no drift
     }
 
     func testStaticIsLiveIsFalseAfterSharedOwnerDeallocates() {
         var owner: PTTSessionOwner? = makeOwner().0
         PTTSessionOwner.shared = owner
-        owner?.opened(link: UUID())
+        owner?.opened(pttID: pttID(1), peerKey: peer)
         XCTAssertTrue(PTTSessionOwner.isLive)
 
         owner = nil                                  // weak → shared self-clears

@@ -2,20 +2,25 @@
 //  PTTSessionOwner.swift
 //  Core/Media
 //
-//  PTT C-3a: the listener-side AVAudioSession owner for a live walkie session.
-//  This commit ships INERT: nothing constructs or calls PTTSessionOwner yet
-//  (`MessageInbox.onPTTSession` stays nil; C-3b wires the composition root).
-//  It holds the C-2 `PTTPlayer` and anchors the process-global audio session
-//  to the wire session's lifetime, mirroring `CallEngine`'s session policy:
-//  activate once at start, deactivate once at end with
-//  `.notifyOthersOnDeactivation`, and a system interruption ends the spurt.
+//  PTT C-3a, re-keyed by C-3b′ (§3.5): the listener-side AVAudioSession owner
+//  for a live walkie session. Still INERT: nothing constructs or calls
+//  PTTSessionOwner yet (`MessageInbox.onPTTSession` stays nil; C-3c wires the
+//  composition root). It anchors the process-global audio session to the wire
+//  SESSION's lifetime — keyed by pttID, the session id `onPTTSession` already
+//  carries, because the refcount counts concurrent REASONS to be live and
+//  those reasons are sessions, not BLE links (the audio layer never sees a
+//  link). It mirrors `CallEngine`'s session policy: activate once at start,
+//  deactivate once at end with `.notifyOthersOnDeactivation`, and a system
+//  interruption ends the spurt. The owner does NOT hold the player: the
+//  coordinator owns `PTTPlayer` and evicts it link-keyed at `.pttClose`
+//  (C-3c) — neither reaches into the other's axis.
 //
 //  Invariants owned here (named at the enforcement sites below):
 //    IC5-revised — the audio session is anchored to the WIRE session
 //          (`.pttOpened`/`.pttClosed` from the coordinator), not to the cover
-//          UI and not per-press. `opened(link:)`/`closed(link:)` are the ONLY
-//          session-lifetime edges; half-duplex talker↔listener flips inside a
-//          session never touch the session.
+//          UI and not per-press. `opened(pttID:peerKey:)`/`closed(pttID:)`
+//          are the ONLY session-lifetime edges; half-duplex talker↔listener
+//          flips inside a session never touch the session.
 //    IC7 — foreground-only. No `audio` background mode exists or is added;
 //          when the app backgrounds mid-session the system suspends audio and
 //          the wire session dies with the link — nothing here pretends
@@ -67,42 +72,22 @@ struct SystemPTTAudioSession: PTTAudioSessionControlling {
     }
 }
 
-// MARK: - Playout seam
-
-/// The slice of the C-2 player the owner drives. A protocol (with `PTTPlayer`
-/// as the shipped conformer) so tests can assert call ordering and the
-/// `drop(link:)` handoff without constructing an `AVAudioEngine` graph.
-protocol PTTLivePlayout: AnyObject {
-    /// Ready the playout path for a fresh wire session. Called AFTER
-    /// `preemptPlayback` — live pre-empts in-flight note/story playback
-    /// before the player is armed.
-    func readyForSession()
-    /// Flush the link's jitter buffer and release its IC4 claim (C-2 surface).
-    func drop(link: UUID)
-}
-
-extension PTTPlayer: PTTLivePlayout {
-    /// C-2's player self-arms on the first `enqueue` (clock + engine graph
-    /// start there, by design — IC3), so readying is a no-op today. The seam
-    /// exists so `opened(link:)`'s ordering (pre-empt BEFORE ready) is a
-    /// tested contract, and so C-3b can hang warm-up here without reshaping
-    /// `opened`.
-    func readyForSession() {}
-}
-
 // MARK: - Owner
 
-/// Listener-side session owner for live PTT. One per app (C-3b constructs it
+/// Listener-side session owner for live PTT. One per app (C-3c constructs it
 /// at the composition root and points `MessageInbox.onPTTSession` at it).
+/// Owns the audio session + IC8 flag + pre-empt, keyed by SESSION; it holds
+/// no player and no link — the coordinator owns the `PTTPlayer` and drops it
+/// link-keyed at `.pttClose` (§3.5).
 @MainActor
 final class PTTSessionOwner {
 
-    private let player: any PTTLivePlayout
     private let audioSession: any PTTAudioSessionControlling
 
     /// Pre-empt seam: live PTT pre-empts any in-flight note/story playback
-    /// (decided). C-3a does NOT reach into `VoicePlayer` — C-3b's composition
-    /// root wires this closure to it. Nil (no-op) until then: inert.
+    /// (decided). This file does NOT reach into `VoicePlayer` — C-3c's
+    /// composition root wires this closure to it. Nil (no-op) until then:
+    /// inert.
     var preemptPlayback: (() -> Void)?
 
     /// IC8 — THE live flag. True while at least one PTT wire session holds an
@@ -132,65 +117,75 @@ final class PTTSessionOwner {
     /// the read is synchronous there (no `await`).
     static var isLive: Bool { shared?.isLive ?? false }
 
-    /// The open wire sessions, keyed the way `PTTPlayer` keys playout: by BLE
-    /// link id. Multiple peers can hold sessions concurrently (`.pttOpen`
-    /// seeds contexts on both role-links), so the session activates on the
-    /// first open (0 → 1) and deactivates on the last close (1 → 0).
-    private var openLinks: Set<UUID> = []
+    /// The open wire sessions, keyed by SESSION id — pttID, exactly what
+    /// `onPTTSession` carries (§3.5). The refcount counts concurrent REASONS
+    /// for the process-global session to be live, and those reasons are
+    /// sessions, not BLE links. NOT peerKey: that is identity and would not
+    /// distinguish two sessions from the same peer — two pttIDs from one peer
+    /// must count as two. pttID is 16 CSPRNG bytes, fresh per session and
+    /// non-secret (I4). Same edge semantics as before the re-key: the audio
+    /// session activates on the first open (0 → 1) and deactivates on the
+    /// last close (1 → 0).
+    private var openSessions: Set<Data> = []
 
     private var observers: [NSObjectProtocol] = []
 
-    init(player: any PTTLivePlayout,
-         audioSession: any PTTAudioSessionControlling = SystemPTTAudioSession()) {
-        self.player = player
+    init(audioSession: any PTTAudioSessionControlling = SystemPTTAudioSession()) {
         self.audioSession = audioSession
         installInterruptionObserver()
     }
 
     // MARK: Wire-session edges (IC5-revised — the ONLY session-lifetime edges)
 
-    /// A PTT wire session opened (`.pttOpened` → `onPTTSession(true, …)`).
-    /// Idempotent per link. On the first open: activate the session, and only
-    /// if activation SUCCEEDS raise the IC8 flag, pre-empt in-flight playback,
-    /// then ready the player — in that order (§2.1 point 2: fail closed).
+    /// A PTT wire session opened (`.pttOpened` → `onPTTSession(true, …)`) —
+    /// a direct match to the event's payload, no bridge, no link (§3.5).
+    /// Idempotent per session. On the first open: activate the session, and
+    /// only if activation SUCCEEDS raise the IC8 flag, then pre-empt in-flight
+    /// playback — in that order (§2.1 point 2: fail closed). `peerKey` has no
+    /// key role here (pttID is the key); it is accepted per the pinned
+    /// signature and used only for the log line — short hex prefixes only,
+    /// never key material.
     ///
-    /// Activate-then-commit: a link is inserted into `openLinks` only after a
-    /// successful activation (or when joining an already-live session). §2.1
-    /// pins fail-closed but is silent on this edge; committing the link on a
-    /// FAILED first activation would leave `openLinks` non-empty with
-    /// `isLive == false`, so every later `opened(...)` would see a "joined"
-    /// session and never retry — a permanently phantom session until full
-    /// close. Not tracking the failed link means the next `opened(...)` is a
-    /// 0→1 edge again and retries activation: transient failures self-heal.
-    func opened(link: UUID) {
-        guard !openLinks.contains(link) else { return }      // double-open: no-op
-        guard openLinks.isEmpty else {   // session already ours (and live) —
-            openLinks.insert(link)       // new link joins, no re-activation
+    /// Activate-then-commit: a pttID is inserted into `openSessions` only
+    /// after a successful activation (or when joining an already-live audio
+    /// session). §2.1 pins fail-closed but is silent on this edge; committing
+    /// the pttID on a FAILED first activation would leave `openSessions`
+    /// non-empty with `isLive == false`, so every later `opened(...)` would
+    /// see a "joined" session and never retry — a permanently phantom session
+    /// until full close. Not tracking the failed pttID means the next
+    /// `opened(...)` is a 0→1 edge again and retries activation: transient
+    /// failures self-heal.
+    func opened(pttID: Data, peerKey: Data) {
+        guard !openSessions.contains(pttID) else { return }  // double-open: no-op
+        RedactLog.event("[PTTSessionOwner] session open",
+                        "pttID \(shortHex(pttID)) peer \(shortHex(peerKey, bytes: 8))…")
+        guard openSessions.isEmpty else { // audio session already ours (live) —
+            openSessions.insert(pttID)    // new session joins, no re-activation
             return
         }
 
         do {
             try audioSession.activateForPTT()
         } catch {
-            // Fail closed (§2.1 point 2): no flag, no pre-empt, no ready, and
-            // the link is NOT tracked — the next open retries activation.
+            // Fail closed (§2.1 point 2): no flag, no pre-empt, and the pttID
+            // is NOT tracked — the next open retries activation.
             RedactLog.event("[PTTSessionOwner] session activate failed — staying closed",
                             "\(type(of: error))")
             return
         }
-        openLinks.insert(link)           // commit only on successful activation
+        openSessions.insert(pttID)       // commit only on successful activation
         isLive = true                    // IC8 — raise the choke-point flag
         preemptPlayback?()               // live pre-empts note/story playback
-        player.readyForSession()         // AFTER pre-empt (tested ordering)
     }
 
     /// A PTT wire session closed (`.pttClosed` → `onPTTSession(false, …)`).
-    /// Idempotent per link: drop the link's playout, and when the LAST open
-    /// session closes, lower the IC8 flag and release the session politely.
-    func closed(link: UUID) {
-        guard openLinks.remove(link) != nil else { return }  // double-close: no-op
-        player.drop(link: link)
-        guard openLinks.isEmpty else { return }              // others still live
+    /// Idempotent per session: when the LAST open session closes, lower the
+    /// IC8 flag and release the audio session politely. Player eviction is
+    /// NOT here — the coordinator drops the player link-keyed at `.pttClose`,
+    /// where the link is in hand (§3.5).
+    func closed(pttID: Data) {
+        guard openSessions.remove(pttID) != nil else { return } // double-close: no-op
+        guard openSessions.isEmpty else { return }              // others still live
         isLive = false                   // IC8 — lower the flag…
         audioSession.deactivate()        // …then release (.notifyOthers…)
     }
@@ -200,7 +195,7 @@ final class PTTSessionOwner {
     /// v1 POLICY, honest and simple (same as `CallEngine`): a system audio
     /// interruption (an incoming phone call, Siri) ENDS the spurt — the
     /// session is gone and pretending otherwise would just play silence at a
-    /// down flag. Every open link is closed through the one close path, so
+    /// down flag. Every open session is closed through the one close path, so
     /// the flag drops and the session is released. `.ended` is ignored; a
     /// fresh `.pttOpened` re-opens cleanly. NO route-change handling in v1.
     private func installInterruptionObserver() {
@@ -216,6 +211,15 @@ final class PTTSessionOwner {
     /// Split out (internal) so the ending policy is unit-testable without
     /// posting notifications through the real center.
     func interruptionBegan() {
-        for link in openLinks { closed(link: link) }
+        for pttID in openSessions { closed(pttID: pttID) }
+    }
+
+    // MARK: Log formatting (I4 — pttID/peer short hex only, never key material)
+
+    /// Short hex prefix for logs, same shape as the coordinator's `pttIDLog`.
+    /// pttID is a NON-secret random session id (like a callID); the peer key
+    /// is public identity — a prefix identifies without dumping either.
+    private func shortHex(_ data: Data, bytes: Int = 4) -> String {
+        data.prefix(bytes).map { String(format: "%02x", $0) }.joined()
     }
 }
