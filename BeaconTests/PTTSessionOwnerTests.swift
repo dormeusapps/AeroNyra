@@ -18,6 +18,14 @@ import XCTest
 @MainActor
 final class PTTSessionOwnerTests: XCTestCase {
 
+    /// `PTTSessionOwner.shared` is process-global; it is weak (so it clears
+    /// on dealloc anyway), but reset it explicitly so no test's owner ever
+    /// leaks into another test.
+    override func tearDown() {
+        MainActor.assumeIsolated { PTTSessionOwner.shared = nil }
+        super.tearDown()
+    }
+
     /// One shared, ordered record of every side effect across both spies and
     /// the pre-empt closure — call ORDERING is the contract under test.
     private final class Recorder {
@@ -205,5 +213,35 @@ final class PTTSessionOwnerTests: XCTestCase {
         owner.interruptionBegan()
         XCTAssertEqual(rec.log, [])
         XCTAssertFalse(owner.isLive)
+    }
+
+    // MARK: Static lookup (§2.1 point 5 — the guard-site accessor)
+
+    func testStaticIsLiveIsFalseWhenSharedIsNil() {
+        PTTSessionOwner.shared = nil                 // C-3b's world: unwired
+        XCTAssertFalse(PTTSessionOwner.isLive)       // guard inert by construction
+    }
+
+    func testStaticIsLiveIsALookupThroughSharedNotACopy() {
+        let (owner, _) = makeOwner()
+        PTTSessionOwner.shared = owner
+        XCTAssertFalse(PTTSessionOwner.isLive)       // wired but not live yet
+
+        let link = UUID()
+        owner.opened(link: link)
+        XCTAssertTrue(PTTSessionOwner.isLive)        // tracks the instance flag…
+        owner.closed(link: link)
+        XCTAssertFalse(PTTSessionOwner.isLive)       // …in both directions: no drift
+    }
+
+    func testStaticIsLiveIsFalseAfterSharedOwnerDeallocates() {
+        var owner: PTTSessionOwner? = makeOwner().0
+        PTTSessionOwner.shared = owner
+        owner?.opened(link: UUID())
+        XCTAssertTrue(PTTSessionOwner.isLive)
+
+        owner = nil                                  // weak → shared self-clears
+        XCTAssertNil(PTTSessionOwner.shared)
+        XCTAssertFalse(PTTSessionOwner.isLive)       // fails closed, no crash
     }
 }

@@ -115,6 +115,23 @@ final class PTTSessionOwner {
     /// are one-line reads of this, never copies of the logic.
     private(set) var isLive = false
 
+    // MARK: Static lookup (§2.1 point 5 — the guard-site accessor)
+
+    /// The one live owner, assigned at the composition root in C-3c — never
+    /// here, never in `init`. Weak: the static creates no ownership edge and
+    /// clears itself when the owner deallocates. Until C-3c wires it, it is
+    /// nil, so `PTTSessionOwner.isLive` reads `false` and every C-3b guard is
+    /// inert by construction.
+    static weak var shared: PTTSessionOwner?
+
+    /// §2.1 point 5 — a LOOKUP through `shared`, not a copy: the instance
+    /// `isLive` above stays the single source of truth, so nothing can drift
+    /// and `opened`/`closed` never write process-global state. A nil `shared`
+    /// reads `false` — fail closed, the same posture as §2.1 point 2. Main-
+    /// actor-isolated like the class; every guard site is `@MainActor`, so
+    /// the read is synchronous there (no `await`).
+    static var isLive: Bool { shared?.isLive ?? false }
+
     /// The open wire sessions, keyed the way `PTTPlayer` keys playout: by BLE
     /// link id. Multiple peers can hold sessions concurrently (`.pttOpen`
     /// seeds contexts on both role-links), so the session activates on the
