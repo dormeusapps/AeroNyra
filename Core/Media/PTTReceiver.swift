@@ -8,9 +8,10 @@
 //  hands sealed audio bytes up via `audioFrames`, nothing more).
 //
 //  For each sealed frame it: unpacks the wire layout (`PTTAudioWire`), opens
-//  under the link's anti-replay opener, and decodes. In 4c-1 the decoded PCM is
-//  DISCARDED — playout (the net-new AVAudioEngine player node + jitter buffer)
-//  lands in a later step. This component is unit-testable with NO transport.
+//  under the link's anti-replay opener, and decodes. The decoded PCM is EMITTED
+//  as a value on `.decoded(seq:pcm:)` (C-1) — playout (the net-new AVAudioEngine
+//  player node + jitter buffer) consumes it in a later step. This component is
+//  unit-testable with NO transport.
 //
 //  ── Per-link context lifecycle (the leak-prevention seam) ────────────────────
 //  A session's inbound context (opener + decoder) is created by the PTT handshake
@@ -31,7 +32,10 @@ import CryptoKit
 /// The outcome of receiving one sealed audio frame — surfaced so the pipeline is
 /// unit-testable without hardware or playout.
 public enum PTTReceiveOutcome: Equatable {
-    case decoded       // opened + decoded (PCM discarded in 4c-1)
+    // IC1: PTTReceiver stays pure/decode-only — the PCM escapes as a VALUE on
+    // this case; no player reference, no callback, no closure enters PTTReceiver
+    // or `Context`.
+    case decoded(seq: UInt64, pcm: [Int16])   // opened + decoded; PCM emitted to the caller
     case replayed      // duplicate / too-old — dropped by the replay window
     case authFailed    // bad tag — forged or corrupt
     case malformed     // wire payload shorter than seq+tag
@@ -71,7 +75,8 @@ public final class PTTReceiver {
     // MARK: Receive
 
     /// Process one sealed audio frame from a link: unpack → open → decode →
-    /// DISCARD (4c-1). Returns the outcome; playout replaces the discard in 4c-2.
+    /// EMIT (C-1). Returns the outcome; `.decoded` carries the seq + PCM for a
+    /// later playout consumer (unconsumed in C-1 — the coordinator discards it).
     @discardableResult
     public func receive(link: UUID, sealed: Data) -> PTTReceiveOutcome {
         guard let (seq, ciphertext, tag) = PTTAudioWire.unpack(sealed) else { return .malformed }
@@ -80,8 +85,10 @@ public final class PTTReceiver {
             let opus = try ctx.opener.open(counter: seq, ciphertext: ciphertext, tag: tag,
                                            aad: PTTAudioWire.aad(forSeq: seq))
             do {
-                _ = try ctx.decoder.decode(opus)   // proves the path; PCM discarded in 4c-1
-                return .decoded
+                // IC2: recvKey / Context / opener state never leave the coordinator
+                // actor — this moves NO key material; plaintext PCM out is the feature.
+                let pcm = try ctx.decoder.decode(opus)
+                return .decoded(seq: seq, pcm: pcm)
             } catch {
                 return .decodeError
             }
@@ -94,11 +101,8 @@ public final class PTTReceiver {
         }
     }
 
-    /// Consume the transport's audio stream until it ends. Call once after wiring
-    /// (4c-2). Each frame runs through `receive(link:sealed:)`.
-    public func run(_ audioFrames: AsyncStream<(link: UUID, sealed: Data)>) async {
-        for await frame in audioFrames {
-            receive(link: frame.link, sealed: frame.sealed)
-        }
-    }
+    // IC6: `run(_:)` deleted. It was dead (B-4's `pttAudioTask` drives
+    // `ingestPTTAudio → receive`, never `run`) and was the off-actor trap: a
+    // nonisolated loop that would run `receive()` — and thus `contexts` /
+    // opener / recvKey mutation — off the coordinator's executor.
 }

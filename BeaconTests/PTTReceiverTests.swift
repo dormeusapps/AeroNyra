@@ -46,8 +46,19 @@ final class PTTReceiverTests: XCTestCase {
         let f2 = try pack()   // seq 2
         _ = f1
 
-        XCTAssertEqual(rx.receive(link: link, sealed: f0), .decoded)
-        XCTAssertEqual(rx.receive(link: link, sealed: f2), .decoded)   // gap at 1 tolerated
+        // Assert the emitted samples (seq + full 20 ms frame), not just the status.
+        if case .decoded(let seq, let pcm) = rx.receive(link: link, sealed: f0) {
+            XCTAssertEqual(seq, 0)
+            XCTAssertEqual(pcm.count, OpusVoiceCodec.samplesPerFrame)   // 960
+        } else {
+            XCTFail("expected .decoded for seq 0")
+        }
+        if case .decoded(let seq, let pcm) = rx.receive(link: link, sealed: f2) {   // gap at 1 tolerated
+            XCTAssertEqual(seq, 2)
+            XCTAssertEqual(pcm.count, OpusVoiceCodec.samplesPerFrame)   // 960
+        } else {
+            XCTFail("expected .decoded for seq 2 (gap at 1 tolerated)")
+        }
         XCTAssertEqual(rx.receive(link: link, sealed: f2), .replayed)  // replay of 2 rejected
     }
 
