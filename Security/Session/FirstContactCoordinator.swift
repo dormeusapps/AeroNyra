@@ -197,6 +197,16 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// No audio content flows in Part A (playout wiring is a later step).
     private let pttReceiver = PTTReceiver()
 
+    /// The playout half (PTT C-3c). The COORDINATOR owns the player, keyed by
+    /// LINK — decoded PCM is enqueued in `ingestPTTAudio`, and the link is
+    /// evicted at the `.pttClose` dispatch, the same instruction pointer that
+    /// evicts `pttReceiver`'s context (two axes, one eviction site). The
+    /// SESSION axis (AVAudioSession + IC8 flag) belongs to `PTTSessionOwner`,
+    /// which never touches this player. Injected once by the composition root
+    /// via `setPTTPlayer` (mirrors `setRouter`); nil until then — decoded PCM
+    /// is discarded, exactly the pre-C-3c behavior.
+    private var pttPlayer: PTTPlayer?
+
     /// The single long-lived consumer of `transport.audioFrames` (B-4 receive
     /// live-drive). Started once via `startPTTAudioDrive()`; its guard keeps this
     /// SINGLE-consumer — the stream is single-consumer, and a second iterator would
@@ -311,6 +321,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         self.router = router
     }
     
+    /// Wire the PTT playout player in (PTT C-3c). Called once by the composition
+    /// root alongside `setRouter`. Strong (mirrors `setRouter`): this actor is the
+    /// player's owner — link-keyed enqueue + eviction both live here.
+    func setPTTPlayer(_ player: PTTPlayer) {
+        self.pttPlayer = player
+    }
+
     /// Wire the invite-echo redeemer in (STEP 7c-2). Called once by the
     /// composition root alongside `setRouter`. Weak — no retain cycle.
     func setInviteRedeemer(_ redeemer: InviteRedeeming) {
@@ -332,12 +349,17 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
     }
 
-    /// Decode-only ingest of one sealed audio frame (B-4). Actor-isolated, so
+    /// Ingest one sealed audio frame (B-4 decode, C-3c playout). Actor-isolated, so
     /// `pttReceiver.receive` (recvKey + replay window) stays confined to this actor.
-    /// `receive` is synchronous — this awaits nothing. NO playout here: decoded PCM
-    /// is discarded until Part C wires a player.
+    /// IC3 — the whole hop is SYNCHRONOUS: `receive` awaits nothing and
+    /// `enqueue` never blocks and spawns no per-frame Task; a nil player
+    /// (composition root not wired yet) discards decoded PCM, the pre-C-3c
+    /// behavior.
     private func ingestPTTAudio(_ frame: (link: UUID, sealed: Data)) {
-        pttReceiver.receive(link: frame.link, sealed: frame.sealed)
+        let outcome = pttReceiver.receive(link: frame.link, sealed: frame.sealed)
+        if case .decoded(let seq, let pcm) = outcome {
+            pttPlayer?.enqueue(link: frame.link, seq: seq, pcm: pcm)
+        }
     }
 
     /// Inject our Nostr public key (Phase 8d npub-bootstrap). Called once by the
@@ -1468,7 +1490,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     RedactLog.event("first-contact: malformed ptt-close", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
-                for link in linksFor(rawKey: rawKey) { pttReceiver.dropLink(link) }
+                // C-3c: BOTH link-keyed axes evicted at the same instruction
+                // pointer — receiver context and player buffer. This is the
+                // ONLY site that evicts the player; the session-keyed owner
+                // (PTTSessionOwner) never touches it.
+                for link in linksFor(rawKey: rawKey) {
+                    pttReceiver.dropLink(link)
+                    pttPlayer?.drop(link: link)
+                }
                 eventsContinuation.yield(.pttClosed(peerKey: rawKey, pttID: pttID))
                 RedactLog.event("first-contact: PTT CLOSE", "pttID \(pttIDLog(pttID)) from \(peer.userIDHex.prefix(16))…")
             }

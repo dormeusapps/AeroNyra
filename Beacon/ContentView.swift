@@ -88,7 +88,16 @@ struct ContentView: View {
     /// The mesh router (Phase 7b.1): dedup + multi-hop relay + Envelope I/O.
     /// Built alongside the coordinator once we reach .ready; nil until then.
     @State private var router: MessageRouter?
-    
+
+    /// The listener-side walkie session owner (PTT C-3c): AVAudioSession + IC8
+    /// flag, keyed by SESSION (pttID). Built alongside the coordinator in
+    /// makeSessionStack; nil until .ready. THIS @State is the owner's app-
+    /// lifetime retention — `PTTSessionOwner.shared` is a WEAK static, so
+    /// without this strong hold the owner would deallocate at makeSessionStack
+    /// return, `shared` would clear, and the four IC8 deactivation guards
+    /// would silently read false forever.
+    @State private var pttSessionOwner: PTTSessionOwner?
+
     /// The persisted closed-contact allowlist store (STEP 7a). Loaded at launch to
     /// seed reconnect (warmInboundSessions + enableReconnect) and held so later
     /// enrollment can save to it and EmergencyWipe can crypto-erase it. nil until
@@ -142,11 +151,12 @@ struct ContentView: View {
                 // coordinator + router are set together in makeSessionStack, so
                 // unwrapping both here is safe — whenever one is non-nil, so is
                 // the other.
-                if let coordinator, let router, let pairingService {
+                if let coordinator, let router, let pairingService, let pttSessionOwner {
                     ReadyView(container: container,
                               coordinator: coordinator,
                               router: router,
                               pairingService: pairingService,
+                              pttSessionOwner: pttSessionOwner,
                               pendingInviteURL: $pendingInviteURL)
                         // The erase action is injected HERE, not on the outer
                         // body, because only `.ready` has the assembled store in
@@ -497,7 +507,34 @@ struct ContentView: View {
         coordinator = coord
         router = mesh
         contactAllowlistStore = contactStore
-        
+
+        // PTT C-3c — the live-listen pair, split on the ownership axes:
+        // the COORDINATOR owns the player (LINK-keyed: enqueue in
+        // ingestPTTAudio, evict at .pttClose), injected below via
+        // setPTTPlayer and strongly retained by the coordinator; the OWNER
+        // holds the AVAudioSession + IC8 flag (SESSION-keyed, driven by
+        // MessageInbox.onPTTSession — wired in ReadyView). Neither reaches
+        // into the other's axis; the owner never touches the player.
+        // IC7 — foreground-only: this wiring adds no `audio` background mode
+        // (UIBackgroundModes untouched); a backgrounded listener hears
+        // nothing, the documented v1 scope.
+        let pttPlayer = PTTPlayer()
+        let owner = PTTSessionOwner()
+        // IC8 — THIS assignment arms the four deactivation guards
+        // (VoicePlayer / VoiceRecorder / StoryComposerView / StoryViewer):
+        // `shared` was deliberately left nil (guards inert by construction)
+        // until the composition root wires a real owner. The static is weak;
+        // the @State above is the strong hold that keeps it populated.
+        PTTSessionOwner.shared = owner
+        // preemptPlayback stays nil (inert seam) this commit: VoicePlayer and
+        // the story players are per-bubble/per-view @State — no shared
+        // playback owner is reachable from the composition root, and inventing
+        // a global to reach one is out of scope. The IC8 guards above already
+        // prevent the real hazard (a note-end deactivating the live session);
+        // the explicit "stop the note" pre-empt lands when a reachable seam
+        // exists.
+        pttSessionOwner = owner
+
         // STEP 7c-1/7c-2 — the enrollment seam: the single serializing owner of the
         // live ContactAllowlist AND the single-use invite ledger. Seeded with the
         // real persisted allowlist (verified-states intact) and ledger, sharing the
@@ -560,6 +597,7 @@ struct ContentView: View {
             await coord.setRouter(mesh)
             await coord.setNostrPublicKey(ourNostrPubkey)   // Phase 8d npub-bootstrap
             await coord.setInviteRedeemer(enroll)           // STEP 7c-2 invite-echo redeem (weak)
+            await coord.setPTTPlayer(pttPlayer)             // C-3c: playout wired BEFORE the drive starts — no decoded frame ever races the injection
             await coord.startPTTAudioDrive()                // B-4: single consumer of transport.audioFrames → receive/decode
             
             // Closed-contact reconnect (5d). Warm the trial-decrypt cache from the
@@ -791,6 +829,12 @@ private struct ReadyView: View {
     let coordinator: FirstContactCoordinator
     let router: MessageRouter
     let pairingService: PairingService
+    /// PTT C-3c: the walkie session owner, built and STRONGLY retained by
+    /// ContentView's @State (the weak `PTTSessionOwner.shared` hangs off that
+    /// hold). Threaded here only so the boot task below can point
+    /// `MessageInbox.onPTTSession` at it — the onCallSignal → CallEngine
+    /// pattern, listener side.
+    let pttSessionOwner: PTTSessionOwner
 
     /// Root-captured invite URL (ContentView.onOpenURL). Consumed exactly once
     /// below, then cleared — AFTER redeem returns, never before: this is the
@@ -906,6 +950,22 @@ private struct ReadyView: View {
                     Task { await engine?.handleInbound(signal, from: key) }
                 }
                 callEngine = engine
+                // PTT C-3c (IC5-revised): the walkie session anchor. Wire-
+                // session open/close events (`.pttOpened`/`.pttClosed`) drive
+                // the AVAudioSession owner — the session is anchored to the
+                // WIRE session, not the cover UI and not per-press. Exactly
+                // the onCallSignal → CallEngine wiring above; fires on the
+                // main actor (MessageInbox.run()), so the owner's @MainActor
+                // edges are called synchronously — no Task, no await. Weak:
+                // the owner's lifetime belongs to ContentView's @State hold,
+                // never to this closure.
+                built.onPTTSession = { [weak pttSessionOwner] opened, peerKey, pttID in
+                    if opened {
+                        pttSessionOwner?.opened(pttID: pttID, peerKey: peerKey)
+                    } else {
+                        pttSessionOwner?.closed(pttID: pttID)
+                    }
+                }
                 // Ephemeral media reaper (SEC-6 / P3), boot pass: wipe inbound
                 // media that crossed its window while the app was closed — the
                 // render-time wipes only cover rows that get drawn, so a
