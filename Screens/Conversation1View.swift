@@ -1028,9 +1028,10 @@ private struct StillwaterVoiceNote: View {
     }
 
     private var tombstone: some View {
-        Text(isOutbound
-             ? (message.isPushToTalk ? "walkie · heard" : "voice note · heard")
-             : (message.isPushToTalk ? "walkie · gone" : "voice note · gone"))
+        // "gone" BOTH directions (story precedent): the sender-side wipe is
+        // delivery-anchored — the wire never says whether the receiver played
+        // it, so "heard" would assert what we cannot know.
+        Text(message.isPushToTalk ? "walkie · gone" : "voice note · gone")
             .stillwaterMono(8.5, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
     }
 

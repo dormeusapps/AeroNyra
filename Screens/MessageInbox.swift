@@ -384,14 +384,18 @@ final class MessageInbox {
     /// and stores the fresh wireID; on failure it reverts to `.notDelivered`.
     func resend(_ message: Message) async {
         guard message.isOutbound, message.deliveryState == .notDelivered else { return }
-        // STORIES (SEC-6 reversal safety): an EXPIRED story's blob was reaped
-        // but the row survives as a tombstone. `isMedia` is blob-presence, so
-        // without this guard a reaped story still at `.notDelivered` would fall
-        // into the TEXT branch below on the next return-to-range auto-flush and
-        // transmit an EMPTY message. A media row is recognizable after the wipe
-        // by its surviving mime stamp: mime set + blob gone → skip, forever.
+        // SEC-6 reversal safety: a sender-side-reaped row (expired story, or a
+        // delivered voice note past its wipe window) survives as a tombstone.
+        // `isMedia` is blob-presence, so without this guard a reaped media row
+        // still at `.notDelivered` would fall into the TEXT branch below on the
+        // next return-to-range auto-flush and transmit an EMPTY message. (A
+        // delivered-wiped voice note can't reach here — resend only touches
+        // `.notDelivered`, and terminal states never demote — but the guard is
+        // the backstop, not the state machine.) A media row is recognizable
+        // after the wipe by its surviving mime stamp: mime set + blob gone →
+        // skip, forever.
         if message.mediaMimeRaw != nil, message.mediaData == nil {
-            print("inbox: skip resend — media tombstone (expired story)")
+            print("inbox: skip resend — media tombstone (reaped ephemeral media)")
             return
         }
         guard let peer = message.conversation?.peer else {
@@ -578,8 +582,10 @@ final class MessageInbox {
     /// Wipe the blobs of media past their ephemerality window
     /// (`MediaEphemeralityPolicy`): inbound photos AND v1 videos `photoWindow`
     /// after receipt, inbound voice notes `voiceListenWindow` after they were
-    /// listened to, and STORIES `storyWindow` after they were sent — BOTH
-    /// directions, sender included (the stories-only SEC-6 reversal). The render-time
+    /// listened to, OUTBOUND voice notes `voiceListenWindow` after first
+    /// confirmed receipt (`deliveredAt` — the sender-side SEC-6 reversal for
+    /// voice), and STORIES `storyWindow` after they were sent — BOTH
+    /// directions, sender included. The render-time
     /// wipes only run when a row is actually on screen — a never-opened
     /// conversation would otherwise hold the bytes forever (the SEC-6 defect:
     /// forensically recoverable after first unlock). Called at boot (ReadyView's
@@ -589,15 +595,19 @@ final class MessageInbox {
     /// TOMBSTONE, NOT DELETE: only `mediaData` is nilled, mirroring the view
     /// layer's `wipeMedia`. The row MUST survive — its `wireIDData` is the dedup
     /// record (`alreadyStored`) that stops a late relay replay of the same
-    /// transfer from re-materializing a self-destructed photo. Outbound
-    /// NON-STORY rows are excluded in the store predicate itself: a resend
-    /// still needs their blob. An outbound STORY is admitted and reaped like
-    /// any other; the tombstone guard in `resend` keeps the blob-less row out
-    /// of every send path afterwards.
+    /// transfer from re-materializing a self-destructed photo. Outbound rows
+    /// whose blob is still a resend source are excluded in the store predicate
+    /// itself; the predicate admits outbound STORIES and outbound
+    /// CONFIRMED-DELIVERED voice notes (`deliveredAt` is stamped only on
+    /// `.delivered`/`.relayed`, so admission is receipt-gated). The tombstone
+    /// guard in `resend` keeps any blob-less row out of every send path
+    /// afterwards.
     func reapExpiredMedia() {
+        let m4aRaw = MediaMimeType.m4a.rawValue
         let descriptor = FetchDescriptor<Message>(
             predicate: #Predicate {
-                $0.mediaData != nil && ($0.isOutbound == false || $0.isStory)
+                $0.mediaData != nil && ($0.isOutbound == false || $0.isStory
+                                        || ($0.mediaMimeRaw == m4aRaw && $0.deliveredAt != nil))
             }
         )
         guard let rows = try? modelContext.fetch(descriptor), !rows.isEmpty else { return }
@@ -610,6 +620,7 @@ final class MessageInbox {
                                                     timestamp: message.timestamp,
                                                     sentAt: message.sentAt,
                                                     listenedAt: message.listenedAt,
+                                                    deliveredAt: message.deliveredAt,
                                                     now: now) else { continue }
             message.mediaData = nil
             reaped += 1

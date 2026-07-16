@@ -210,6 +210,19 @@ public final class Message {
     /// voice note. nil until then. The audio self-destructs 2 min after this
     /// instant — playability is gated on it and `mediaData` is wiped. Inbound m4a only.
     public var listenedAt: Date?
+
+    /// When this OUTBOUND row was first confirmed received (`.delivered` or
+    /// `.relayed`). Stamped ONCE by the `deliveryState` bridge below on EVERY
+    /// outbound row — text and media alike — so no writer can slide it with a
+    /// duplicate ack; today only the ephemeral-voice policy consumes it (the
+    /// sender's copy self-destructs `voiceListenWindow` after this instant,
+    /// the delivery-anchored twin of `listenedAt` — the sender never learns
+    /// the receiver *played* it, so confirmed receipt is the closest honest
+    /// anchor). nil forever on INBOUND rows (the bridge is direction-gated;
+    /// inbound rows are created `.delivered` as a display state, which must
+    /// never become a wipe anchor), and on `.notDelivered`/`.cast` rows
+    /// (their blob is still the resend / re-drive source).
+    public var deliveredAt: Date?
     
     /// The wire `MessageID` (16 bytes) this message was sent under, so router
     /// `DeliveryUpdate`s (keyed by MessageID) can be matched back to this row.
@@ -341,6 +354,24 @@ public final class Message {
             case .delivered:       deliveryStateRaw = "delivered";       relayHops = 0
             case .relayed(let h):  deliveryStateRaw = "relayed";         relayHops = h
             case .notDelivered:    deliveryStateRaw = "notDelivered";    relayHops = 0
+            }
+            // Sender-side ephemerality anchor: EVERY writer routes through this
+            // bridge (the router's DeliveryUpdate apply AND the fast-ack
+            // `= committed` sites), so stamping here is the one place no
+            // confirmation can slip past. First confirmation only — a repeat
+            // or upgraded ack (.delivered after .relayed) never slides the
+            // wipe window. OUTBOUND ONLY, enforced HERE and not at the writers:
+            // every persisted inbound row is created `.delivered` (that is its
+            // display state), and a direction-blind stamp would give every
+            // inbound voice note a delivery anchor at persist — expiring
+            // UNLISTENED notes 120s after arrival and breaking the listen-armed
+            // invariant. (`isOutbound` is assigned before this bridge runs in
+            // init, so the read is safe on the init path.)
+            if deliveredAt == nil, isOutbound {
+                switch newValue {
+                case .delivered, .relayed: deliveredAt = .now
+                default: break
+                }
             }
         }
     }
