@@ -960,6 +960,26 @@ struct StreamView: View {
     }
 }
 
+/// Session-lifetime waveform-bar cache. `loadedBars` is `@State`, so it dies
+/// with the row's view identity — every lazy-transcript recycle re-fired the
+/// full pipeline (blob → temp file → whole-file AAC decode → PCM alloc → RMS).
+/// This caches the finished bars OUTSIDE view identity so a given note decodes
+/// once per session. Keyed by `Message.id` (stable UUID) — NOT the blob, whose
+/// `Hashable` hashes all ~90 KB on every lookup. Bounded: FIFO-evicted past
+/// `capacity` (worst case ~30 KB of CGFloats), so a long transcript can't leak.
+@MainActor
+private enum WaveformBarCache {
+    private static var bars: [UUID: [CGFloat]] = [:]
+    private static var order: [UUID] = []
+    private static let capacity = 128
+
+    static func lookup(_ id: UUID) -> [CGFloat]? { bars[id] }
+    static func store(_ id: UUID, _ value: [CGFloat]) {
+        if bars.updateValue(value, forKey: id) == nil { order.append(id) }
+        while order.count > capacity { bars.removeValue(forKey: order.removeFirst()) }
+    }
+}
+
 private struct StillwaterVoiceNote: View {
     let message: Message
     let isOutbound: Bool
@@ -1110,9 +1130,14 @@ private struct StillwaterVoiceNote: View {
     private func setup() async {
         if expired { wipe(); expiredNow = true; return }
         if !loadedBars, let data = message.mediaData {
-            let count = Self.barCount
-            let computed = await Task.detached { WaveformExtractor.bars(from: data, count: count) }.value
-            bars = computed
+            if let cached = WaveformBarCache.lookup(message.id) {
+                bars = cached
+            } else {
+                let count = Self.barCount
+                let computed = await Task.detached { WaveformExtractor.bars(from: data, count: count) }.value
+                bars = computed
+                WaveformBarCache.store(message.id, computed)
+            }
             loadedBars = true
         }
         // Resume a self-destruct already in flight (listened, app relaunched mid-window).
