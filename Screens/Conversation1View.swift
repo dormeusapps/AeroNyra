@@ -1977,11 +1977,15 @@ private final class WalkieCore {
     /// smoothing below keeps it a breathe, not a stutter.
     private func setTargets(level: Double) {
         let lv = max(0, min(1, level))
-        tSpread   = 1.00 + lv * 0.18   // 1.00 → 1.18
-        tSwirl    = 0.14 + lv * 0.08   // 0.14 → 0.22
-        tJitter   = 0.02 + lv * 0.05   // 0.02 → 0.07
-        tBright   = 0.50 + lv * 0.42   // 0.50 → 0.92
-        ampTarget = 0.10 + lv * 0.40   // 0.10 → 0.50
+        // Ceilings raised for punch on loud speech (idle floors byte-identical
+        // — level 0 renders exactly as before). Bounds checked at the raise:
+        // worst-case particle reach ≈ 0.415·min(W,H) from center (on-canvas),
+        // max particle opacity (0.12+0.78)·1.0 = 0.90, min displacement 0.921.
+        tSpread   = 1.00 + lv * 0.42   // 1.00 → 1.42
+        tSwirl    = 0.14 + lv * 0.16   // 0.14 → 0.30
+        tJitter   = 0.02 + lv * 0.11   // 0.02 → 0.13
+        tBright   = 0.50 + lv * 0.50   // 0.50 → 1.00
+        ampTarget = 0.10 + lv * 0.75   // 0.10 → 0.85
     }
 
     func draw(context ctx: inout GraphicsContext, size: CGSize, time: Double, level: Double) {
