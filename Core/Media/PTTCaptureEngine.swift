@@ -172,7 +172,14 @@ final class PTTCapturePipeline: @unchecked Sendable {
     func finalize() { file = nil }
 }
 
-enum PTTCaptureError: Error { case converterUnavailable, targetFormatUnavailable }
+enum PTTCaptureError: Error {
+    case converterUnavailable, targetFormatUnavailable
+    /// The input node read 0 Hz / 0 ch twice — dead I/O unit even after an
+    /// engine rebuild (mediaserverd itself is wedged). Distinct from
+    /// `converterUnavailable`, which means converter creation genuinely failed
+    /// between two VALID formats.
+    case inputUnavailable
+}
 
 // MARK: - The capture client (drop-in for VoiceRecorder's contract)
 
@@ -189,7 +196,12 @@ final class PTTCaptureEngine {
     private(set) var levels: [CGFloat] = []
     private static let maxLevels = 48
 
-    private let engine = AVAudioEngine()
+    /// `var`, not `let`: when mediaserverd reconfigures, a persistent engine's
+    /// I/O unit can die and its input node reads 0 Hz / 0 ch against a healthy
+    /// session — the only recovery is replacing the instance (see
+    /// `rebuildEngine()`). Private and never escapes the class, so replacement
+    /// is invisible to every caller.
+    private var engine = AVAudioEngine()
     private var pipeline: PTTCapturePipeline?
     private var fileURL: URL?
 
@@ -208,8 +220,24 @@ final class PTTCaptureEngine {
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
             try session.setActive(true)
 
-            let input = engine.inputNode
-            let hwFormat = input.inputFormat(forBus: 0)     // real route format — may be 44.1 kHz
+            var input = engine.inputNode
+            var hwFormat = input.inputFormat(forBus: 0)     // real route format — may be 44.1 kHz
+
+            // A 0 Hz / 0 ch input read is a dead I/O unit, not a bad route: the
+            // session is live (we just activated it) but the engine's AURemoteIO
+            // died under a mediaserverd reconfigure. Rebuild the engine ONCE and
+            // re-read; the old `input` node belongs to the dead instance, so it
+            // must be re-fetched. Nonzero sampleRate/channelCount is Apple's
+            // documented signal that input is enabled — checked here so a dead
+            // engine can never masquerade as `converterUnavailable` downstream.
+            if hwFormat.sampleRate == 0 || hwFormat.channelCount == 0 {
+                rebuildEngine()
+                input = engine.inputNode
+                hwFormat = input.inputFormat(forBus: 0)
+            }
+            guard hwFormat.sampleRate != 0, hwFormat.channelCount != 0 else {
+                throw PTTCaptureError.inputUnavailable
+            }
             guard let target = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                              sampleRate: 48_000, channels: 1,
                                              interleaved: false) else {
@@ -280,6 +308,17 @@ final class PTTCaptureEngine {
     private func teardownEngine() {
         if engine.isRunning { engine.stop() }
         engine.inputNode.removeTap(onBus: 0)
+    }
+
+    /// Replace a dead engine (0 Hz / 0 ch input read). Engine ONLY — this NEVER
+    /// touches AVAudioSession: it runs after `setActive(true)`, under a live
+    /// session, possibly with a live listen session under `PTTSessionOwner`;
+    /// a deactivation here would kill that session out from under its owner.
+    /// Releasing the old instance releases its dead AURemoteIO.
+    private func rebuildEngine() {
+        RedactLog.event("[PTTCaptureEngine] engine rebuilt", "dead input read under live session")
+        teardownEngine()
+        engine = AVAudioEngine()
     }
 
     private func deactivateSession() {
