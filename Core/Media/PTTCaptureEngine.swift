@@ -104,6 +104,15 @@ final class PTTCapturePipeline: @unchecked Sendable {
     private let sealer: PTTFrameSealer?
     private let send: (@Sendable (Data) -> Void)?
 
+    /// Frames sealed AND handed to the transport this hold — the note-gate's
+    /// evidence that the far side actually received audio to hear. Render-
+    /// thread confined like the sealer (I3): incremented only on the tap
+    /// thread's serial `process()`, no lock. Read from the main actor ONLY
+    /// after the tap is removed (`stop()` calls `teardownEngine()` first, so
+    /// no `process()` can still be running). Note-only holds never touch it.
+    private var sentFrames = 0
+    var sentFrameCount: Int { sentFrames }
+
     init(hwFormat: AVAudioFormat, targetFormat: AVAudioFormat, fileURL: URL,
          onLevel: @escaping (CGFloat) -> Void,
          sealer: PTTFrameSealer? = nil,
@@ -156,6 +165,7 @@ final class PTTCapturePipeline: @unchecked Sendable {
                 let seq = sealer.nextCounter                            // peek; == returned counter
                 if let s = try? sealer.seal(opus, aad: PTTAudioWire.aad(forSeq: seq)) {
                     send(PTTAudioWire.pack(seq: s.counter, ciphertext: s.ciphertext, tag: s.tag))
+                    sentFrames += 1
                 }
             }
             // sealer == nil → note-only path; encoded frame not sent (fallback unchanged)
@@ -204,6 +214,11 @@ final class PTTCaptureEngine {
     /// kill a live listen under PTTSessionOwner). start() consumes the flag at
     /// its two abort checkpoints and owns the teardown.
     private var abortRequested = false
+    /// True while the CURRENT hold runs with a live session (a sealer + send
+    /// were handed to the pipeline). Set alongside `.recording`, consumed by
+    /// stop()'s note-gate, cleared in `reset()`. INERT today: shipped callers
+    /// pass `live: nil`, so this never goes true until the trigger lands.
+    private var liveHold = false
     /// Set when mic access is denied — same surface the globe's mic-denied cover
     /// reads, so that path keeps working unchanged.
     private(set) var permissionDenied = false
@@ -309,6 +324,7 @@ final class PTTCaptureEngine {
             pipeline = pipe
             fileURL = url
             levels = []
+            liveHold = live != nil
             state = .recording
         } catch {
             RedactLog.event("[PTTCaptureEngine] start failed", "\(type(of: error))")
@@ -339,15 +355,35 @@ final class PTTCaptureEngine {
         }
         guard let url = fileURL else { finish(); return nil }   // unreachable: .recording implies fileURL set
         teardownEngine()                        // tap removed → no more process() calls
+        let sentFrames = pipeline?.sentFrameCount ?? 0   // read AFTER tap removal — no process() can race this
         pipeline?.finalize()                    // close the AVAudioFile: moov written BEFORE we read
         pipeline = nil                          // now release the pipeline object
         state = .idle
-        let data = try? Data(contentsOf: url)
+        // NOTE-GATE: a live hold that actually shipped audio leaves no note —
+        // they heard it, and the ~90 KB fallback would queue .pttOpen/.pttClose
+        // behind it on the reliable rail (the field-proven clog). A live hold
+        // that shipped nothing still returns the note: it is the only copy of
+        // the utterance anywhere. INERT until the committed trigger lands —
+        // shipped callers pass live: nil, so liveHold is never true.
+        let data = Self.shouldSuppressNote(liveHold: liveHold, sentFrames: sentFrames)
+            ? nil : (try? Data(contentsOf: url))
         try? FileManager.default.removeItem(at: url)
         deactivateSession()
         reset()
         return data
     }
+
+    /// The note-gate decision, pure so it is unit-testable: suppress the
+    /// fallback `.m4a` only when the hold ran live AND at least
+    /// `noteSuppressionMinFrames` sealed frames were handed to the transport.
+    /// The frame floor is load-bearing — a live session that opened but moved
+    /// no audio (link died at open) must still leave the note.
+    nonisolated static func shouldSuppressNote(liveHold: Bool, sentFrames: Int) -> Bool {
+        liveHold && sentFrames >= noteSuppressionMinFrames
+    }
+    /// 25 frames × 20 ms = 500 ms of audio confirmed onto the wire — enough
+    /// that the far side plausibly heard the utterance open, not just a click.
+    nonisolated static let noteSuppressionMinFrames = 25
 
     func cancel() {
         switch state {
@@ -391,7 +427,7 @@ final class PTTCaptureEngine {
             .setActive(false, options: [.notifyOthersOnDeactivation])
     }
 
-    private func reset() { pipeline = nil; fileURL = nil }
+    private func reset() { pipeline = nil; fileURL = nil; liveHold = false }
 
     private func finish() {
         teardownEngine()

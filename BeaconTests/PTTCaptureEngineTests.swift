@@ -10,6 +10,8 @@
 //
 
 import XCTest
+import AVFoundation
+import CryptoKit
 @testable import Beacon
 
 final class PTTCaptureEngineTests: XCTestCase {
@@ -95,5 +97,76 @@ final class PTTCaptureEngineTests: XCTestCase {
 
         // A known mid level: RMS 0.1 → -20 dBFS → (−20 − −50)/50 = 0.6.
         XCTAssertEqual(PTTCaptureDSP.meterLevel(rms: 0.1), 0.6, accuracy: 0.001)
+    }
+
+    // MARK: Note-gate — live holds that shipped audio leave no note
+
+    /// The pure decision table stop() applies. INERT in shipped builds (live
+    /// is always nil → liveHold never true); pinned here so live PTT can never
+    /// come up without the clog fix already in place.
+    func testNoteGateSuppressesOnlyLiveHoldsAtThreshold() {
+        let t = PTTCaptureEngine.noteSuppressionMinFrames
+        // Live + frames at/above threshold → note suppressed (they heard it).
+        XCTAssertTrue(PTTCaptureEngine.shouldSuppressNote(liveHold: true, sentFrames: t))
+        XCTAssertTrue(PTTCaptureEngine.shouldSuppressNote(liveHold: true, sentFrames: t + 500))
+        // Live + frames below threshold → note still ships. Load-bearing: a
+        // live session that opened but moved (almost) no audio must leave the
+        // note — it is the only copy of the utterance anywhere.
+        XCTAssertFalse(PTTCaptureEngine.shouldSuppressNote(liveHold: true, sentFrames: t - 1))
+        XCTAssertFalse(PTTCaptureEngine.shouldSuppressNote(liveHold: true, sentFrames: 0))
+        // Note-only hold → never suppressed, whatever the counter claims.
+        XCTAssertFalse(PTTCaptureEngine.shouldSuppressNote(liveHold: false, sentFrames: t + 500))
+    }
+
+    /// Send-invocation recorder for the live-pipeline tests. `@unchecked
+    /// Sendable` matches the pipeline's own discipline: in these tests
+    /// `process()` runs synchronously on the test thread, so the counter is
+    /// single-thread confined exactly like the render-thread counter it checks.
+    private final class SendRecorder: @unchecked Sendable {
+        var calls = 0
+    }
+
+    /// One 2880-sample buffer through a LIVE pipeline (sealer + send) must
+    /// seal-and-send exactly three 960-sample frames and count all three.
+    func testLivePipelineCountsSealedSentFrames() throws {
+        let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                sampleRate: 48_000, channels: 1, interleaved: false)!
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ptt-test-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let recorder = SendRecorder()
+        let pipe = try PTTCapturePipeline(
+            hwFormat: fmt, targetFormat: fmt, fileURL: url,
+            onLevel: { _ in },
+            sealer: PTTFrameSealer(key: SymmetricKey(size: .bits256)),
+            send: { [recorder] _ in recorder.calls += 1 })
+
+        let buffer = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: 2880)!
+        buffer.frameLength = 2880   // zeros: silence encodes fine
+        pipe.process(buffer)
+
+        XCTAssertEqual(recorder.calls, 3, "three exact 960-sample frames must ship")
+        XCTAssertEqual(pipe.sentFrameCount, 3, "the counter must match the sends 1:1")
+    }
+
+    /// The same buffer through a NOTE-ONLY pipeline (nil sealer/send) must
+    /// leave the counter untouched — the shipped path's behavior, unchanged.
+    func testNoteOnlyPipelineNeverTouchesCounter() throws {
+        let fmt = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                sampleRate: 48_000, channels: 1, interleaved: false)!
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ptt-test-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let pipe = try PTTCapturePipeline(hwFormat: fmt, targetFormat: fmt,
+                                          fileURL: url, onLevel: { _ in })
+
+        let buffer = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: 2880)!
+        buffer.frameLength = 2880
+        pipe.process(buffer)
+
+        XCTAssertEqual(pipe.sentFrameCount, 0,
+            "a note-only hold must never increment the sent-frames counter")
     }
 }
