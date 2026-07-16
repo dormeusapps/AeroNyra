@@ -215,12 +215,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// isolation — the whole reason `pttReceiver` is owned here.
     private var pttAudioTask: Task<Void, Never>?
 
-    /// pttID of OUR open initiator-side PTT session, per peer raw key (Part B) —
-    /// kept so `closePTTInitiator(toPeer:)` can send the matching `.pttClose`
-    /// without the caller threading the id. pttID is a NON-secret random session
-    /// id (safe to log); S / the derived keys / the sealer are NEVER stored here
-    /// (I2 — the sealer transfers to the capture pipeline at open and this actor
-    /// retains no crypto material past `openPTTInitiator`'s return).
+    /// Pure slot arithmetic for `closePTTInitiator` (unit-pinned in
+    /// PTTReceiverTests): the per-peer ownership record after closing `pttID`.
+    /// Only the id that OWNS the slot evicts it — a stale hold's close must
+    /// never evict a newer session's record (a nil assignment removes the
+    /// dictionary entry). The `.pttClose` SEND is deliberately independent of
+    /// this verdict: it always goes out for the id being closed.
+    nonisolated static func slotAfterClose(current: Data?, closing pttID: Data) -> Data? {
+        current == pttID ? nil : current
+    }
+
+    /// pttID of OUR open initiator-side PTT session, per peer raw key (Part B).
+    /// The id itself now rides `PTTLiveSend` and closes are keyed by it; this
+    /// slot is the OWNERSHIP record `closePTTInitiator(toPeer:pttID:)`
+    /// compare-and-removes against, so a stale hold's close can never evict a
+    /// newer session's entry. pttID is a NON-secret random session id (safe to
+    /// log); S / the derived keys / the sealer are NEVER stored here (I2 — the
+    /// sealer transfers to the capture pipeline at open and this actor retains
+    /// no crypto material past `openPTTInitiator`'s return).
     private var pttInitiatorIDs: [Data: Data] = [:]
 
     /// The most recent set of reachable BLE links (ephemeral CoreBluetooth ids)
@@ -1187,18 +1199,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             transport.sendAudioSealed(framed, toLink: chosenLink)
         }
         // Sealer ownership TRANSFERS with this return (I2) — not retained here.
-        return PTTLiveSend(sealer: sealer, send: send)
+        return PTTLiveSend(sealer: sealer, send: send, pttID: pttID)
     }
 
-    /// Close OUR initiator-side PTT session to `rawKey` (Part B): send the
-    /// matching `.pttClose` over the same untracked sealed rail as the open.
-    /// The pttID is looked up from `pttInitiatorIDs` (recorded at open) so the
-    /// caller doesn't thread it; a no-op if no open session is on record.
-    /// NEVER touches the sealer — the capture pipeline owns it (I2). Best-effort
-    /// like a delivery ack: a lost close is healed by the responder's link-loss
-    /// eviction. Logs pttID only (I4).
-    func closePTTInitiator(toPeer rawKey: Data) async {
-        guard let pttID = pttInitiatorIDs.removeValue(forKey: rawKey) else { return }
+    /// Close ONE initiator-side PTT session BY ID (Part B): send the matching
+    /// `.pttClose` over the same untracked sealed rail as the open. The caller
+    /// threads the id (it rides `PTTLiveSend`) — closing by peer alone let a
+    /// stale hold's close pull a LATER press's id from the per-peer slot and
+    /// kill the live session mid-hold. Semantics: ALWAYS send `.pttClose(pttID)`
+    /// (closing a stale or already-overwritten id is safe — the far side evicts
+    /// only that context, which is exactly the close an overwritten orphan
+    /// otherwise never gets), but remove the per-peer slot ONLY when this id
+    /// still owns it (compare-and-remove — a stale closer must not evict a
+    /// newer session's record). NEVER touches the sealer — the capture pipeline
+    /// owns it (I2). Best-effort like a delivery ack: a lost close is healed by
+    /// the responder's link-loss eviction. Logs pttID only (I4).
+    func closePTTInitiator(toPeer rawKey: Data, pttID: Data) async {
+        pttInitiatorIDs[rawKey] = Self.slotAfterClose(current: pttInitiatorIDs[rawKey],
+                                                      closing: pttID)
         do {
             let peer = store.peerIdentity(fromRawKey: rawKey)
             let session = try store.session(with: peer)

@@ -101,4 +101,36 @@ final class PTTReceiverTests: XCTestCase {
         // A frame for the evicted link no longer finds an opener → noSession.
         XCTAssertEqual(rx.receive(link: link, sealed: Data(repeating: 0, count: 24)), .noSession)
     }
+
+    // MARK: closePTTInitiator slot arithmetic (pttID-keyed close)
+    // The coordinator itself is not unit-constructible (heavyweight init), so
+    // these pin the extracted pure verdict `slotAfterClose` — the piece whose
+    // failure mode is "a stale hold's close killed the live session."
+
+    func testCloseByOwningIDEvictsSlot() {
+        let id = Data(repeating: 0xAA, count: 16)
+        XCTAssertNil(FirstContactCoordinator.slotAfterClose(current: id, closing: id),
+            "closing the id that owns the slot must evict it")
+    }
+
+    func testStaleCloseNeverEvictsNewerSession() {
+        let stale = Data(repeating: 0x01, count: 16)
+        let live = Data(repeating: 0x02, count: 16)
+        XCTAssertEqual(FirstContactCoordinator.slotAfterClose(current: live, closing: stale), live,
+            "a stale hold's close must never evict a newer session's record — the wrong-victim kill")
+    }
+
+    func testCloseWithEmptySlotStaysEmpty() {
+        let id = Data(repeating: 0xAA, count: 16)
+        XCTAssertNil(FirstContactCoordinator.slotAfterClose(current: nil, closing: id),
+            "closing with nothing open records nothing (the send still goes out — heal path)")
+    }
+
+    func testDoubleCloseIsIdempotent() {
+        let id = Data(repeating: 0xAA, count: 16)
+        let afterFirst = FirstContactCoordinator.slotAfterClose(current: id, closing: id)
+        XCTAssertNil(afterFirst)
+        XCTAssertNil(FirstContactCoordinator.slotAfterClose(current: afterFirst, closing: id),
+            "a duplicate close of the same id must be a no-op, not a crash or resurrection")
+    }
 }

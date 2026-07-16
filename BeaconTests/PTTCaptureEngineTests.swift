@@ -169,4 +169,51 @@ final class PTTCaptureEngineTests: XCTestCase {
         XCTAssertEqual(pipe.sentFrameCount, 0,
             "a note-only hold must never increment the sent-frames counter")
     }
+
+    // MARK: Hold-token ownership (red-first)
+    // These pin that stop() must act ONLY for the hold that owns the engine.
+    // Against the tokenless API they cannot all pass — stop() acts for every
+    // caller — which is the point: the red run proves the API cannot express
+    // the table before the token lands.
+
+    @MainActor
+    func testStopByOwnerStops() {
+        let engine = PTTCaptureEngine()
+        engine._testForceState(.recording, ownerToken: 7)
+        _ = engine.stop(holdToken: 7)
+        XCTAssertFalse(engine.isRecording, "the owning hold's stop must act")
+    }
+
+    @MainActor
+    func testStaleStopNoOpsInStarting() {
+        let engine = PTTCaptureEngine()
+        engine._testForceState(.starting, ownerToken: 7)
+        _ = engine.stop(holdToken: 6)   // a caller that does NOT own the hold
+        XCTAssertFalse(engine._testAbortRequested,
+            "a non-owner's stop must not abort someone else's in-flight start")
+    }
+
+    @MainActor
+    func testStaleStopNoOpsInRecording() {
+        let engine = PTTCaptureEngine()
+        engine._testForceState(.recording, ownerToken: 7)
+        _ = engine.stop(holdToken: 6)   // a caller that does NOT own the hold
+        XCTAssertTrue(engine.isRecording,
+            "a non-owner's stop must not kill someone else's live capture")
+    }
+
+    /// The cover-dismiss wedge in miniature: once the owner token is
+    /// unreachable no stop(holdToken:) can ever match again — the engine keeps
+    /// transmitting. cancelUnowned() is the ONE sanctioned bypass; this pin
+    /// guards it against ever growing an ownership check of its own.
+    @MainActor
+    func testUnownedCancelKillsAnyHold() {
+        let engine = PTTCaptureEngine()
+        engine._testForceState(.recording, ownerToken: 7)
+        _ = engine.stop(holdToken: 8)         // the wedge: newer tokens never match
+        XCTAssertTrue(engine.isRecording, "precondition — the wedge is real")
+        engine.cancelUnowned()                // the sanctioned teardown bypass
+        XCTAssertFalse(engine.isRecording,
+            "teardown must kill any hold regardless of owner — the surface is gone and no release can ever arrive")
+    }
 }

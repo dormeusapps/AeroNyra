@@ -203,7 +203,7 @@ final class PTTCaptureEngine {
     /// — the confusion that let a release land mid-start and leave the mic
     /// running with no hold to end it (field-confirmed: RACE CONFIRMED, then
     /// AUTH-FAILED on the far side as the stale sealer outlived its session).
-    private enum CaptureState { case idle, starting, recording }
+    enum CaptureState { case idle, starting, recording }
     private var state: CaptureState = .idle
     /// Drop-in for VoiceRecorder's contract — computed, so it can never
     /// disagree with `state`.
@@ -219,6 +219,14 @@ final class PTTCaptureEngine {
     /// stop()'s note-gate, cleared in `reset()`. INERT today: shipped callers
     /// pass `live: nil`, so this never goes true until the trigger lands.
     private var liveHold = false
+    /// The view-layer hold token that OWNS the current `.starting`/`.recording`
+    /// run — recorded at `start(live:holdToken:)`, checked by
+    /// `stop(holdToken:)`. A stale caller (a hold whose token the view has
+    /// already superseded) reaching stop() with the engine mid-hold for a
+    /// LATER press would abort (`.starting` → abortRequested) or kill
+    /// (`.recording` → full teardown) that hold. The caller cannot reconstruct
+    /// ownership once its token is stale — only the engine can name its owner.
+    private var currentHoldToken = 0
     /// Set when mic access is denied — same surface the globe's mic-denied cover
     /// reads, so that path keeps working unchanged.
     private(set) var permissionDenied = false
@@ -241,10 +249,11 @@ final class PTTCaptureEngine {
     /// `live` (PTT Part B): the coordinator's one-shot sealer + send handoff for
     /// a live walkie session. Defaults nil — note-only callers pass nothing and
     /// get today's behavior exactly (encode + discard, .m4a note unchanged).
-    func start(live: PTTLiveSend? = nil) async {
+    func start(live: PTTLiveSend? = nil, holdToken: Int) async {
         guard state == .idle else {
             return }
         state = .starting
+        currentHoldToken = holdToken
         guard await ensurePermission() else {
             permissionDenied = true
             abortRequested = false      // a flag set during the perm suspension dies with the hold
@@ -337,7 +346,15 @@ final class PTTCaptureEngine {
 
     /// Stop and return the `.m4a` bytes (nil if nothing usable) — same contract
     /// as `VoiceRecorder.stop()`.
-    func stop() -> Data? {
+    func stop(holdToken: Int) -> Data? {
+        // OWNERSHIP: only the hold that started the engine may stop it. A
+        // stale caller reaching this with the engine mid-hold for a LATER
+        // press has already proven it is not the owner (its view token went
+        // stale) — it must not touch state it cannot name. Required, not
+        // defaulted: an "unowned" stop must be impossible to write by
+        // accident; the first legitimate teardown caller gets an explicit
+        // `cancelUnowned()` instead.
+        guard holdToken == currentHoldToken else { return nil }
         switch state {
         case .idle:
             // Pure no-op: nothing armed, nothing to tear down — and critically
@@ -385,7 +402,11 @@ final class PTTCaptureEngine {
     /// that the far side plausibly heard the utterance open, not just a click.
     nonisolated static let noteSuppressionMinFrames = 25
 
-    func cancel() {
+    /// PRIVATE by design: `cancelUnowned()` is its only caller, so the
+    /// ownership bypass is structural, not nominal — no future call site can
+    /// reach tokenless cancel semantics except through the one documented
+    /// sanction. (A future OWNED cancel would take a holdToken like stop().)
+    private func cancel() {
         switch state {
         case .idle: return                                  // same no-op contract as stop()
         case .starting: abortRequested = true; return       // start() owns the teardown
@@ -397,6 +418,22 @@ final class PTTCaptureEngine {
         if let url = fileURL { try? FileManager.default.removeItem(at: url) }
         deactivateSession()
         reset()
+    }
+
+    /// Teardown-only: kill WHATEVER hold owns the engine, regardless of token.
+    /// The ONE sanctioned ownership bypass, for surfaces that are going away
+    /// (walkie cover dismissed mid-hold, screen popped mid-hold) where no
+    /// release can ever arrive AND the owner token may be unreachable — the
+    /// cover-dismiss wedge: a reopened cover mints newer tokens, so no
+    /// `stop(holdToken:)` can ever match the wedged owner again, and without
+    /// this the engine keeps SEALING AND TRANSMITTING frames to the stale
+    /// session's link indefinitely (a hot transmitter, not just a hot mic).
+    /// CANCEL semantics only — the temp file is deleted and no data is ever
+    /// returned: a caller with no hold has no claim to the recording. In
+    /// `.starting` it defers to the owner's own abort checkpoints, exactly
+    /// like an owned cancel.
+    func cancelUnowned() {
+        cancel()
     }
 
     // MARK: Internals
@@ -436,6 +473,20 @@ final class PTTCaptureEngine {
         deactivateSession()
         reset()
     }
+
+    #if DEBUG
+    // MARK: Test-only seams (hold-ownership pins)
+    /// Force the state machine into a mid-hold state: the REAL path to
+    /// `.starting`/`.recording` needs mic permission and a live audio session,
+    /// which unit tests don't have. DEBUG-only — the Release product must not
+    /// contain these symbols (nm-verified before commit).
+    func _testForceState(_ forced: CaptureState, ownerToken: Int) {
+        state = forced
+        currentHoldToken = ownerToken
+    }
+    /// Read-only observability for the `.starting` no-op pin.
+    var _testAbortRequested: Bool { abortRequested }
+    #endif
 
     private func ensurePermission() async -> Bool {
         switch AVAudioApplication.shared.recordPermission {

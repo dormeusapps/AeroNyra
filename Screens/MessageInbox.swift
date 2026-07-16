@@ -361,6 +361,31 @@ final class MessageInbox {
         }
     }
 
+    // MARK: - PTT live session (walkie trigger seam)
+
+    /// Open a live PTT session to a peer — the narrow bridge to the
+    /// coordinator's initiator-open, same shape as `send`/`sendMedia` (the
+    /// coordinator itself is never exposed whole). Throws when no verified
+    /// session or audio-capable link exists; the caller degrades to
+    /// note-only capture, today's designed fallback.
+    func openPTT(toPeer rawKey: Data) async throws -> PTTLiveSend {
+        try await coordinator.openPTTInitiator(toPeer: rawKey)
+    }
+
+    /// Close one initiator-side PTT session BY ID (the id rides `PTTLiveSend`
+    /// from `openPTT`) — best-effort, and safe against stale closers: the
+    /// coordinator always sends `.pttClose` for THIS id but only evicts its
+    /// per-peer record when the id still owns it. A lost close LEAKS the
+    /// responder's session — decode context, jitter buffer, and
+    /// PTTSessionOwner entry — until link-loss eviction is wired: today the
+    /// ONLY eviction site is the `.pttClose` dispatch itself
+    /// (`pttReceiver.dropLink` at the coordinator's close handler); the
+    /// "healed by link-loss eviction" the coordinator's own doc promises does
+    /// not exist yet.
+    func closePTT(toPeer rawKey: Data, pttID: Data) async {
+        await coordinator.closePTTInitiator(toPeer: rawKey, pttID: pttID)
+    }
+
     // MARK: - Resend (manual tap + auto-retry on return-to-range)  Phase 7c
 
     /// Re-attempt delivery of a single `.notDelivered` outbound message by

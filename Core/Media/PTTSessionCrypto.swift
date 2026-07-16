@@ -126,6 +126,12 @@ public final class PTTFrameSealer {
 struct PTTLiveSend: @unchecked Sendable {
     let sealer: PTTFrameSealer
     let send: @Sendable (Data) -> Void
+    /// The session id this handle belongs to — NON-secret (safe to log), minted
+    /// at initiator-open. Carried so a close can name ITS OWN session instead
+    /// of "whatever is open toward that peer": a stale hold's close keyed by
+    /// peer alone can pull a LATER press's id from the per-peer slot and kill
+    /// the live session mid-hold (see `closePTTInitiator(toPeer:pttID:)`).
+    let pttID: Data
 }
 
 // MARK: - Receiver: authenticate-then-anti-replay opener

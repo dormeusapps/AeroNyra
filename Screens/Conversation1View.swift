@@ -15,6 +15,7 @@
 //
 
 import SwiftUI
+
 import SwiftData
 import UIKit
 import PhotosUI
@@ -58,6 +59,24 @@ struct StreamView: View {
     /// gesture is never torn down mid-hold. `pttAutoPlay` serializes inbound
     /// PTT playback so two clips never overlap (ignore-if-busy).
     @State private var pttHolding = false
+    /// Monotonic hold generation, minted on every press. A bool cannot
+    /// distinguish "my hold" from "a later hold": press → release → press
+    /// again while hold 1's Task is still inside `await openPTT` would read
+    /// `pttHolding == true` from press two, pass, and ship frames sealed with
+    /// session 1's sealer against a far side session 2's `.pttOpen` already
+    /// re-keyed — the field log's AUTH-FAILED signature, reintroduced at the
+    /// caller. Every gate in `beginPTT`'s Task validates
+    /// `pttHolding && pttHoldToken == myToken`.
+    @State private var pttHoldToken = 0
+    /// The CURRENT hold's live session id, for `endPTT`'s close (the begin
+    /// Task's `live` is Task-local and release can't see it). Written in
+    /// exactly one place — the begin Task, after Gate B passes (token-
+    /// validated, so only the current hold ever writes) — and cleared on
+    /// every exit: endPTT reads-and-clears (it owns the current hold by
+    /// definition of `pttHolding`); Gate C and Gate D compare-and-clear
+    /// before closing by `live.pttID`; Gate A/B never wrote it. A stale id
+    /// left here would be the token race one layer up.
+    @State private var pttSessionID: Data?
     @State private var pttAutoPlay = PTTAutoPlay()
 
     /// Full-screen "walkie mode" (globe surface) for this ONE peer. Rides the
@@ -142,20 +161,31 @@ struct StreamView: View {
             if notifier?.activeConversationID == peer.publicKeyData {
                 notifier?.activeConversationID = nil
             }
+            // Belt for the cover teardown below: reachable mid-hold only if
+            // the whole screen pops with the cover up (programmatic).
+            teardownPTTIfHolding()
         }
         .sheet(isPresented: $showSettings) {
             PeerSettingsView(conversation: currentConversation())
         }
         .fullScreenCover(isPresented: $showWalkie) {
-            // Step 2: the globe's hold-to-talk drives the SAME beginPTT/endPTT
-            // the composer button uses — a release sends an `isPushToTalk` note
-            // over the shipped media path. Peer inherited from this chat; no
-            // picker; dismiss returns here.
+            // The globe's hold-to-talk drives beginPTT/endPTT — the ONLY
+            // surface that does (the composer mic is VoiceRecorder's).
+            // Peer inherited from this chat; no picker; dismiss returns here.
             WalkieGlobeView(peerName: peerName,
                             capture: pttCapture,
                             autoPlay: pttAutoPlay,
                             onPressDown: { beginPTT() },
                             onPressUp: { endPTT() })
+        }
+        // THE teardown site (hold-to-talk exists only behind this cover): a
+        // cover dismissed mid-hold kills the gesture, so the release can never
+        // arrive — and a reopened cover mints newer tokens, so no owned
+        // stop(holdToken:) could ever match the wedged owner again. Without
+        // this the engine keeps SEALING AND TRANSMITTING to the stale
+        // session's link indefinitely.
+        .onChange(of: showWalkie) { _, shown in
+            if !shown { teardownPTTIfHolding() }
         }
         .sheet(isPresented: $showVerify) {
             SASVerifySheet(peerName: peerName,
@@ -471,15 +501,89 @@ struct StreamView: View {
     @MainActor
     private func beginPTT() {
         pttHolding = true
+        pttHoldToken &+= 1
+        let myToken = pttHoldToken
         Task {
-            await pttCapture.start()
+            // Gate A — Task entry. DragGesture(minimumDistance: 0) lets a
+            // press+release land in ONE run-loop tick, before this Task's
+            // first frame runs. Stale here → return; nothing was built yet.
+            guard pttHolding, pttHoldToken == myToken else {
+                return
+            }
+            // Open the live session, best-effort: a throw (no verified session,
+            // no audio-capable link) degrades to note-only — today's designed
+            // fallback. `live` stays nil and everything downstream is the
+            // shipped path exactly.
+            var live: PTTLiveSend?
+            let key = peer.publicKeyData
+            if let inbox {
+                live = try? await inbox.openPTT(toPeer: key)
+            }
+            // Gate B — released (or re-pressed) during the open's actor hop +
+            // sealed BLE send. Stale with a session opened → the far side has
+            // a context we never meant to arm; close it before returning.
+            guard pttHolding, pttHoldToken == myToken else {
+                if let live { await inbox?.closePTT(toPeer: key, pttID: live.pttID) }
+                return
+            }
+            // Token-validated write — the ONLY writer of pttSessionID, so a
+            // stale task can never clobber a newer hold's id. endPTT closes
+            // by this id; Gates C/D below own the close when release never
+            // sees it.
+            pttSessionID = live?.pttID
+            await pttCapture.start(live: live, holdToken: myToken)
+            // Gate C — released while start() ran. The engine's abort
+            // checkpoints cover an in-flight start; this covers a start that
+            // COMPLETED after the release (the release-before-entry ordering
+            // the engine structurally cannot see). Stale → stop the mic,
+            // discard the instant of audio, close the session if one opened.
+            guard pttHolding, pttHoldToken == myToken else {
+                _ = pttCapture.stop(holdToken: myToken)
+                // Close ONLY if endPTT didn't already: the release that made
+                // this gate fire read-and-cleared pttSessionID and closed by
+                // it, so a matching id here means the close is still ours
+                // (e.g. release-before-entry, where endPTT saw nil).
+                if let live, pttSessionID == live.pttID {
+                    pttSessionID = nil
+                    await inbox?.closePTT(toPeer: key, pttID: live.pttID)
+                }
+                return
+            }
+            // D — permission denial surface. If a live session opened (open
+            // needs no mic permission, so this is reachable), close it here:
+            // pttHolding drops without endPTT ever running for this hold, so
+            // nobody else will. Token-valid region → we own pttSessionID.
             if pttCapture.permissionDenied {
-                // In walkie mode the StreamView alert hides behind the cover, so
-                // the globe surfaces denial itself (via pttCapture.permissionDenied).
-                // Only raise the alert for the composer path (cover not up).
+                // Mic denial here surfaces through the globe's own cover
+                // (WalkieGlobeView reads capture.permissionDenied). The
+                // !showWalkie branch below is unreachable-false at Gate D: the
+                // globe is beginPTT's only surface, so the cover is up, and
+                // the cover-dismiss teardown drops pttHolding before the gates
+                // could reach D without it. The alert itself is NOT dead UI —
+                // the composer's tap-record path (VoiceRecorder denial in
+                // startRecording) is its live writer.
                 if !showWalkie { showMicDenied = true }
                 pttHolding = false
+                pttSessionID = nil
+                if let live { await inbox?.closePTT(toPeer: key, pttID: live.pttID) }
             }
+        }
+    }
+
+    /// Teardown for a surface dying mid-hold (walkie cover dismissed; screen
+    /// popped): the gesture's release can never arrive, and the owner token
+    /// may already be unreachable, so this is the sanctioned ownership bypass
+    /// — unowned CANCEL (discard, never a note), close the session this hold
+    /// armed, reset the hold state. Idempotent via the `pttHolding` guard.
+    @MainActor
+    private func teardownPTTIfHolding() {
+        guard pttHolding else { return }
+        pttHolding = false
+        pttCapture.cancelUnowned()
+        if let sessionID = pttSessionID, let inbox {
+            pttSessionID = nil
+            let key = peer.publicKeyData
+            Task { await inbox.closePTT(toPeer: key, pttID: sessionID) }
         }
     }
 
@@ -487,10 +591,30 @@ struct StreamView: View {
     private func endPTT() {
         guard pttHolding else { return }
         pttHolding = false
-        // Release before start finished, or nothing captured → nothing to send.
-        guard let data = pttCapture.stop(), let inbox else { return }
+        // Stop first (synchronous — the mic is off before anything else), then
+        // close, THEN the note, all in ONE Task. Ordering is load-bearing: two
+        // independent Tasks can interleave, and if the ~90 KB sendMedia reaches
+        // the rail first the .pttClose queues behind 22 chunks and the far
+        // side's session leaks for that whole burst. Source order is not
+        // execution order; one Task makes it so.
+        let data = pttCapture.stop(holdToken: pttHoldToken)
+        // Read-and-clear: endPTT owns the current hold (pttHolding was true),
+        // so whatever id is here is THIS hold's. Clearing before the Task
+        // means a fast re-press can never race a stale id into its close.
+        let sessionID = pttSessionID
+        pttSessionID = nil
+        guard let inbox else { return }
+        let key = peer.publicKeyData
         let convo = currentConversation()
-        Task { await inbox.sendMedia(data, mime: .m4a, in: convo, isPushToTalk: true) }
+        Task {
+            if let sessionID {
+                await inbox.closePTT(toPeer: key, pttID: sessionID)
+            }
+            guard let data else {
+                return
+            }
+            await inbox.sendMedia(data, mime: .m4a, in: convo, isPushToTalk: true)
+        }
     }
 
     private var sendButton: some View {
