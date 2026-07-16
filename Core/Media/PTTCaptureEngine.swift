@@ -187,7 +187,23 @@ enum PTTCaptureError: Error {
 @Observable
 final class PTTCaptureEngine {
 
-    private(set) var isRecording = false
+    /// Capture lifecycle (Commit 2). `.starting` spans the whole start() window
+    /// (500–900 ms healthy; 1175 ms+ under the field's wedged-daemon permission
+    /// stall), so "not recording" no longer conflates idle with start-in-flight
+    /// — the confusion that let a release land mid-start and leave the mic
+    /// running with no hold to end it (field-confirmed: RACE CONFIRMED, then
+    /// AUTH-FAILED on the far side as the stale sealer outlived its session).
+    private enum CaptureState { case idle, starting, recording }
+    private var state: CaptureState = .idle
+    /// Drop-in for VoiceRecorder's contract — computed, so it can never
+    /// disagree with `state`.
+    var isRecording: Bool { state == .recording }
+    /// Set ONLY by stop()/cancel() landing while `.starting` (release raced
+    /// ahead of an in-flight start). The setter does NOTHING else — no
+    /// teardown, no session deactivation (an unguarded setActive(false) can
+    /// kill a live listen under PTTSessionOwner). start() consumes the flag at
+    /// its two abort checkpoints and owns the teardown.
+    private var abortRequested = false
     /// Set when mic access is denied — same surface the globe's mic-denied cover
     /// reads, so that path keeps working unchanged.
     private(set) var permissionDenied = false
@@ -211,9 +227,25 @@ final class PTTCaptureEngine {
     /// a live walkie session. Defaults nil — note-only callers pass nothing and
     /// get today's behavior exactly (encode + discard, .m4a note unchanged).
     func start(live: PTTLiveSend? = nil) async {
-        guard !isRecording else { return }
-        guard await ensurePermission() else { permissionDenied = true; return }
+        guard state == .idle else {
+            return }
+        state = .starting
+        guard await ensurePermission() else {
+            permissionDenied = true
+            abortRequested = false      // a flag set during the perm suspension dies with the hold
+            state = .idle
+            return
+        }
         permissionDenied = false
+        // Abort checkpoint 1: the permission await is start()'s ONLY suspension
+        // point, so this is where a release can land mid-start (field-proven:
+        // the 1175 ms undetermined-despite-grant stall). Bail before touching
+        // the session — nothing to tear down yet.
+        if abortRequested {
+            abortRequested = false
+            state = .idle
+            return
+        }
 
         do {
             let session = AVAudioSession.sharedInstance()
@@ -261,26 +293,55 @@ final class PTTCaptureEngine {
             engine.prepare()
             try engine.start()
 
+            // Abort checkpoint 2: last gate before frames flow. On the granted
+            // path there is no suspension inside this do-block, so a flag set
+            // during the perm await was already consumed at checkpoint 1 —
+            // this is belt for any future suspension added upstream of here.
+            if abortRequested {
+                abortRequested = false
+                teardownEngine()
+                try? FileManager.default.removeItem(at: url)
+                deactivateSession()
+                reset()
+                state = .idle
+                return
+            }
             pipeline = pipe
             fileURL = url
             levels = []
-            isRecording = true
+            state = .recording
         } catch {
             RedactLog.event("[PTTCaptureEngine] start failed", "\(type(of: error))")
             teardownEngine()
             deactivateSession()
             reset()
+            state = .idle
         }
     }
 
     /// Stop and return the `.m4a` bytes (nil if nothing usable) — same contract
     /// as `VoiceRecorder.stop()`.
     func stop() -> Data? {
-        guard isRecording, let url = fileURL else { finish(); return nil }
+        switch state {
+        case .idle:
+            // Pure no-op: nothing armed, nothing to tear down — and critically
+            // no deactivateSession(). The old finish() here fired an unguarded
+            // setActive(false) with nothing to clean up.
+            return nil
+        case .starting:
+            // Release raced ahead of an in-flight start(): request the abort
+            // and do NOTHING else — start() owns the teardown at its
+            // checkpoints, under whatever state it actually built.
+            abortRequested = true
+            return nil
+        case .recording:
+            break
+        }
+        guard let url = fileURL else { finish(); return nil }   // unreachable: .recording implies fileURL set
         teardownEngine()                        // tap removed → no more process() calls
         pipeline?.finalize()                    // close the AVAudioFile: moov written BEFORE we read
         pipeline = nil                          // now release the pipeline object
-        isRecording = false
+        state = .idle
         let data = try? Data(contentsOf: url)
         try? FileManager.default.removeItem(at: url)
         deactivateSession()
@@ -289,10 +350,14 @@ final class PTTCaptureEngine {
     }
 
     func cancel() {
-        guard isRecording else { return }
+        switch state {
+        case .idle: return                                  // same no-op contract as stop()
+        case .starting: abortRequested = true; return       // start() owns the teardown
+        case .recording: break
+        }
         teardownEngine()
         pipeline = nil
-        isRecording = false
+        state = .idle
         if let url = fileURL { try? FileManager.default.removeItem(at: url) }
         deactivateSession()
         reset()
@@ -331,7 +396,7 @@ final class PTTCaptureEngine {
     private func finish() {
         teardownEngine()
         pipeline = nil
-        isRecording = false
+        state = .idle
         deactivateSession()
         reset()
     }
