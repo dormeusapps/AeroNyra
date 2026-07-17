@@ -190,4 +190,42 @@ final class WebRTCCallMediaTests: XCTestCase {
         media.setMicMuted(false)
         XCTAssertFalse(media.micMuted)
     }
+
+    // MARK: Speaker routing (audio-session override; hermetic — unmanaged
+    // session, so only the mirror is observable here. The route itself is
+    // hardware-gate territory.)
+
+    @MainActor
+    func testSpeakerToggleTracksWhenUnmanaged() {
+        let media = WebRTCCallMedia(config: CallICEConfig())
+        media.managesAudioSession = false   // hermetic (see loopback test)
+        defer { media.close() }
+
+        XCTAssertFalse(media.speakerEnabled, "speaker starts off")
+        media.setSpeakerEnabled(true)
+        XCTAssertTrue(media.speakerEnabled, "the mirror must track an enable")
+        media.setSpeakerEnabled(false)
+        XCTAssertFalse(media.speakerEnabled, "…and a disable")
+    }
+
+    /// The connect-time default: speaker for a camera-on call, earpiece for
+    /// voice-only. Driven through the REAL configure path (`makeAnswer` is one
+    /// of its two callers), hermetically.
+    @MainActor
+    func testConnectSeedsSpeakerFromCamera() async throws {
+        for cameraOn in [true, false] {
+            let caller = WebRTCCallMedia(config: CallICEConfig())
+            let callee = WebRTCCallMedia(config: CallICEConfig(),
+                                         cameraInitiallyEnabled: cameraOn)
+            caller.managesAudioSession = false
+            callee.managesAudioSession = false
+            defer { caller.close(); callee.close() }
+
+            let offer = try await caller.makeOffer()
+            _ = try await callee.makeAnswer(remoteOffer: offer)
+
+            XCTAssertEqual(callee.speakerEnabled, cameraOn,
+                "connect must seed the route from the camera state: camera \(cameraOn ? "on → speaker" : "off → earpiece")")
+        }
+    }
 }

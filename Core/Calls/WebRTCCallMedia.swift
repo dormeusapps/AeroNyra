@@ -102,6 +102,14 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
 
     public private(set) var cameraEnabled: Bool
     public private(set) var micMuted = false
+    /// Whether call audio is forced to the loudspeaker. `.voiceChat` mode
+    /// prefers the earpiece and WINS over the `.defaultToSpeaker` option, so
+    /// the route is driven explicitly via `overrideOutputAudioPort` — seeded
+    /// at connect (speaker for a camera-on call, earpiece for voice-only) and
+    /// user-owned thereafter (`setSpeakerEnabled`). Mid-call camera toggles
+    /// never touch it: changing the route under the user mid-sentence is
+    /// worse than the earpiece default this replaces.
+    public private(set) var speakerEnabled: Bool = false
     /// Which camera feeds the call. Flipping swaps the CAPTURE device only —
     /// the video track, sender, and SDP are untouched (no wire change).
     public private(set) var cameraPosition: AVCaptureDevice.Position = .front
@@ -284,6 +292,24 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
         audioTrack?.isEnabled = !muted
     }
 
+    /// Force call audio to the loudspeaker (or back to the mode's default
+    /// route — the earpiece under `.voiceChat`). `overrideOutputAudioPort` is
+    /// the mechanism, NOT a mode swap: mode churn mid-call renegotiates the
+    /// audio unit; the override rides on top of the session as configured.
+    /// Unmanaged (hermetic tests): the session is never touched but the
+    /// mirror still updates, so pins can observe it. On a refused override
+    /// the mirror does NOT update — it must never claim a route the session
+    /// declined.
+    public func setSpeakerEnabled(_ enabled: Bool) {
+        guard managesAudioSession else { speakerEnabled = enabled; return }
+        let session = RTCAudioSession.sharedInstance()
+        session.lockForConfiguration()
+        if (try? session.overrideOutputAudioPort(enabled ? .speaker : .none)) != nil {
+            speakerEnabled = enabled
+        }
+        session.unlockForConfiguration()
+    }
+
     /// Flip front ↔ back mid-call: restart capture on the other device, put
     /// through the SAME bestFormatIndex selection (the flipped camera gets
     /// the 720p treatment too). Capture-source swap only.
@@ -411,6 +437,12 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
     /// = true` is what actually lets WebRTC's audio unit run under manual mode
     /// (see the factory); `close()` sets it false and hands audio back.
     private func configureAudioSession() {
+        // Default route on connect: speaker when the call starts camera-on,
+        // earpiece when it starts voice-only. The mirror seeds BEFORE the
+        // managed guard so hermetic tests (managesAudioSession == false) can
+        // pin the seed without a real session; the route itself is applied
+        // below, on managed sessions only.
+        speakerEnabled = cameraEnabled
         guard managesAudioSession else { return }
         let session = RTCAudioSession.sharedInstance()
         session.lockForConfiguration()
@@ -418,6 +450,9 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
                                  mode: cameraEnabled ? .videoChat : .voiceChat,
                                  options: [.defaultToSpeaker, .allowBluetoothHFP])
         try? session.setActive(true)
+        // Ordering is load-bearing: an override applied to an INACTIVE
+        // session does not stick — never hoist this above setActive(true).
+        try? session.overrideOutputAudioPort(speakerEnabled ? .speaker : .none)
         session.isAudioEnabled = true
         session.unlockForConfiguration()
     }
