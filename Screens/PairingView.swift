@@ -285,12 +285,13 @@ struct PairingView: View {
 
             VStack {
                 HStack {
+                    Spacer()
                     Button { showScanner = false } label: {
                         Text("close")
                             .stillwaterMono(9, trackingEm: 0.24, color: Stillwater.Palette.foam)
+                            .padding(20)
+                            .contentShape(Rectangle())
                     }
-                    .padding(20)
-                    Spacer()
                 }
                 Spacer()
                 Text("point at their code")
