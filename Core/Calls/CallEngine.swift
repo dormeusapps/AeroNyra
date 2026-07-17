@@ -43,6 +43,12 @@ public final class CallEngine {
     /// Camera/mute mirrors so SwiftUI updates without observing WebRTC types.
     public private(set) var cameraOn = false
     public private(set) var micMuted = false
+    /// Mirror of the media's speaker route (same shape as `cameraOn`/
+    /// `micMuted`). Re-synced from the media on every controller state
+    /// change — the connect-time seed (speaker for camera-on calls) happens
+    /// inside the media during setup, and the `.active` transition is where
+    /// this mirror learns of it, so the button is truthful on its first frame.
+    public private(set) var speakerEnabled = false
 
     /// Fix 2 — remote frame activity (staleness-based, no wire): drives the
     /// "video paused" placeholder instead of a frozen last frame. `WasEver`
@@ -76,6 +82,7 @@ public final class CallEngine {
             self.state = newState
             self.cameraOn = self.activeMedia?.cameraEnabled ?? false
             self.micMuted = self.activeMedia?.micMuted ?? false
+            self.speakerEnabled = self.activeMedia?.speakerEnabled ?? false
             // Fix 2: hook the current attempt's frame-activity callback once.
             if let media = self.activeMedia, media.onRemoteVideoActive == nil {
                 media.onRemoteVideoActive = { [weak self] active in
@@ -153,6 +160,7 @@ public final class CallEngine {
         activeMedia = nil
         cameraOn = false
         micMuted = false
+        speakerEnabled = false
         remoteVideoActive = false
         remoteVideoWasEverActive = false
     }
@@ -178,6 +186,11 @@ public final class CallEngine {
     public func setMicMuted(_ muted: Bool) {
         activeMedia?.setMicMuted(muted)
         micMuted = muted
+    }
+
+    public func setSpeakerEnabled(_ enabled: Bool) {
+        activeMedia?.setSpeakerEnabled(enabled)
+        speakerEnabled = enabled
     }
 
     /// Fix 1: front ↔ back capture swap, forwarded — no wire, no sender,

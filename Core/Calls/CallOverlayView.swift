@@ -166,6 +166,11 @@ struct CallOverlayView: View {
                                   active: engine.micMuted) {
                         engine.setMicMuted(!engine.micMuted)
                     }
+                    controlButton(engine.speakerEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill",
+                                  active: engine.speakerEnabled) {
+                        engine.setSpeakerEnabled(!engine.speakerEnabled)
+                    }
+                    .accessibilityLabel("Speaker")
                     controlButton("phone.down.fill", active: false,
                                   tint: Stillwater.Palette.mistDim) {
                         engine.hangUp()
