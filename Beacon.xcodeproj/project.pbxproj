@@ -150,61 +150,85 @@
 		};
 		7C3B095C2FED902F00AE9EC1 /* BeaconTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = BeaconTests;
 			sourceTree = "<group>";
 		};
 		7C3B09762FED916500AE9EC1 /* Models */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Models;
 			sourceTree = "<group>";
 		};
 		7C3B097E2FED965B00AE9EC1 /* Routing */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Routing;
 			sourceTree = "<group>";
 		};
 		7C3B09822FED9AC700AE9EC1 /* Protocol_Seam */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Protocol_Seam;
 			sourceTree = "<group>";
 		};
 		7C3B09862FEDA0C900AE9EC1 /* Identity */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Identity;
 			sourceTree = "<group>";
 		};
 		7C3B098D2FEDAC3600AE9EC1 /* Session */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Session;
 			sourceTree = "<group>";
 		};
 		7C3B09912FEDADAD00AE9EC1 /* AtRest */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = AtRest;
 			sourceTree = "<group>";
 		};
 		7C3B09982FEDF37A00AE9EC1 /* Wipe */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Wipe;
 			sourceTree = "<group>";
 		};
 		7CAEDF7D2FF158A60084A5C4 /* Media */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Media;
 			sourceTree = "<group>";
 		};
 		7CCA110A2FF9000000C4113A /* Calls */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Calls;
 			sourceTree = "<group>";
 		};
 		7CD41F0A2FFB01AB00C4113A /* Notifications */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Notifications;
 			sourceTree = "<group>";
 		};
 		7CD41F0B2FFB01AB00C4113A /* Stories */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = Stories;
 			sourceTree = "<group>";
 		};
@@ -511,13 +535,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Beacon/Pods-Beacon-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Beacon/Pods-Beacon-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
