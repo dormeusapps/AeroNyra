@@ -15,8 +15,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<true/>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Geist-Regular.ttf</string>
