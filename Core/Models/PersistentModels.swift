@@ -145,14 +145,6 @@ public final class Conversation {
     /// Drives chats-list ordering.
     public var lastActivity: Date
     
-    /// Per-conversation read-receipt opt-in. OFF by default (the Private
-    /// posture). When on, opening an inbound message emits a small encrypted
-    /// ack over the radio — another envelope, another ratchet step, a presence
-    /// cost — which is exactly why it's off until the user chooses otherwise.
-    /// The PeerSettings toggle binds to this; the send path consults it before
-    /// emitting an ack.
-    public var readReceiptsEnabled: Bool
-    
     /// The other party for a DIRECT conversation; nil for the mesh room.
     public var peer: Peer?
     
@@ -163,14 +155,12 @@ public final class Conversation {
                 peer: Peer? = nil,
                 title: String? = nil,
                 lastActivity: Date = .now,
-                readReceiptsEnabled: Bool = false,
                 id: UUID = UUID()) {
         self.id = id
         self.kindRaw = kind.rawValue
         self.peer = peer
         self.title = title
         self.lastActivity = lastActivity
-        self.readReceiptsEnabled = readReceiptsEnabled
         self.messages = []
     }
     

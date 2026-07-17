@@ -10,7 +10,6 @@
 //   • PROFILE — the avatar (tap to set a photo), nickname, photo, accent color,
 //     reset. All local; wiped with the store on crypto-erase.
 //   • IDENTITY — the full public-key fingerprint (the proof of who this peer is).
-//   • PRIVACY — the per-conversation read-receipts toggle (OFF by default).
 //
 //  LOCAL-ONLY INVARIANT: petname, photo, and accent are things the USER assigns on
 //  THIS device to a key already verified in pairing. A contact's own self-chosen
@@ -52,7 +51,6 @@ struct PeerSettingsView: View {
                     profileSection
                     verificationSection
                     identitySection
-                    privacySection
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 44)
@@ -306,21 +304,6 @@ struct PeerSettingsView: View {
             rows.append("\(left)   \(right)")
         }
         return rows.joined(separator: "\n")
-    }
-
-    // MARK: - Privacy
-    private var privacySection: some View {
-        SettingsGroup(
-            header: "Privacy",
-            footer: "When on, a small encrypted ack is sent on the radio each time you open a message."
-        ) {
-            SettingsRow {
-                Toggle(isOn: $conversation.readReceiptsEnabled) {
-                    Text("Read receipts").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
-                }
-                .tint(Stillwater.Palette.biolume)
-            }
-        }
     }
 
     // MARK: - Derived
