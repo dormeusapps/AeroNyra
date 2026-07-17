@@ -1735,7 +1735,7 @@ private struct WaitingLine: View {
     }
 }
 
-// MARK: - Ripple ring (presence + read receipt)
+// MARK: - Ripple ring (header presence + delivered/relayed state)
 private struct RippleRing: View {
     let color: Color
     var size: CGFloat = 22
