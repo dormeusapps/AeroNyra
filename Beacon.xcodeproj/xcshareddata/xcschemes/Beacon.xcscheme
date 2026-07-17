@@ -30,7 +30,7 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <TestPlans>
          <TestPlanReference
-            reference = "container:../Beacon.xctestplan"
+            reference = "container:Beacon.xctestplan"
             default = "YES">
          </TestPlanReference>
       </TestPlans>

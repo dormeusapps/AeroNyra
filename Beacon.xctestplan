@@ -1,0 +1,39 @@
+{
+  "configurations" : [
+    {
+      "id" : "CD5764DC-CCBE-4D55-A8A2-FD561780D658",
+      "name" : "Test Scheme Action",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "performanceAntipatternCheckerEnabled" : true,
+    "targetForVariableExpansion" : {
+      "containerPath" : "container:Beacon.xcodeproj",
+      "identifier" : "7C3B094B2FED902E00AE9EC1",
+      "name" : "Beacon"
+    }
+  },
+  "testTargets" : [
+    {
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:Beacon.xcodeproj",
+        "identifier" : "7C3B09582FED902F00AE9EC1",
+        "name" : "BeaconTests"
+      }
+    },
+    {
+      "enabled" : false,
+      "parallelizable" : true,
+      "target" : {
+        "containerPath" : "container:Beacon.xcodeproj",
+        "identifier" : "7C3B09622FED902F00AE9EC1",
+        "name" : "BeaconUITests"
+      }
+    }
+  ],
+  "version" : 1
+}
