@@ -64,12 +64,24 @@ struct ContentView: View {
         /// route switch and a failed erase — never a catch-all.
         case bootFailed(IdentityStore, BootFailure)
         case ready(IdentityKeypair, ModelContainer, IdentityStore)
+        /// Mid-erase: between "user confirmed erase" and "wipe verified
+        /// complete." Renders a model-free surface so NO mounted view holds the
+        /// ModelContainer (or any Peer/Conversation ref) while the store files
+        /// are deleted. Carries nothing — the running erase Task already holds
+        /// everything it needs to finish and route. Reachable only from
+        /// `eraseEverything(store:)`.
+        case wiping
     }
 
     @State private var phase: Phase = .launching
 
     /// Drives the destructive-confirmation dialog on the `.bootFailed` door.
     @State private var confirmBootErase = false
+
+    /// Resumes `eraseEverything`'s render-commit barrier when the `.wiping`
+    /// arm appears. Set immediately before the flip to `.wiping`; cleared the
+    /// moment it fires so it can never double-resume the continuation.
+    @State private var wipingAppeared: (() -> Void)?
     
     /// The single long-lived BLE transport, started at launch.
     @State private var transport = BLEMeshTransport()
@@ -170,6 +182,18 @@ struct ContentView: View {
 
             case .bootFailed(let store, let failure):
                 bootFailedScreen(store: store, failure: failure)
+
+            case .wiping:
+                wipingScreen
+                    .onAppear {
+                        // Render-commit barrier for eraseEverything: the switch
+                        // renders exactly one arm, so this arm appearing means
+                        // ReadyView (its container, environment injection, and
+                        // MessageInbox task loops) left the tree in the same
+                        // commit. Only now may deletion begin.
+                        wipingAppeared?()
+                        wipingAppeared = nil
+                    }
             }
         }
         .preferredColorScheme(.dark)
@@ -213,6 +237,24 @@ struct ContentView: View {
     
     private var launchScreen: some View {
         Color.bgApp.ignoresSafeArea()
+    }
+
+    /// The mid-erase surface. Deliberately model-free: no ModelContainer, no
+    /// @Query, no Peer/Conversation refs — its whole job is to be what is on
+    /// screen while the store files are deleted, so nothing can fault a deleted
+    /// row. Spinner + label make it visually distinct from the blank launch
+    /// screen, so a wipe in progress can't be mistaken for a stuck boot.
+    private var wipingScreen: some View {
+        ZStack {
+            Color.bgApp.ignoresSafeArea()
+            VStack(spacing: 16) {
+                ProgressView()
+                    .controlSize(.large)
+                Text("Erasing everything…")
+                    .font(.callout)
+                    .foregroundStyle(Color.secondary)
+            }
+        }
     }
 
     // MARK: - Boot-failure door (Fix 1 / Fix 3)
@@ -651,9 +693,13 @@ struct ContentView: View {
     /// never ran). `store` is the call site's IdentityStore, so this never
     /// depends on the assembled wipe for the load-bearing step.
     ///
-    /// GATE + ORDER. The identity item is the loop decider: onboarding is safe
-    /// to reach ONLY once it is confirmed gone (else the next `load()` re-throws
-    /// and we bounce forever). So delete it explicitly and FIRST; on failure,
+    /// TEARDOWN + GATE + ORDER. Before ANY deletion, the phase flips to
+    /// `.wiping` and waits for that arm's `.onAppear` — the render-commit
+    /// barrier that certifies ReadyView (and every live Peer/Conversation ref)
+    /// left the tree, so deleting the store files can no longer invalidate a
+    /// mounted view's rows. Then the identity item, the loop decider: onboarding
+    /// is safe to reach ONLY once it is confirmed gone (else the next `load()`
+    /// re-throws and we bounce forever). So delete it explicitly first; on failure,
     /// stay on the door and let the user retry (delete() succeeds on
     /// errSecItemNotFound too, and a foreground user-initiated erase clears the
     /// locked-Keychain status that would fail it at boot). The Enclave key is
@@ -664,6 +710,24 @@ struct ContentView: View {
     /// preferences, kept apart.
     private func eraseEverything(store: IdentityStore) {
         Task { @MainActor in
+            // TEARDOWN FIRST (erase-crash fix). Deleting the store files under
+            // a mounted ReadyView invalidated its live Peer/Conversation rows,
+            // and the first mid-wipe re-render (DeviceResidueWipe's @AppStorage
+            // removal, or any presence tick) died in Conversation.kindRaw. So:
+            // flip to .wiping BEFORE any deletion, and WAIT for that arm's
+            // .onAppear — the phase switch renders exactly one arm, so the
+            // wiping surface appearing certifies ReadyView (its container copy,
+            // the .modelContainer environment, and the MessageInbox task loops)
+            // left the tree in the same commit. The wiping view holds no model
+            // refs, so no view can fault a deleted row from here on. This
+            // certifies hierarchy removal + task cancellation, not that the
+            // container's file handles have closed — the verify step below is
+            // the compensating check for a late sidecar write.
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                wipingAppeared = { cont.resume() }
+                phase = .wiping
+            }
+
             // GATE.
             do {
                 try store.delete()
@@ -678,7 +742,9 @@ struct ContentView: View {
             // honestly returns .notFound. Full assembled sweep (contact
             // allowlist, invite ledger, event ledger, device residue, …) — this
             // is the `.ready` path; at the door it is a no-op ([], wipe unbuilt).
-            _ = await performEmergencyWipe()
+            // CAPTURED, not discarded: a partial wipe must not route to
+            // onboarding as if it were clean (see the routing gate below).
+            var wipeErrors = await performEmergencyWipe()
 
             // Door sweep. At `.bootFailed` the assembled wipe is nil, so the
             // SwiftData message store, the session DEK, and the Nostr secret from
@@ -686,14 +752,23 @@ struct ContentView: View {
             // dying Enclave key. Delete them explicitly so onboarding starts
             // clean, not over a stranger's conversations. Idempotent — no-ops
             // after performEmergencyWipe already cleared them at `.ready`.
-            // Best-effort: the gate already precludes any loop, but every failure
-            // is logged, never `try?`'d into silence.
+            // Best-effort: every step still runs, but failures are COLLECTED
+            // (they gate the route below) as well as logged.
             do { try await SwiftDataStoreWipe().wipe() }
-            catch { RedactLog.event("erase: SwiftData store wipe FAILED", "\(type(of: error))") }
+            catch {
+                RedactLog.event("erase: SwiftData store wipe FAILED", "\(type(of: error))")
+                wipeErrors.append(error)
+            }
             do { try await SessionKeyWipe(service: sessionKeyService).wipe() }
-            catch { RedactLog.event("erase: session DEK wipe FAILED", "\(type(of: error))") }
+            catch {
+                RedactLog.event("erase: session DEK wipe FAILED", "\(type(of: error))")
+                wipeErrors.append(error)
+            }
             do { try await NostrIdentityWipe(service: nostrIdentityService).wipe() }
-            catch { RedactLog.event("erase: Nostr secret wipe FAILED", "\(type(of: error))") }
+            catch {
+                RedactLog.event("erase: Nostr secret wipe FAILED", "\(type(of: error))")
+                wipeErrors.append(error)
+            }
 
             // Enclave teardown. Build the wrapper ONCE and reuse it for the
             // teardown AND the fresh onboarding store. Not gating (the identity
@@ -712,6 +787,25 @@ struct ContentView: View {
             } catch {
                 RedactLog.event("erase: Enclave wrapper construct FAILED", "\(type(of: error))")
                 wrapper = nil
+            }
+
+            // VERIFY, then route. Onboarding only after the wipe is CONFIRMED
+            // complete: no collected step failure, and the three SwiftData store
+            // files actually gone (a live container's late write can recreate a
+            // sidecar after deletion — the residual risk SwiftDataStoreWipe's
+            // header records; this check is what catches it). On a partial or
+            // unverified wipe, land on the door — its copy admits something
+            // went wrong and its Erase button retries — never on onboarding
+            // over surviving data. `.identityUnreadable` is the honest choice
+            // of the two existing BootFailure cases: `.stackFailed`'s copy
+            // promises "your identity and contacts are safe," which is false
+            // after the gate above deleted the identity.
+            let storeGone = ((try? SwiftDataStoreWipe())?.verifyStoreDeleted()) ?? false
+            guard wipeErrors.isEmpty, storeGone else {
+                RedactLog.event("erase: INCOMPLETE — routing to the door, not onboarding",
+                                "errors=\(wipeErrors.count) storeGone=\(storeGone)")
+                phase = .bootFailed(store, .identityUnreadable)
+                return
             }
 
             phase = .onboarding(IdentityStore(service: identityService,

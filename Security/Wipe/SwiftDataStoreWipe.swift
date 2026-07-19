@@ -117,4 +117,16 @@ public struct SwiftDataStoreWipe: Wipeable {
 
         if let firstError { throw firstError }
     }
+
+    /// Post-wipe verification: true when NONE of the store files remain on
+    /// disk. The erase flow calls this after deletion and refuses to route to
+    /// onboarding while any file survives — a live container's late write can
+    /// recreate a sidecar after deletion (the residual risk in the header), and
+    /// this is the check that catches it. Read-only; never creates or deletes.
+    public func verifyStoreDeleted() -> Bool {
+        let fm = FileManager.default
+        return !Self.storeFileNames.contains { name in
+            fm.fileExists(atPath: directory.appendingPathComponent(name).path)
+        }
+    }
 }

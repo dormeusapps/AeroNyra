@@ -120,4 +120,34 @@ final class SwiftDataStoreWipeTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: bystander.path),
                       "wipe must only remove the store files, not siblings")
     }
+
+    // MARK: Post-wipe verification (the erase flow routes on this)
+
+    func testVerifyStoreDeletedFalseWhileFilesRemainTrueAfterFullWipe() async throws {
+        let dir = try makeTempDirectory()
+        try writeFiles(storeFileNames, into: dir)
+
+        let wipe = try SwiftDataStoreWipe(directory: dir)
+        XCTAssertFalse(wipe.verifyStoreDeleted(),
+                       "files still on disk must fail verification")
+
+        try await wipe.wipe()
+        XCTAssertTrue(wipe.verifyStoreDeleted(),
+                      "a full wipe must verify: no default.store / -wal / -shm remain")
+    }
+
+    func testVerifyStoreDeletedTrueOnEmptyDirectory() throws {
+        let dir = try makeTempDirectory()   // nothing written
+        XCTAssertTrue(try SwiftDataStoreWipe(directory: dir).verifyStoreDeleted(),
+                      "nothing on disk is a verified-clean state")
+    }
+
+    func testVerifyStoreDeletedFalseWithOnlyASurvivingSidecar() throws {
+        let dir = try makeTempDirectory()
+        // The residual-risk case the check exists for: a late write recreated
+        // one sidecar after deletion. One survivor must fail verification.
+        try writeFiles(["default.store-wal"], into: dir)
+        XCTAssertFalse(try SwiftDataStoreWipe(directory: dir).verifyStoreDeleted(),
+                       "a single recreated sidecar must fail verification")
+    }
 }
