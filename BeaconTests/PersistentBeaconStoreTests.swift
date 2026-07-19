@@ -92,6 +92,35 @@ final class PersistentBeaconStoreTests: XCTestCase {
         XCTAssertEqual(try reloaded.loadKyberPreKey(id: 1, context: ctx).serialize(), kp.serialize())
     }
 
+    // MARK: id-1 prekey longevity (bundle production must not rotate shared keys)
+
+    /// The fixed-id-1 signed + Kyber prekeys are long-lived shared material:
+    /// every outstanding bundle (QR string, unredeemed invite) pins id 1, so
+    /// bundle production must REUSE them across draws — regenerating them
+    /// orphans every bundle already shared. Only the one-time prekey is fresh
+    /// per draw.
+    func testIdOnePrekeysReusedAcrossBundleDrawsWhileOneTimeRotates() throws {
+        let dir = tempDir(); let key = freshKey(); let id = IdentityKeyPair.generate()
+        let store = try makeStore(dir, key, identity: id)
+
+        let a = try store.freshBundleMaterial(deviceId: 1)
+        let b = try store.freshBundleMaterial(deviceId: 1)
+
+        // Long-lived halves: identical across draws.
+        XCTAssertEqual(b.signedPreKeyPublic.serialize(), a.signedPreKeyPublic.serialize(),
+                       "id-1 signed prekey must be reused, not regenerated per bundle")
+        XCTAssertEqual(b.kyberPreKeyPublic.serialize(), a.kyberPreKeyPublic.serialize(),
+                       "id-1 kyber prekey must be reused, not regenerated per bundle")
+        XCTAssertEqual(b.signedPreKeySignature, a.signedPreKeySignature)
+        XCTAssertEqual(b.kyberPreKeySignature, a.kyberPreKeySignature)
+
+        // One-time half: still fresh per draw.
+        XCTAssertNotEqual(b.preKeyId, a.preKeyId,
+                          "one-time prekey id must rotate per draw")
+        XCTAssertNotEqual(b.preKeyPublic.serialize(), a.preKeyPublic.serialize(),
+                          "one-time prekey key must be fresh per draw")
+    }
+
     func testIdentityTrustTableSurvivesReload() throws {
         let dir = tempDir(); let key = freshKey(); let id = IdentityKeyPair.generate()
         let store = try makeStore(dir, key, identity: id)

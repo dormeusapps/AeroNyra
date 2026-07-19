@@ -77,24 +77,61 @@ extension BeaconProtocolStore {
         try storePreKey(try PreKeyRecord(id: preKeyId, privateKey: preKeyPriv),
                         id: preKeyId, context: ctx)
 
-        // Signed prekey (EC), signed by the identity key. Fixed id 1.
+        // Signed prekey (EC), signed by the identity key. Fixed id 1 — LONG-LIVED
+        // shared material: generated once and REUSED by every bundle drawn after,
+        // until a deliberate rotation replaces it. Regenerating it here would
+        // orphan every outstanding bundle (QR string, unredeemed invite): their
+        // prekey messages pin signedPreKeyId 1 and would meet a different private
+        // key, dying silently in openInbound. Only the one-time prekey above is
+        // per-draw fresh.
         let signedPreKeyId: UInt32 = 1
-        let signedPriv = PrivateKey.generate()
-        let signedPub = signedPriv.publicKey
-        let signedSig = localIdentity.privateKey.generateSignature(message: signedPub.serialize())
-        try storeSignedPreKey(
-            try SignedPreKeyRecord(id: signedPreKeyId, timestamp: nowMs,
-                                   privateKey: signedPriv, signature: signedSig),
-            id: signedPreKeyId, context: ctx)
+        let signedPub: PublicKey
+        let signedSig: Data
+        var generatedSigned = false
+        if let existing = try? loadSignedPreKey(id: signedPreKeyId, context: ctx),
+           let existingPub = try? existing.publicKey() {
+            signedPub = existingPub
+            signedSig = existing.signature
+        } else {
+            let signedPriv = PrivateKey.generate()
+            signedPub = signedPriv.publicKey
+            signedSig = localIdentity.privateKey.generateSignature(message: signedPub.serialize())
+            try storeSignedPreKey(
+                try SignedPreKeyRecord(id: signedPreKeyId, timestamp: nowMs,
+                                       privateKey: signedPriv, signature: signedSig),
+                id: signedPreKeyId, context: ctx)
+            generatedSigned = true
+        }
 
-        // Kyber prekey (post-quantum), signed by the identity key. Fixed id 1.
+        // Kyber prekey (post-quantum), signed by the identity key. Fixed id 1 —
+        // same generate-if-absent policy as the signed prekey: libsignal reuses
+        // the kyber key across sessions (replay defense is baseKeysSeen, not
+        // deletion), so it too must survive bundle production untouched.
         let kyberPreKeyId: UInt32 = 1
-        let kyberPair = KEMKeyPair.generate()
-        let kyberSig = localIdentity.privateKey.generateSignature(message: kyberPair.publicKey.serialize())
-        try storeKyberPreKey(
-            try KyberPreKeyRecord(id: kyberPreKeyId, timestamp: nowMs,
-                                  keyPair: kyberPair, signature: kyberSig),
-            id: kyberPreKeyId, context: ctx)
+        let kyberPub: KEMPublicKey
+        let kyberSig: Data
+        var generatedKyber = false
+        if let existing = try? loadKyberPreKey(id: kyberPreKeyId, context: ctx),
+           let existingPub = try? existing.publicKey() {
+            kyberPub = existingPub
+            kyberSig = existing.signature
+        } else {
+            let kyberPair = KEMKeyPair.generate()
+            kyberPub = kyberPair.publicKey
+            kyberSig = localIdentity.privateKey.generateSignature(message: kyberPub.serialize())
+            try storeKyberPreKey(
+                try KyberPreKeyRecord(id: kyberPreKeyId, timestamp: nowMs,
+                                      keyPair: kyberPair, signature: kyberSig),
+                id: kyberPreKeyId, context: ctx)
+            generatedKyber = true
+        }
+
+        // Log ONLY when id-1 material was actually created — a spurious line
+        // here in the field means something regenerated the long-lived keys.
+        if generatedSigned || generatedKyber {
+            RedactLog.event("first-contact: generated id-1 signed+kyber prekeys (first bundle)",
+                            "signed=\(generatedSigned) kyber=\(generatedKyber)")
+        }
 
         return BundleMaterial(
             registrationId: try localRegistrationId(context: ctx),
@@ -103,7 +140,7 @@ extension BeaconProtocolStore {
             signedPreKeyId: signedPreKeyId, signedPreKeyPublic: signedPub,
             signedPreKeySignature: signedSig,
             identityKey: localIdentity.identityKey,
-            kyberPreKeyId: kyberPreKeyId, kyberPreKeyPublic: kyberPair.publicKey,
+            kyberPreKeyId: kyberPreKeyId, kyberPreKeyPublic: kyberPub,
             kyberPreKeySignature: kyberSig)
     }
 }

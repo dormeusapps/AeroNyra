@@ -143,4 +143,26 @@ final class SignalSessionTests: XCTestCase {
         let eveToAlice = try eve.session(with: alice.localIdentity)
         XCTAssertThrowsError(try eveToAlice.open(ct))
     }
+
+    // MARK: id-1 prekey longevity (bundle production must not rotate shared keys)
+
+    /// The field bug as a test: Alice establishes from Bob's bundle A, Bob then
+    /// draws bundle B (re-opened pairing screen, re-minted invite — any redraw),
+    /// and only THEN does Alice's prekey message arrive. It pins bundle A's
+    /// id-1 keys, so it must still open.
+    func testPrekeyMessageStillOpensAfterLaterBundleDraw() throws {
+        let alice = SignalSessionStore()
+        let bob = SignalSessionStore()
+
+        let bundleA = try bob.localPrekeyBundle()
+        let aliceToBob = try alice.establishSession(from: bundleA)
+        let ct = try aliceToBob.seal(data("redeemed your invite"))
+
+        // Bob redraws his bundle BEFORE the message lands.
+        _ = try bob.localPrekeyBundle()
+
+        let (peer, pt) = try bob.openInbound(ct)
+        XCTAssertEqual(peer.userID, alice.localIdentity.userID)
+        XCTAssertEqual(string(pt), "redeemed your invite")
+    }
 }
