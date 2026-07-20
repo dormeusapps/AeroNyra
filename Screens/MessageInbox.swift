@@ -808,8 +808,36 @@ final class MessageInbox {
 
     /// FaceTime v1 (P3): the peer's Nostr key for internet-relayed signaling
     /// (the same Tier-2 fallback target every send path reads).
+    ///
+    /// PURE READ (pairing-regression fix): fetch-only, nil when no row exists.
+    /// This is also the lookup the coordinator's announce/ack relay routing
+    /// calls mid-receive — it must NEVER insert, or a pre-gate envelope (e.g.
+    /// an invite echo not yet admitted) conjures a bare Peer row and bypasses
+    /// the echo gate's create-on-admit invariant. Callers that genuinely want
+    /// fetch-or-create keep using `peer(forRawKey:)`.
     func nostrKey(forRawKey rawKey: Data) -> Data? {
-        peer(forRawKey: rawKey).nostrPubkey
+        let descriptor = FetchDescriptor<Peer>(
+            predicate: #Predicate { $0.publicKeyData == rawKey }
+        )
+        return (try? modelContext.fetch(descriptor))?.first?.nostrPubkey
+    }
+
+    /// A2 (NOSTR_KEY_PROPAGATION): the LOCAL Nostr identity changed since the
+    /// last launch (post-wipe regeneration) — push the new npub to EVERY contact
+    /// over the relay-capable announce, so a stale key heals WITHOUT BLE range.
+    /// Clears the coordinator's once-per-peer guard first, then re-announces per
+    /// contact with that contact's current npub (nil npub still tries BLE).
+    /// SEND-ONLY: the receiver-side write guard (openInbound →
+    /// `handleLearnedNostrIdentity`) is untouched — nothing here mutates rows.
+    func reannounceNostrIdentityToAllContacts() async {
+        await coordinator.clearNostrAnnounceState()
+        let descriptor = FetchDescriptor<Peer>()
+        guard let peers = try? modelContext.fetch(descriptor), !peers.isEmpty else { return }
+        for peer in peers {
+            await coordinator.reannounceNostrIdentity(toRawKey: peer.publicKeyData,
+                                                      nostrRecipient: peer.nostrPubkey)
+        }
+        RedactLog.event("inbox: re-announced Nostr id after identity change", "\(peers.count) contact(s)")
     }
 
     /// Re-sync the app-icon badge to the store's true unread total. Called by

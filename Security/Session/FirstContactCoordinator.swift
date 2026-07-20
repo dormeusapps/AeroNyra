@@ -179,7 +179,16 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// per peer. RAM-only by design: a relaunch clears it, so we re-announce on
     /// the next conversation, which the receiver harmlessly no-ops (last-write-
     /// wins). That re-announce is the self-healing path if a prior one was lost.
+    /// A1 (NOSTR_KEY_PROPAGATION): a peer is recorded here only when a transport
+    /// actually took the announce (.sent/.cast), so a miss retries on the next
+    /// trigger instead of silencing the announce for the whole session.
     private var announcedNostrTo: Set<Data> = []
+    /// A1 (NOSTR_KEY_PROPAGATION): resolves a contact's CURRENT Nostr pubkey so
+    /// the announce/ack can ride the relay when BLE is out of range. Wired once
+    /// by the composition root to the main-actor inbox's `nostrKey(forRawKey:)`
+    /// — this actor never reads SwiftData itself. nil until wired: the announce
+    /// and ack then fall back to the BLE-only behavior, exactly as before A1.
+    private var nostrKeyLookup: (@Sendable (Data) async -> Data?)?
     /// Peer identity learned per link from their bundle.
     ///
     /// STICKY: not pruned in the reachability hot path. Presence is computed by
@@ -381,7 +390,34 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     func setNostrPublicKey(_ key: Data?) {
         self.ourNostrPublicKey = key
     }
-    
+
+    /// A1 (NOSTR_KEY_PROPAGATION): wire the npub resolver. Called once by the
+    /// composition root, pointing at the inbox's `nostrKey(forRawKey:)` — the
+    /// SwiftData read stays on the main actor, in the inbox, preserving this
+    /// actor's no-SwiftData separation.
+    func setNostrKeyLookup(_ lookup: @escaping @Sendable (Data) async -> Data?) {
+        self.nostrKeyLookup = lookup
+    }
+
+    /// A2 (NOSTR_KEY_PROPAGATION): the LOCAL Nostr identity changed (post-wipe
+    /// regeneration, detected at launch by the composition root). Drop the
+    /// once-per-peer announce bookkeeping so every contact can be told the new
+    /// key this session; the caller follows up with `reannounceNostrIdentity`
+    /// per contact.
+    func clearNostrAnnounceState() {
+        announcedNostrTo.removeAll()
+    }
+
+    /// A2: push our (new) npub to ONE contact, relay-capable. The contact's own
+    /// current npub is threaded in by the caller (the inbox owns the rows); a
+    /// nil recipient still tries BLE — the pre-A1 behavior. Send-only: the
+    /// receiver-side write guard (openInbound → handleLearnedNostrIdentity) is
+    /// untouched by this path.
+    func reannounceNostrIdentity(toRawKey rawKey: Data, nostrRecipient: Data?) async {
+        let peer = store.peerIdentity(fromRawKey: rawKey)
+        await announceNostrIdentity(to: peer, rawKey: rawKey, nostrRecipient: nostrRecipient)
+    }
+
     /// Enable the closed-contact reconnection handshake (5d). Called once by the
     /// composition root at startup, AFTER `store.warmInboundSessions(for:)` has
     /// warmed the trial-decrypt cache from the same allowlist (Invariant #1), so
@@ -919,8 +955,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
-        // (once-per-peer, best-effort, before the message itself).
-        await announceNostrIdentity(to: peer, rawKey: rawKey)
+        // (once-per-peer, best-effort, before the message itself). A1: the
+        // caller-threaded npub makes the announce relay-capable too.
+        await announceNostrIdentity(to: peer, rawKey: rawKey, nostrRecipient: nostrRecipient)
         // Tag the plaintext as text so the receiver can tell it apart from a
         // media manifest/chunk (which now share this same sealed path). 9b:
         // sealedPlaintext() pads text to a fixed bucket so length doesn't leak.
@@ -988,8 +1025,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         // npub-bootstrap: ensure this peer learns our Nostr id once we converse
-        // (once-per-peer, best-effort, before the transfer burst).
-        await announceNostrIdentity(to: peer, rawKey: rawKey)
+        // (once-per-peer, best-effort, before the transfer burst). A1: the
+        // caller-threaded npub makes the announce relay-capable too.
+        await announceNostrIdentity(to: peer, rawKey: rawKey, nostrRecipient: nostrRecipient)
         
         // TRANSPORT COMMIT (ISSUE-3): pick ONE transport for the WHOLE transfer up
         // front, rather than relying on the per-envelope BLE-first fallback. Two
@@ -1117,12 +1155,21 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// means the sender keeps showing "Sent" until its timeout, and it never
     /// blocks or fails inbound handling. `wireID` is the acked message's id —
     /// the envelope id for text, or the mediaID-derived id for a media transfer.
-    private func sendDeliveryAck(wireID: MessageID, hops: UInt8, to peer: PublicIdentity) async {
+    ///
+    /// Part B (NOSTR_KEY_PROPAGATION): relay-capable, same threading as the
+    /// announce. `nostrRecipient` (the peer's current npub, resolved by the
+    /// caller) enables the Tier-2 BLE→Nostr fallback, so a message received
+    /// over the relay gets its receipt back over the relay — the sender's
+    /// `.cast` can then advance to a real delivered state.
+    private func sendDeliveryAck(wireID: MessageID, hops: UInt8, to peer: PublicIdentity,
+                                 nostrRecipient: Data? = nil) async {
         do {
             let session = try store.session(with: peer)
             let payload = MessagePayload.deliveryAck(wireID: wireID, hops: hops)
             let sealed = try session.seal(payload.sealedPlaintext())
-            await router?.send(Envelope(ciphertext: sealed), tracked: false)
+            await router?.send(Envelope(ciphertext: sealed), tracked: false,
+                               peerKey: store.rawPublicKey(of: peer),
+                               nostrRecipient: nostrRecipient)
         } catch {
             RedactLog.event("first-contact: delivery-ack seal/send failed", "\(type(of: error))")
         }
@@ -1235,23 +1282,55 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// channel (Phase 8d npub-bootstrap). Sent UNTRACKED + best-effort, exactly
     /// like a delivery ack: never acked, no delivery state, and a failure simply
     /// means we re-announce on the next conversation/relaunch (the receiver
-    /// no-ops a repeat). At most once per peer per session (`announcedNostrTo`),
-    /// and a silent no-op if we have no Nostr identity. Fired lazily on the first
-    /// REAL message in either direction — never on a bare handshake — so a stable
-    /// internet identifier is shared only with peers actually conversed with.
-    private func announceNostrIdentity(to peer: PublicIdentity, rawKey: Data) async {
+    /// no-ops a repeat). At most once per peer per session (`announcedNostrTo`,
+    /// marked only when a transport commits — see below), and a silent no-op if
+    /// we have no Nostr identity. Fired lazily on the first REAL message in
+    /// either direction — never on a bare handshake — so a stable internet
+    /// identifier is shared only with peers actually conversed with.
+    ///
+    /// A1 (NOSTR_KEY_PROPAGATION): relay-capable. The sealed announce now rides
+    /// the same addressed rail as text (`routeOut`): `nostrRecipient` enables the
+    /// router's Tier-2 BLE→Nostr fallback, so an announce reaches an out-of-range
+    /// contact over the relay. The recipient npub is threaded by callers that
+    /// already hold it (send/sendMedia); otherwise it is resolved AFTER the
+    /// guards via the composition-root-wired lookup, so the resolver never runs
+    /// on the per-envelope hot path once a peer is announced. The seal is
+    /// unchanged — same session, same payload kind — only the carrier widened.
+    private func announceNostrIdentity(to peer: PublicIdentity, rawKey: Data,
+                                       nostrRecipient: Data? = nil) async {
         guard let ourNostrPublicKey else { return }              // no Nostr identity
         guard !announcedNostrTo.contains(rawKey) else { return }  // already told them
         do {
             let session = try store.session(with: peer)
             let payload = MessagePayload.nostrIdentityAnnounce(pubkey: ourNostrPublicKey)
             let sealed = try session.seal(payload.sealedPlaintext())
-            await router?.send(Envelope(ciphertext: sealed), tracked: false)
-            announcedNostrTo.insert(rawKey)
-            RedactLog.event("first-contact: announced our Nostr id", "→ \(peer.userIDHex.prefix(16))…")
+            let recipient: Data?
+            if let nostrRecipient { recipient = nostrRecipient }
+            else { recipient = await lookupNostrKey(rawKey) }
+            let state = await router?.send(Envelope(ciphertext: sealed), tracked: false,
+                                           peerKey: rawKey, nostrRecipient: recipient)
+            // Mark announced ONLY on a transport commit (.sent = BLE radio
+            // handoff, .cast = relay). A miss (no BLE peer AND no live relay /
+            // no npub) leaves the once-per-peer guard unset, so the next
+            // trigger — another send/receive, or the A2 re-announce — retries
+            // instead of suppressing the announce for the whole session.
+            if state == .sent || state == .cast {
+                announcedNostrTo.insert(rawKey)
+                RedactLog.event("first-contact: announced our Nostr id", "→ \(peer.userIDHex.prefix(16))…")
+            } else {
+                RedactLog.event("first-contact: nostr-id announce missed (will retry)", "to \(peer.userIDHex.prefix(16))…")
+            }
         } catch {
             RedactLog.event("first-contact: nostr-id announce failed", "to \(peer.userIDHex.prefix(16))… — \(error)")
         }
+    }
+
+    /// A1: resolve a contact's current npub via the composition-root-wired
+    /// lookup (a main-actor inbox row read). nil when unwired (tests, or before
+    /// the inbox exists) — callers then behave exactly as before A1 (BLE-only).
+    private func lookupNostrKey(_ rawKey: Data) async -> Data? {
+        guard let lookup = nostrKeyLookup else { return nil }
+        return await lookup(rawKey)
     }
     
     /// Hop count an envelope travelled, read from its arrival ttl: 0 for a
@@ -1305,7 +1384,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // with the peer is live, so make sure they've learned our Nostr id
             // even if we haven't sent them anything yet. Once-per-peer + best-
             // effort; a no-op for a peer we already announced to (e.g. as the
-            // initiator via `send`). Never blocks inbound handling.
+            // initiator via `send`). Never blocks inbound handling. A1: no
+            // npub is threaded here — the announce resolves it itself via the
+            // wired lookup AFTER its guards, so the per-envelope cost is zero
+            // once the peer is announced, and the announce still rides the
+            // relay when the contact is out of BLE range.
             await announceNostrIdentity(to: peer, rawKey: rawKey)
             
             guard let payload = MessagePayload.decodeSealed(plaintext) else {
@@ -1333,7 +1416,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 )
                 RedactLog.event("first-contact: OPENED text", "from \(peer.userIDHex.prefix(16))…")
                 // Acknowledge the text message by its envelope id, with hops.
-                await sendDeliveryAck(wireID: envelope.id, hops: hops(of: envelope), to: peer)
+                // Part B: relay-capable — a text that arrived over the relay
+                // gets its receipt back the same way.
+                await sendDeliveryAck(wireID: envelope.id, hops: hops(of: envelope), to: peer,
+                                      nostrRecipient: await lookupNostrKey(rawKey))
                 
             case .mediaManifest(let json):
                 // 7f: strict-verified inbound gate (see .text). Drop before reassembly.
@@ -1348,8 +1434,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 if let done = reassembler.ingest(manifest: manifest),
                    let wireID = emitMedia(done, rawKey: rawKey) {
                     // The transfer completed on the manifest — ack the whole
-                    // media by its message-level id, stamped with this leg's hops.
-                    await sendDeliveryAck(wireID: wireID, hops: hops(of: envelope), to: peer)
+                    // media by its message-level id, stamped with this leg's
+                    // hops. Part B: relay-capable, like the text ack.
+                    await sendDeliveryAck(wireID: wireID, hops: hops(of: envelope), to: peer,
+                                          nostrRecipient: await lookupNostrKey(rawKey))
                 }
                 
             case .mediaChunk(let chunk):
@@ -1362,7 +1450,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                    let wireID = emitMedia(done, rawKey: rawKey) {
                     // The transfer completed on this chunk — ack the whole media
                     // by its message-level id, stamped with this leg's hops.
-                    await sendDeliveryAck(wireID: wireID, hops: hops(of: envelope), to: peer)
+                    // Part B: relay-capable, like the text ack.
+                    await sendDeliveryAck(wireID: wireID, hops: hops(of: envelope), to: peer,
+                                          nostrRecipient: await lookupNostrKey(rawKey))
                 }
                 
             case .ack(let body):
