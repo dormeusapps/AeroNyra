@@ -46,6 +46,7 @@
 //
 
 import Foundation
+import Network
 import os
 
 // MARK: - Errors
@@ -101,25 +102,51 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// queue so the sealed file write never blocks the inbound receive loop.
     private let persistLedger: (@Sendable (ProcessedEventLedger) -> Void)?
 
-    /// ACCEPTANCE LEDGER (observability ONLY — behavior unchanged). `publish`
+    /// F2: wraps that failed validation/unwrap this session. RAM-only by design
+    /// — see `noteFailedWrapLocked`. Queue-confined.
+    private var failedWrapsThisSession: Set<String> = []
+    private static let failedWrapsCap = 1024
+
+    /// ACCEPTANCE LEDGER (F1: now ACTING, not just observing). `publish` still
     /// resumes once the frame is handed to >= 1 live socket, but a relay's real
-    /// verdict is its later async `OK <eventID> <accepted>` — a rate-limit
-    /// rejection (`accepted=false`) or a half-open socket that never answers is
-    /// today invisible except as one uncorrelated log line. This registry keys
-    /// each published event's id to its envelope and counts the per-relay
-    /// verdicts, then logs ONE summary — loudly (`error`) when NO relay accepted,
-    /// which is exactly the silent-strand signature the stranded-run log hunt
-    /// needs (P0/P1). It does NOT gate `publish`, `.cast`, or the re-drive cap —
-    /// that (the acceptance-blocking half) is deliberately deferred pending that
-    /// log. Queue-confined like all mutable state here; entries self-expire at
+    /// verdict is its later async `OK <eventID> <accepted>`. This registry keys
+    /// each published event's id to its envelope + retained frame and counts the
+    /// per-relay verdicts. At the deadline (or when all relays answered):
+    ///   • >= 1 accept → settled, one info summary (unchanged).
+    ///   • ZERO accepts → the silent-strand signature ("the publish lie": a
+    ///     half-open socket swallowed the frame, or every relay rejected it).
+    ///     The frame is RE-PUBLISHED to the then-live sockets — riding the
+    ///     liveness watchdogs' rebuild — up to `maxPublishAttempts`, then the
+    ///     failure is surfaced via `onPublishFailed` so a tracked row demotes
+    ///     from `.cast` to `.notDelivered` (the sanctioned "real failure ack";
+    ///     the .cast no-timer invariant is untouched). Re-publishing the SAME
+    ///     frame is safe: the event id is a content hash, so a relay that DID
+    ///     take an earlier attempt dedups it.
+    /// Queue-confined like all mutable state here; entries self-expire at
     /// `acceptanceSummaryDeadline`, so the map is bounded by publish rate.
     private var pendingAcceptance: [String: PendingAcceptance] = [:]
 
     private struct PendingAcceptance {
+        let eventID: String
         let envelopeID: MessageID
+        let frame: String            // retained for the zero-accept re-publish
         let relayCount: Int          // live relays the frame was handed to
+        let attempt: Int             // 1-based publish attempt this entry tracks
         var accepted = 0
         var rejected = 0
+    }
+
+    /// F1 upward failure signal — fired on `queue` when a publish exhausted its
+    /// attempts with ZERO relay accepts. The composition root points this at
+    /// `MessageRouter.confirmFailure(of:)`. Untracked envelopes (acks,
+    /// announces, echoes) have no outbox row, so for them the bounded
+    /// re-publish above is the whole recovery and this fires into a no-op.
+    private var onPublishFailed: (@Sendable (MessageID) -> Void)?
+
+    /// F1: wire the zero-accept failure handler. Called once by the composition
+    /// root; hops onto `queue` so the property stays queue-confined.
+    public func setPublishFailureHandler(_ handler: @escaping @Sendable (MessageID) -> Void) {
+        queue.async { [weak self] in self?.onPublishFailed = handler }
     }
 
     /// How long after a publish we wait for relay OKs before summarizing. OKs
@@ -127,6 +154,13 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// counted as such in the summary. Long enough to never truncate a slow
     /// relay's honest verdict, short enough to bound the registry.
     private static let acceptanceSummaryDeadline: Double = 10
+    /// F1: total publish attempts (initial + re-publishes) before a zero-accept
+    /// publish is surfaced as a real failure. Three attempts spaced
+    /// `republishDelay` apart spans ~40s — enough for the ping watchdog
+    /// (pong timeout ≈ interval 25-30s + deadline 10s) to have rebuilt a dead
+    /// socket under the retry.
+    private static let maxPublishAttempts = 3
+    private static let republishDelay: Double = 15
     /// Debounce bookkeeping (queue-confined). `dirty` = new ids since last save;
     /// `saveScheduled` = a coalescing save is already pending.
     private var ledgerDirty = false
@@ -145,11 +179,61 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         var session: URLSession?
         var task: URLSessionWebSocketTask?
         var reconnectAttempts = 0
+        /// LIVENESS (FIX 2): bumped on EVERY socket teardown. Async callbacks
+        /// (receive loop, ping chain, pong watchdog, delegate events, pending
+        /// reconnect timers, REQ retries) capture the generation they were
+        /// armed under and no-op if it has moved on — so a stale socket's
+        /// callbacks can never kill or double-drive its replacement. Queue-
+        /// confined like every field here.
+        var generation = 0
+        /// Instrumentation + staleness inputs (FIX 2): any parsed frame stamps
+        /// `lastInboundAt`; a pong stamps `lastPongAt`. `connectedAt` guards
+        /// the scene-active refresh from recycling a socket that simply hasn't
+        /// had time to receive anything yet.
+        var lastInboundAt = Date.distantPast
+        var lastPongAt = Date.distantPast
+        var lastPingAt = Date.distantPast
+        var connectedAt = Date.distantPast
+        /// REQ re-send attempts on THIS socket (reset per connect).
+        var reqRetries = 0
         init(url: URL) {
             self.url = url
             self.subID = "aeronyra-\(UUID().uuidString.prefix(8))"
         }
     }
+
+    /// URLSessionWebSocketDelegate bridge (FIX 2): one per socket, retained by
+    /// its URLSession until `invalidateAndCancel`. Both callbacks hop onto the
+    /// transport's `queue` and are generation-guarded there — the delegate
+    /// itself holds no mutable state.
+    private final class SocketDelegate: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
+        private weak var transport: NostrTransport?
+        private let conn: RelayConn
+        private let generation: Int
+        init(transport: NostrTransport, conn: RelayConn, generation: Int) {
+            self.transport = transport
+            self.conn = conn
+            self.generation = generation
+        }
+        func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
+                        didOpenWithProtocol protocol: String?) {
+            transport?.socketDidOpen(conn, generation: generation)
+        }
+        func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask,
+                        didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
+                        reason: Data?) {
+            transport?.socketDidClose(conn, generation: generation,
+                                      code: closeCode, reason: reason)
+        }
+    }
+
+    /// FIX 2: network-path change trigger. TRIGGER ONLY, never liveness proof —
+    /// a satisfied path says nothing about individual sockets; it just tells us
+    /// a transition happened that idle sockets won't notice on their own.
+    private var pathMonitor: NWPathMonitor?
+    /// Last seen path signature (status + interface classes), to detect real
+    /// transitions (wifi↔cell, regain-after-loss) vs. repeated identical ticks.
+    private var lastPathSignature: String?
 
     // MARK: Constants
     /// Synthetic source link for inbound envelopes (Nostr has no real link, and
@@ -157,6 +241,25 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     private static let nostrSourceLink = UUID()
     private static let baseReconnectDelay: Double = 1     // seconds
     private static let maxReconnectDelay: Double = 30     // capped backoff ceiling
+    /// FIX 2 ping watchdog. Interval keeps cellular NAT mappings warm (carrier
+    /// idle timeouts commonly start ~30s); the jitter de-synchronizes the three
+    /// relays' pings. A ping whose pong hasn't landed inside `pongDeadline` is
+    /// the half-open-socket signature — reads dead, writes "fine" — and forces
+    /// an immediate rebuild. Pings fire only while the process runs; iOS
+    /// suspension pauses them, and the scene-active refresh covers the resume.
+    private static let pingInterval: Double = 25
+    private static let pingJitter: Double = 5
+    private static let pongDeadline: Double = 10
+    /// Scene-active refresh: a socket with no inbound frame AND no pong in this
+    /// long is treated stale and rebuilt; younger-than-10s sockets are left
+    /// alone (they haven't had time to prove anything).
+    private static let staleAfter: Double = 45
+    private static let minSocketAgeForRefresh: Double = 10
+    /// FIX 2 REQ retry: a failed subscription send retries this many times per
+    /// socket, spaced `reqRetryDelay` apart, instead of log-and-abandon. The
+    /// socket-level watchdogs own the truly-dead case.
+    private static let maxREQRetries = 5
+    private static let reqRetryDelay: Double = 2
 
     private let log = Logger(subsystem: "com.aeronyra.app", category: "Nostr")
 
@@ -205,6 +308,14 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             self.started = true
             self.conns = self.relayURLs.map { RelayConn(url: $0) }
             for conn in self.conns { self.connectLocked(conn) }
+            // FIX 2: path-change trigger. Started on `queue`, so the handler is
+            // already inside the confinement — no extra hop.
+            let monitor = NWPathMonitor()
+            monitor.pathUpdateHandler = { [weak self] path in
+                self?.handlePathUpdateLocked(path)
+            }
+            monitor.start(queue: self.queue)
+            self.pathMonitor = monitor
         }
     }
 
@@ -212,9 +323,14 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         queue.async { [weak self] in
             guard let self else { return }
             self.started = false
+            self.pathMonitor?.cancel()
+            self.pathMonitor = nil
+            self.lastPathSignature = nil
             for conn in self.conns {
+                conn.generation += 1                       // kill every pending callback
                 conn.task?.cancel(with: .goingAway, reason: nil)
                 conn.task = nil
+                conn.session?.invalidateAndCancel()        // releases the socket delegate
                 conn.session = nil
             }
             self.conns.removeAll()
@@ -286,15 +402,20 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                 for conn in live {
                     conn.task?.send(.string(text)) { [weak self] error in
                         if let error {
-                            self?.log.error("nostr: publish to \(conn.url.host ?? "relay", privacy: .public) failed: \(error.localizedDescription)")
+                            // FIX 2 instrumentation: domain+code (non-secret;
+                            // localizedDescription redacts to <private>).
+                            let ns = error as NSError
+                            self?.log.error("nostr: publish to \(conn.url.host ?? "relay", privacy: .public) failed: domain=\(ns.domain, privacy: .public) code=\(ns.code)")
                         }
                     }
                 }
                 self.log.info("nostr: published gift wrap id=\(envID) → \(live.count) relay(s)")
-                // Acceptance ledger: watch this event's OKs and summarize once
-                // (observability only — the resume below is unchanged).
+                // Acceptance ledger (F1): watch this event's OKs; a zero-accept
+                // round re-publishes (bounded) and finally fails upward. The
+                // resume below is unchanged — acceptance gating is async.
                 self.recordPublishLocked(eventID: event.id, envelopeID: envID,
-                                         relayCount: live.count)
+                                         frame: text, relayCount: live.count,
+                                         attempt: 1)
                 cont.resume()
             }
         }
@@ -302,35 +423,63 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
 
     // MARK: - Connection (queue-confined, per relay)
 
+    /// Build a FRESH socket for `conn` under its CURRENT generation: new
+    /// delegate-backed session, new task, re-send the subscription (the
+    /// no-`since` REQ replays the relay's stored backlog — the heal), restart
+    /// the read loop, and arm the ping watchdog. Callers that replace a live
+    /// socket bump `conn.generation` FIRST so the old socket's callbacks die.
     private func connectLocked(_ conn: RelayConn) {
-        let session = URLSession(configuration: .default)
+        let generation = conn.generation
+        conn.reqRetries = 0
+        conn.connectedAt = Date()
+        let delegate = SocketDelegate(transport: self, conn: conn, generation: generation)
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         let task = session.webSocketTask(with: conn.url)
         conn.session = session
         conn.task = task
         task.resume()
-        log.info("nostr: connecting → \(conn.url.absoluteString, privacy: .public)")
+        log.info("nostr: connecting → \(conn.url.absoluteString, privacy: .public) gen=\(generation)")
         sendSubscriptionLocked(conn)
-        receiveNext(conn)
+        receiveNext(conn, generation: generation)
+        schedulePingLocked(conn, generation: generation)
     }
 
     private func sendSubscriptionLocked(_ conn: RelayConn) {
+        let generation = conn.generation
         let frame = Self.subscriptionFrame(subscriptionID: conn.subID,
                                             recipientPubkeyHex: ourPubkeyHex)
         guard let text = String(data: frame, encoding: .utf8) else { return }
         conn.task?.send(.string(text)) { [weak self] error in
-            if let error {
-                self?.log.error("nostr: REQ to \(conn.url.host ?? "relay", privacy: .public) failed: \(error.localizedDescription)")
+            guard let self, let error else { return }
+            let ns = error as NSError
+            self.queue.async {
+                guard self.started, conn.generation == generation else { return }
+                self.log.error("nostr: REQ to \(conn.url.host ?? "relay", privacy: .public) failed: domain=\(ns.domain, privacy: .public) code=\(ns.code) attempt=\(conn.reqRetries + 1)")
+                // FIX 2: retry, don't abandon — a lost REQ is silent inbound
+                // death on an otherwise healthy socket. Bounded per socket; a
+                // truly dead socket is the watchdogs' job, and every reconnect
+                // path re-sends the REQ anyway.
+                guard conn.reqRetries < Self.maxREQRetries else { return }
+                conn.reqRetries += 1
+                self.queue.asyncAfter(deadline: .now() + Self.reqRetryDelay) { [weak self] in
+                    guard let self, self.started, conn.generation == generation else { return }
+                    self.sendSubscriptionLocked(conn)
+                }
             }
         }
     }
 
-    private func receiveNext(_ conn: RelayConn) {
+    private func receiveNext(_ conn: RelayConn, generation: Int) {
         conn.task?.receive { [weak self] result in
             guard let self else { return }
             self.queue.async {
+                // A stale socket's pending receive (cancelled or replaced) must
+                // neither tear down nor double-read the replacement.
+                guard conn.generation == generation else { return }
                 switch result {
                 case .success(let message):
                     conn.reconnectAttempts = 0
+                    conn.lastInboundAt = Date()
                     let data: Data
                     switch message {
                     case .string(let s): data = Data(s.utf8)
@@ -338,27 +487,158 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                     @unknown default:    data = Data()
                     }
                     self.handleFrameLocked(data, from: conn)
-                    if self.started, conn.task != nil { self.receiveNext(conn) }   // keep reading
+                    if self.started, conn.task != nil {
+                        self.receiveNext(conn, generation: generation)   // keep reading
+                    }
                 case .failure(let error):
-                    self.log.error("nostr: receive from \(conn.url.host ?? "relay", privacy: .public) failed: \(error.localizedDescription)")
+                    let ns = error as NSError
+                    self.log.error("nostr: receive from \(conn.url.host ?? "relay", privacy: .public) failed: domain=\(ns.domain, privacy: .public) code=\(ns.code) — \(self.livenessSummaryLocked(conn), privacy: .public)")
                     if self.started { self.scheduleReconnectLocked(conn) }
                 }
             }
         }
     }
 
+    /// Tear the socket down and reconnect after the capped backoff. Bumps the
+    /// generation FIRST, so every callback armed under the old socket —
+    /// receive, ping chain, pong watchdog, delegate events, an earlier pending
+    /// reconnect timer — dies on its generation guard.
     private func scheduleReconnectLocked(_ conn: RelayConn) {
+        conn.generation += 1
+        conn.task?.cancel(with: .goingAway, reason: nil)
         conn.task = nil
+        conn.session?.invalidateAndCancel()        // releases the socket delegate
         conn.session = nil
         guard started else { return }
         conn.reconnectAttempts += 1
+        let generation = conn.generation
         let delay = min(Self.maxReconnectDelay,
                         Self.baseReconnectDelay * pow(2, Double(conn.reconnectAttempts - 1)))
-        log.info("nostr: reconnect \(conn.url.host ?? "relay", privacy: .public) #\(conn.reconnectAttempts) in \(delay)s")
+        log.info("nostr: reconnect \(conn.url.host ?? "relay", privacy: .public) #\(conn.reconnectAttempts) in \(delay)s gen=\(generation)")
         queue.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self, self.started else { return }
+            guard let self, self.started, conn.generation == generation else { return }
             self.connectLocked(conn)
         }
+    }
+
+    /// FIX 2: immediate rebuild — new socket + new REQ NOW, no backoff. Used by
+    /// the watchdogs (pong timeout, path change, scene-active refresh) where
+    /// the trigger itself is the evidence the old socket is dead or doomed.
+    private func reconnectNowLocked(_ conn: RelayConn, reason: String) {
+        guard started else { return }
+        log.info("nostr: reconnect NOW \(conn.url.host ?? "relay", privacy: .public) — \(reason, privacy: .public) — \(self.livenessSummaryLocked(conn), privacy: .public)")
+        conn.generation += 1
+        conn.task?.cancel(with: .goingAway, reason: nil)
+        conn.task = nil
+        conn.session?.invalidateAndCancel()
+        conn.session = nil
+        conn.reconnectAttempts = 0
+        connectLocked(conn)
+    }
+
+    // MARK: - Liveness watchdogs (FIX 2; queue-confined)
+
+    /// Arm the next ping for this socket generation. The chain re-arms itself
+    /// after every ping and dies with the generation.
+    private func schedulePingLocked(_ conn: RelayConn, generation: Int) {
+        let delay = Self.pingInterval + Double.random(in: 0...Self.pingJitter)
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.sendPingLocked(conn, generation: generation)
+        }
+    }
+
+    private func sendPingLocked(_ conn: RelayConn, generation: Int) {
+        guard started, conn.generation == generation, let task = conn.task else { return }
+        conn.lastPingAt = Date()
+        let pingAt = conn.lastPingAt
+        task.sendPing { [weak self] error in
+            guard let self else { return }
+            self.queue.async {
+                guard conn.generation == generation else { return }
+                if let error {
+                    let ns = error as NSError
+                    self.log.error("nostr: ping \(conn.url.host ?? "relay", privacy: .public) failed: domain=\(ns.domain, privacy: .public) code=\(ns.code)")
+                    self.reconnectNowLocked(conn, reason: "ping send failed")
+                } else {
+                    conn.lastPongAt = Date()
+                    self.log.debug("nostr: pong @ \(conn.url.host ?? "relay", privacy: .public)")
+                }
+            }
+        }
+        // The half-open signature: sendPing's handler may simply NEVER fire on
+        // a NAT-dropped socket (no error, no pong). This deadline is the
+        // detector — no pong recorded since this ping ⇒ reads are dead even if
+        // writes still "succeed" ⇒ rebuild now.
+        queue.asyncAfter(deadline: .now() + Self.pongDeadline) { [weak self] in
+            guard let self, self.started, conn.generation == generation else { return }
+            if conn.lastPongAt < pingAt {
+                self.reconnectNowLocked(conn, reason: "pong timeout >\(Int(Self.pongDeadline))s")
+            }
+        }
+        schedulePingLocked(conn, generation: generation)
+    }
+
+    /// FIX 2: scene-active refresh hook, called by the app layer when the scene
+    /// becomes active. Rebuilds any relay whose socket is missing or shows no
+    /// life (no inbound frame, no pong) for `staleAfter` — the post-suspension
+    /// state pings couldn't observe. Fresh sockets are left alone.
+    public func refreshConnections() {
+        queue.async { [weak self] in
+            guard let self, self.started else { return }
+            let now = Date()
+            for conn in self.conns {
+                let lastLife = max(conn.lastInboundAt, conn.lastPongAt)
+                let stale = now.timeIntervalSince(lastLife) > Self.staleAfter
+                let youngSocket = now.timeIntervalSince(conn.connectedAt) < Self.minSocketAgeForRefresh
+                if conn.task == nil || (stale && !youngSocket) {
+                    self.reconnectNowLocked(conn, reason: "scene-active refresh")
+                }
+            }
+        }
+    }
+
+    /// FIX 2: socket delegate events (hopped to `queue`, generation-guarded).
+    private func socketDidOpen(_ conn: RelayConn, generation: Int) {
+        queue.async { [weak self] in
+            guard let self, conn.generation == generation else { return }
+            self.log.info("nostr: socket OPEN @ \(conn.url.host ?? "relay", privacy: .public) gen=\(generation)")
+        }
+    }
+
+    private func socketDidClose(_ conn: RelayConn, generation: Int,
+                                code: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        queue.async { [weak self] in
+            guard let self, conn.generation == generation else { return }
+            let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            self.log.error("nostr: socket CLOSED @ \(conn.url.host ?? "relay", privacy: .public) code=\(code.rawValue) reason=\(reasonText, privacy: .public) — \(self.livenessSummaryLocked(conn), privacy: .public)")
+            if self.started { self.scheduleReconnectLocked(conn) }
+        }
+    }
+
+    /// FIX 2: network-path transitions. Trigger only — on a REAL change of a
+    /// satisfied path (regain after loss, wifi↔cell), rebuild every relay;
+    /// idle sockets never notice these on their own. The first callback (no
+    /// prior signature) is startup noise, not a transition.
+    private func handlePathUpdateLocked(_ path: NWPath) {
+        var classes: [String] = []
+        if path.usesInterfaceType(.wifi) { classes.append("wifi") }
+        if path.usesInterfaceType(.cellular) { classes.append("cell") }
+        if path.usesInterfaceType(.wiredEthernet) { classes.append("wired") }
+        let signature = "\(String(describing: path.status))|\(classes.joined(separator: "+"))"
+        let prior = lastPathSignature
+        lastPathSignature = signature
+        guard started, let prior, prior != signature, path.status == .satisfied else { return }
+        log.info("nostr: network path changed \(prior, privacy: .public) → \(signature, privacy: .public) — reconnecting all relays")
+        for conn in conns { reconnectNowLocked(conn, reason: "path change") }
+    }
+
+    /// One-line per-relay liveness snapshot for the instrumentation lines:
+    /// seconds since the last inbound frame and the last pong (or "never").
+    private func livenessSummaryLocked(_ conn: RelayConn) -> String {
+        func age(_ date: Date) -> String {
+            date == .distantPast ? "never" : "\(Int(Date().timeIntervalSince(date)))s"
+        }
+        return "lastInbound=\(age(conn.lastInboundAt)) lastPong=\(age(conn.lastPongAt))"
     }
 
     // MARK: - Inbound handling (queue-confined)
@@ -377,7 +657,24 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         case .notice(let msg):
             log.info("nostr: NOTICE \(msg, privacy: .public) @ \(host, privacy: .public)")
         case .closed(let sub, let msg):
-            log.info("nostr: CLOSED \(sub, privacy: .public) \(msg, privacy: .public) @ \(host, privacy: .public)")
+            // FIX 2: a relay killing OUR subscription used to be log-only —
+            // publish kept working while inbound went permanently silent on
+            // that relay. NIP-01 machine-readable refusals that retrying can't
+            // cure get a distinct log and NO retry (a tight loop against
+            // auth-required/blocked invites a ban); anything else (idle sweep,
+            // restart, rate limit) is transient → rebuild socket + REQ through
+            // the normal backoff. A CLOSED for a sub id that isn't ours is
+            // logged and ignored, as before.
+            let permanentPrefixes = ["auth-required:", "restricted:", "blocked:",
+                                     "invalid:", "unsupported:"]
+            if sub == conn.subID, permanentPrefixes.contains(where: { msg.hasPrefix($0) }) {
+                log.error("nostr: subscription REFUSED \(sub, privacy: .public) \(msg, privacy: .public) @ \(host, privacy: .public) — permanent, not retrying")
+            } else if sub == conn.subID, started {
+                log.error("nostr: subscription CLOSED \(sub, privacy: .public) \(msg, privacy: .public) @ \(host, privacy: .public) — transient, reconnect+resubscribe")
+                scheduleReconnectLocked(conn)
+            } else {
+                log.info("nostr: CLOSED \(sub, privacy: .public) \(msg, privacy: .public) @ \(host, privacy: .public)")
+            }
         case .unknown:
             break
         }
@@ -386,29 +683,53 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     private func handleInboundEventLocked(_ event: NostrEvent, from conn: RelayConn) {
         let host = conn.url.host ?? "relay"
         guard event.kind == NostrGiftWrap.wrapKind else { return }   // only 1059s
-        // ISSUE-5: skip a wrap whose OUTER id we've already processed — a relay
-        // replay of a stored event, or the same wrap fanned in from several
-        // relays. Recorded on FIRST sight (the id is a content hash, so
-        // re-processing can only repeat the same outcome), BEFORE the expensive
-        // isValid() + unwrap. Quiet .debug so it doesn't re-introduce the noise
-        // this guard exists to remove.
-        if processedLedger.containsOrInsert(event.id) {
+        // ISSUE-5 replay guard, F2-REVISED: the PERSISTED ledger records an id
+        // only after a SUCCESSFUL unwrap + yield. Recording on first sight
+        // permanently consumed wraps that a later state fix would have made
+        // processable — the v55 invite echo unwrapped fine, failed at the
+        // Security open on overwritten prekeys, and after the prekey fix the
+        // relay's replays were ledger-skipped forever (minter blank for good).
+        // A wrap that fails validation/unwrap instead goes into a RAM-only set:
+        // the open-fail replay storm stays dead within a session, and the next
+        // launch gets exactly one fresh try. KNOWN LIMIT, deliberate: a wrap
+        // that unwraps but is dropped DOWNSTREAM (Security open) is still
+        // recorded — the recovery for that class is sender-side (the F1
+        // zero-accept demotion + resend re-seals a FRESH wrap with a new id)
+        // and, for the one-shot invite echo, the re-echo heal (F3).
+        if processedLedger.contains(event.id) {
             log.debug("nostr: skip already-processed 1059 \(String(event.id.prefix(12)), privacy: .public) @ \(host, privacy: .public)")
             return
         }
-        scheduleLedgerSaveLocked()   // a new id was recorded — persist (debounced)
+        if failedWrapsThisSession.contains(event.id) { return }   // logged at first failure
         guard event.isValid() else {
+            noteFailedWrapLocked(event.id)
             log.error("nostr: inbound 1059 failed event validation @ \(host, privacy: .public)")
             return
         }
         do {
             let (envelope, _) = try NostrGiftWrap.unwrap(giftWrap: event,
                                                          mySecret: ourSecretKey)
+            processedLedger.containsOrInsert(event.id)
+            scheduleLedgerSaveLocked()   // a new id was recorded — persist (debounced)
             inboundCont.yield((link: Self.nostrSourceLink, envelope: envelope))
             log.info("nostr: unwrapped inbound envelope id=\(envelope.id) @ \(host, privacy: .public) → incoming")
         } catch {
+            noteFailedWrapLocked(event.id)
             log.error("nostr: unwrap failed @ \(host, privacy: .public): \(error.localizedDescription)")
         }
+    }
+
+    /// F2: wraps that failed validation/unwrap THIS SESSION (RAM only) — a
+    /// replay is skipped without re-paying schnorr/ECDH, but the id is eligible
+    /// again next launch (unlike the persisted ledger, which now records only
+    /// successes). Crudely bounded: a flood past the cap clears the set — worst
+    /// case one extra re-verification pass, keeping this both un-poisonable and
+    /// un-growable. Queue-confined like all mutable state here.
+    private func noteFailedWrapLocked(_ id: String) {
+        if failedWrapsThisSession.count >= Self.failedWrapsCap {
+            failedWrapsThisSession.removeAll()
+        }
+        failedWrapsThisSession.insert(id)
     }
 
     // MARK: - Acceptance ledger (queue-confined; observability only)
@@ -417,9 +738,13 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// summary. The deadline closure runs on `queue` (same confinement as every
     /// mutation here); a finalize triggered earlier by all relays answering
     /// removes the entry, making the deadline pass a silent no-op.
-    private func recordPublishLocked(eventID: String, envelopeID: MessageID, relayCount: Int) {
-        pendingAcceptance[eventID] = PendingAcceptance(envelopeID: envelopeID,
-                                                       relayCount: relayCount)
+    private func recordPublishLocked(eventID: String, envelopeID: MessageID,
+                                     frame: String, relayCount: Int, attempt: Int) {
+        pendingAcceptance[eventID] = PendingAcceptance(eventID: eventID,
+                                                       envelopeID: envelopeID,
+                                                       frame: frame,
+                                                       relayCount: relayCount,
+                                                       attempt: attempt)
         queue.asyncAfter(deadline: .now() + Self.acceptanceSummaryDeadline) { [weak self] in
             self?.finalizeAcceptanceLocked(eventID: eventID, trigger: "deadline")
         }
@@ -438,20 +763,63 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         }
     }
 
-    /// Emit the one-time acceptance summary and drop the entry. ZERO accepts is
-    /// the silent-strand signature (a wrap `publish` reported as handed off that
-    /// no relay actually took) — logged at `error` so it stands out in the
-    /// stranded-run log this exists to feed. Idempotent: the entry is removed
+    /// F1 decision core, pure so a unit test can pin the retry ladder without
+    /// sockets: a round with >= 1 accept is settled; zero accepts retries until
+    /// the attempt cap, then gives up (surfaces the failure upward).
+    enum AcceptanceOutcome: Equatable { case settled, retry, giveUp }
+    static func acceptanceOutcome(accepted: Int, attempt: Int, maxAttempts: Int) -> AcceptanceOutcome {
+        if accepted > 0 { return .settled }
+        return attempt < maxAttempts ? .retry : .giveUp
+    }
+
+    /// Emit the one-time acceptance summary, then ACT on it (F1). ZERO accepts
+    /// is the silent-strand signature (a wrap `publish` reported as handed off
+    /// that no relay actually took): re-publish the retained frame after
+    /// `republishDelay` — by then the liveness watchdogs have had a chance to
+    /// rebuild a dead socket — or, past the attempt cap, fire `onPublishFailed`
+    /// so a tracked row demotes off `.cast`. Idempotent: the entry is removed
     /// first, so the deadline and the all-answered path can't both fire.
     private func finalizeAcceptanceLocked(eventID: String, trigger: String) {
         guard let pending = pendingAcceptance.removeValue(forKey: eventID) else { return }
         let silent = max(0, pending.relayCount - pending.accepted - pending.rejected)
         let idPrefix = String(eventID.prefix(12))
-        if pending.accepted == 0 {
-            log.error("nostr: NO relay accepted event \(idPrefix, privacy: .public) (envelope \(pending.envelopeID)) — rejected=\(pending.rejected) silent=\(silent) of \(pending.relayCount) [\(trigger, privacy: .public)]")
-        } else {
+        switch Self.acceptanceOutcome(accepted: pending.accepted,
+                                      attempt: pending.attempt,
+                                      maxAttempts: Self.maxPublishAttempts) {
+        case .settled:
             log.info("nostr: acceptance \(idPrefix, privacy: .public) (envelope \(pending.envelopeID)) — accepted=\(pending.accepted) rejected=\(pending.rejected) silent=\(silent) of \(pending.relayCount) [\(trigger, privacy: .public)]")
+        case .retry:
+            log.error("nostr: NO relay accepted event \(idPrefix, privacy: .public) (envelope \(pending.envelopeID)) — rejected=\(pending.rejected) silent=\(silent) of \(pending.relayCount) [\(trigger, privacy: .public)] — retry \(pending.attempt + 1)/\(Self.maxPublishAttempts) in \(Int(Self.republishDelay))s")
+            queue.asyncAfter(deadline: .now() + Self.republishDelay) { [weak self] in
+                self?.republishLocked(pending)
+            }
+        case .giveUp:
+            log.error("nostr: NO relay accepted event \(idPrefix, privacy: .public) (envelope \(pending.envelopeID)) after \(pending.attempt) attempt(s) — giving up [\(trigger, privacy: .public)]")
+            onPublishFailed?(pending.envelopeID)
         }
+    }
+
+    /// F1: re-fan-out a zero-accept publish to the currently-live sockets and
+    /// re-enter the acceptance cycle with attempt+1. Zero live sockets is fine:
+    /// the fresh entry's deadline fires with zero accepts and the ladder
+    /// continues (retry or give up) — no rung is ever silently skipped. A late
+    /// OK from an EARLIER attempt's socket still counts for the new entry (the
+    /// event id is identical), which is exactly the honest outcome.
+    private func republishLocked(_ pending: PendingAcceptance) {
+        guard started else { return }
+        let live = conns.filter { $0.task != nil }
+        for conn in live {
+            conn.task?.send(.string(pending.frame)) { [weak self] error in
+                if let error {
+                    let ns = error as NSError
+                    self?.log.error("nostr: re-publish to \(conn.url.host ?? "relay", privacy: .public) failed: domain=\(ns.domain, privacy: .public) code=\(ns.code)")
+                }
+            }
+        }
+        log.info("nostr: re-published \(String(pending.eventID.prefix(12)), privacy: .public) (envelope \(pending.envelopeID)) attempt \(pending.attempt + 1)/\(Self.maxPublishAttempts) → \(live.count) relay(s)")
+        recordPublishLocked(eventID: pending.eventID, envelopeID: pending.envelopeID,
+                            frame: pending.frame, relayCount: live.count,
+                            attempt: pending.attempt + 1)
     }
 
     /// Coalesce a ledger save (queue-confined). Marks the ledger dirty and, if no

@@ -121,6 +121,18 @@ struct ContentView: View {
     /// internet pillar (Phase 8) has its identity ready; its npub lights up once
     /// the public key is derived (Phase 8b). nil until .ready.
     @State private var nostrIdentity: NostrIdentity?
+
+    /// FIX 2 (cellular inbound liveness): the Nostr transport, held so the
+    /// scene-active hook can ask it to rebuild stale sockets. Set in
+    /// `bootstrap()` alongside the router; nil when no Nostr identity exists.
+    @State private var nostrTransportRef: NostrTransport?
+
+    /// A2 (NOSTR_KEY_PROPAGATION): set by `bootstrap()` when the pubkey
+    /// `loadOrCreate` returned differs from the last one this install recorded
+    /// (post-wipe regeneration, or a restore that lost the Keychain item while
+    /// rows survived). The boot task below consumes it exactly once, driving a
+    /// relay re-announce of the new npub to every contact.
+    @State private var nostrIdentityChanged = false
     
     /// The assembled crypto-erase (STEP 7b-3). Constructed in `makeSessionStack`
     /// with every live secret-bearing component and invoked by
@@ -169,7 +181,9 @@ struct ContentView: View {
                               router: router,
                               pairingService: pairingService,
                               pttSessionOwner: pttSessionOwner,
-                              pendingInviteURL: $pendingInviteURL)
+                              pendingInviteURL: $pendingInviteURL,
+                              nostrIdentityChanged: $nostrIdentityChanged,
+                              nostrTransport: nostrTransportRef)
                         // The erase action is injected HERE, not on the outer
                         // body, because only `.ready` has the assembled store in
                         // scope. SettingsView (reachable only from within
@@ -512,6 +526,29 @@ struct ContentView: View {
             let nostr = try NostrIdentity.loadOrCreate(service: nostrIdentityService)
             nostrIdentity = nostr
             ourNostrPubkey = nostr.publicKeyBytes
+            // A2 (NOSTR_KEY_PROPAGATION): local-identity-change signal. Fires
+            // ONLY on a real change — a stored previous key that differs from
+            // the one loadOrCreate returned (Keychain item lost on a restore,
+            // or the boot-failed door sweep, with contacts surviving). A first
+            // create (stored == nil: fresh install, or the launch after a FULL
+            // crypto-erase, which clears this breadcrumb via DeviceResidueWipe)
+            // must NOT fire: there are no sessions to announce over, and the
+            // pairing-regression field test proved the misfire lands an
+            // unsolicited announce + a delayed permission prompt inside the
+            // redeem window. The full-wipe heal doesn't need A2 — the wipe
+            // always regenerates the libsignal identity too, so re-pairing
+            // bootstraps the new npub (redeemInvite / invite-echo V2). Record
+            // the current value either way so a later change is detectable.
+            if let pub = nostr.publicKeyBytes {
+                let defaults = UserDefaults.standard
+                let stored = defaults.data(forKey: DeviceResidueWipe.lastLocalNostrPubkeyKey)
+                if let stored, stored != pub {
+                    nostrIdentityChanged = true
+                }
+                if stored != pub {
+                    defaults.set(pub, forKey: DeviceResidueWipe.lastLocalNostrPubkeyKey)
+                }
+            }
             if let pub = nostr.publicKeyBytes {
                 let relayURLs = nostrRelayURLs.compactMap { URL(string: $0) }
                 if !relayURLs.isEmpty {
@@ -543,7 +580,18 @@ struct ContentView: View {
         // relay/TTL bypass for Nostr arrivals lives in the router (Phase 8d-2).
         var transports: [MeshTransport] = [transport]
         if let nostrTransport { transports.append(nostrTransport) }
+        nostrTransportRef = nostrTransport   // FIX 2: scene-active refresh hook
         let mesh = MessageRouter(transports: transports)
+        // F1 (the publish lie): a relay publish that ends with ZERO accepts
+        // after its bounded re-publishes is a REAL failure — demote the tracked
+        // row from .cast to .notDelivered so the resend affordance / auto-flush
+        // retries with a fresh seal, instead of parking on .cast forever.
+        // confirmFailure is the sanctioned "real failure ack" (no .cast timer
+        // is ever armed); untracked envelopes fire into a no-op.
+        nostrTransport?.setPublishFailureHandler { [weak mesh] id in
+            guard let mesh else { return }
+            Task { await mesh.confirmFailure(of: id) }
+        }
         
         sessionStore = secure
         coordinator = coord
@@ -936,6 +984,16 @@ private struct ReadyView: View {
     /// the redeeming.
     @Binding var pendingInviteURL: URL?
 
+    /// A2 (NOSTR_KEY_PROPAGATION): set by ContentView.bootstrap() when the
+    /// local Nostr identity changed since the last launch. Consumed exactly
+    /// once by the boot task below (cleared before the re-announce fires).
+    @Binding var nostrIdentityChanged: Bool
+
+    /// FIX 2 (cellular inbound liveness): the Nostr transport, threaded in so
+    /// the scene-active handler below can rebuild stale relay sockets after a
+    /// suspension. nil when no Nostr identity exists — the handler no-ops.
+    let nostrTransport: NostrTransport?
+
     @State private var inbox: MessageInbox?
     /// FaceTime v1 (P3): app-wide call layer — a ring must reach the user on
     /// any screen, so it lives beside the inbox, not in a chat view.
@@ -1026,6 +1084,13 @@ private struct ReadyView: View {
                                          isVerified: { pairingService.isVerified($0) },
                                          notifier: notifier)   // N2 — banner at the persist seams
                 inbox = built
+                // A1 (NOSTR_KEY_PROPAGATION): npub resolver for the
+                // coordinator's announce/ack relay routing. The SwiftData row
+                // read stays HERE, on the main actor, in the inbox — the
+                // coordinator only ever receives the resolved value.
+                await coordinator.setNostrKeyLookup { [weak built] raw in
+                    await MainActor.run { built?.nostrKey(forRawKey: raw) }
+                }
                 // FaceTime v1 (P3): the call layer. Signals ride the EXISTING
                 // sealer (kinds 8-10, 7f-gated); inbound frames arrive via the
                 // inbox's forward hook (single events consumer); the missed-
@@ -1081,7 +1146,26 @@ private struct ReadyView: View {
                 // so this covers the launch-with-contacts case; the scenePhase
                 // hook below covers pairing-then-backgrounding. Idempotent: the
                 // notifier only prompts while the system status is .notDetermined.
+                // ORDER (pairing regression): N1 runs at the boot tail's
+                // baseline position, BEFORE the A2 branch below — the A2 grace
+                // delay must never push this prompt into the redeem window.
                 await requestNotificationAuthIfPaired()
+                // A2 (NOSTR_KEY_PROPAGATION): the local Nostr identity changed
+                // since the last launch — push the new npub to every contact
+                // over the relay, so the stale-key field bug heals WITHOUT BLE
+                // range. Hoisted to its OWN task so the boot tail never carries
+                // the grace delay (the pairing-regression fix): the sleep gives
+                // the relay websockets (kicked off asynchronously by
+                // mesh.start()) time to connect. A miss is not lost — the
+                // announce marks a peer announced only on a transport commit,
+                // so the next send/receive retries it.
+                if nostrIdentityChanged {
+                    nostrIdentityChanged = false
+                    Task {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        await built.reannounceNostrIdentityToAllContacts()
+                    }
+                }
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -1089,6 +1173,12 @@ private struct ReadyView: View {
             // boot task has built the inbox — that task runs its own pass).
             if phase == .active {
                 inbox?.reapExpiredMedia()
+                // FIX 2 (cellular inbound liveness): pings pause while iOS
+                // suspends the process, so a socket can die deaf across a
+                // background stint with no error ever firing. On every return
+                // to foreground, rebuild any relay socket with no recent
+                // inbound frame or pong — cheap no-op when all are fresh.
+                nostrTransport?.refreshConnections()
                 // N1 — the other half of the permission moment (see boot task).
                 Task { await requestNotificationAuthIfPaired() }
             }

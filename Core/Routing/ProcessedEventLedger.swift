@@ -13,13 +13,17 @@
 // event id — a hash of the event's own bytes — so that is what we ledger, at the
 // TOP of `NostrTransport.handleInboundEventLocked`.
 //
-// RECORD ON FIRST SIGHT, regardless of unwrap outcome: the id is a content hash,
-// so a re-send of the same bytes is byte-identical (equally valid or invalid,
-// equally decryptable or not) — re-processing it can only repeat the same result,
-// so skipping it is always correct. A genuinely different message necessarily has
-// a different id. This is why recording the id BEFORE `isValid()` is safe: a bad
-// signature can't be forged onto an id computed from different content, and an
-// already-consumed wrap's ratchet key stays spent.
+// RECORD ON SUCCESSFUL UNWRAP ONLY (F2 revision — the caller's policy, not this
+// type's): the original record-on-first-sight rule assumed re-processing "can
+// only repeat the same result," which is false across STATE changes — the v55
+// invite echo unwrapped fine, failed at the Security open on overwritten
+// prekeys, and once recorded here its relay replays were skipped forever even
+// after the prekey fix landed. `NostrTransport.handleInboundEventLocked` now
+// inserts an id only after unwrap + yield succeed; wraps that fail
+// validation/unwrap live in a RAM-only per-session set instead (one fresh try
+// per launch, storm still suppressed within a session). A genuinely different
+// message necessarily has a different id (content hash), so successful-unwrap
+// ids remain permanently skippable.
 //
 // EVICTION mirrors `SeenCache` (MessageRouter): bounded FIFO — insertion order,
 // oldest evicted — which is all a replay guard needs. It never benefits from LRU
