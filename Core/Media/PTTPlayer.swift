@@ -17,9 +17,12 @@
 //          playout; every other link's frames are dropped until the claim
 //          clears. Enforced nowhere else (`.pttOpen` seeds contexts on both
 //          role-links, and multiple peers can hold sessions concurrently).
-//    IC5 — NO audio-session API is touched anywhere in this file (grep it:
-//          zero hits). Session category/activation lifetime belongs to C-3's
-//          coordinator; this player only drives its own engine graph.
+//    IC5 — this file never CONFIGURES the audio session: no setCategory /
+//          setActive / override anywhere (grep them: zero hits). Session
+//          category/activation lifetime belongs to C-3's coordinator; this
+//          player only drives its own engine graph. Observe-only session
+//          notifications (mediaServicesWereReset) are allowed — reading that
+//          the world changed is not owning it.
 //
 
 import Foundation
@@ -144,6 +147,58 @@ final class PTTPlayer: @unchecked Sendable {
                                        sampleRate: Double(OpusVoiceCodec.sampleRate),
                                        channels: 1, interleaved: false)
 
+    /// Observer tokens — touched from init/deinit ONLY, never from `queue`.
+    private var observers: [NSObjectProtocol] = []
+
+    init() {
+        installEngineObservers()
+    }
+
+    // MARK: Engine-death observation (IC5 — observe-only; handlers hop to `queue`)
+
+    /// The system stops engines from AVFoundation's own threads; without these
+    /// observers the player only DISCOVERS a dead engine at the next spurt's
+    /// `ensureEngine()`, and a mid-spurt death limps silently (schedule() drops
+    /// buffers against a stopped engine). Both handlers hop onto the
+    /// confinement queue before touching any state, and both are deliberately
+    /// CONSERVATIVE — they act only where playback is already broken, never on
+    /// a healthy path:
+    ///   • config change: only when the notification names the CURRENT engine
+    ///     instance (registration is object-nil, so a rebuild can't stale the
+    ///     filter — the identity check happens per-event, and it also screens
+    ///     out OTHER engines' notifications, e.g. PTTCaptureEngine's), only
+    ///     mid-spurt (`playing` — prebuffer/idle already recover through
+    ///     ensureEngine WITH the clip intact), and only when the engine truly
+    ///     stopped (`!isRunning` — an engine that survived the change, or was
+    ///     already restarted by a newer spurt before this hop landed, is
+    ///     healthy: leave it alone).
+    ///   • media services reset: every instance is invalid by contract, so
+    ///     rebuild UNCONDITIONALLY — but end the spurt only if `playing`; a
+    ///     prebuffering spurt survives, its transition tick wires and starts
+    ///     the fresh engine (the jitter buffer is pure data).
+    private func installEngineObservers() {
+        let center = NotificationCenter.default
+        observers.append(center.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil) { [weak self] note in
+            guard let self, let changed = note.object as? AVAudioEngine else { return }
+            self.queue.async {
+                guard changed === self.engine, self.playing,
+                      !self.engine.isRunning else { return }
+                RedactLog.event("[PTTPlayer] engine config change mid-spurt", "spurt ended")
+                self.endSpurt(keepBuffer: true)
+            }
+        })
+        observers.append(center.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: nil) { [weak self] _ in
+            guard let self else { return }
+            self.queue.async {
+                RedactLog.event("[PTTPlayer] media services reset", "rebuilding engine")
+                if self.playing { self.endSpurt(keepBuffer: true) }
+                self.rebuildEngine()
+            }
+        })
+    }
+
     // MARK: Inbound seam
 
     /// Hand one decoded 20 ms frame to the player. SYNCHRONOUS and
@@ -176,6 +231,7 @@ final class PTTPlayer: @unchecked Sendable {
 
     deinit {
         timer?.cancel()
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     // MARK: Playout clock (queue-confined)
