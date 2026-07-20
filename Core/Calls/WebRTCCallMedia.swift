@@ -468,8 +468,19 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
         let session = RTCAudioSession.sharedInstance()
         session.lockForConfiguration()
         session.isAudioEnabled = false
-        try? session.setActive(false)
+        // C-3b guard (IC8) — the same one-line read as VoicePlayer /
+        // VoiceRecorder / the story players: while a live PTT wire session
+        // owns the process-global audio session, SKIP both setActive(false)
+        // calls (RTCAudioSession wraps the SAME shared instance) — an
+        // unguarded deactivation here stops the PTT playout engine out from
+        // under its owner, which releases the session itself at last close.
+        // isAudioEnabled = false stays unconditional: it only parks WebRTC's
+        // own audio unit, never the session. Read once — no suspension points,
+        // so both branches see one consistent value.
+        let pttLive = PTTSessionOwner.isLive
+        if !pttLive { try? session.setActive(false) }
         session.unlockForConfiguration()
+        guard !pttLive else { return }
         try? AVAudioSession.sharedInstance()
             .setActive(false, options: [.notifyOthersOnDeactivation])
     }
