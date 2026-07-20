@@ -120,8 +120,13 @@ final class PTTPlayer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "beacon.ptt.player")
 
     // Queue-confined state — touch only from `queue`.
-    private let engine = AVAudioEngine()
-    private let node = AVAudioPlayerNode()
+    /// `var`, not `let` (both): when mediaserverd reconfigures, a persistent
+    /// engine can refuse `start()` against a healthy session — the recovery is
+    /// replacing the instance (see `rebuildEngine()`, the playout twin of
+    /// `PTTCaptureEngine.rebuildEngine()`). The node goes with it: it belongs
+    /// to the dead instance's graph and can never play again.
+    private var engine = AVAudioEngine()
+    private var node = AVAudioPlayerNode()
     private var engineWired = false
     private var buffers: [UUID: PTTJitterBuffer] = [:]
     /// IC4 — the single audible stream's owner. First `enqueue` claims it;
@@ -205,7 +210,11 @@ final class PTTPlayer: @unchecked Sendable {
                 return
             }
             expectedSeq = first
-            ensureEngine()
+            // `playing` rises ONLY on a verified engine (ensureEngine's
+            // activate-then-commit): on failure the spurt ends cleanly and
+            // the next enqueue re-claims and retries against the (possibly
+            // rebuilt) graph.
+            guard ensureEngine() else { endSpurt(keepBuffer: true); return }
             playing = true
         }
 
@@ -234,7 +243,14 @@ final class PTTPlayer: @unchecked Sendable {
         timer = nil
         playing = false
         silenceRun = 0
-        if node.isPlaying { node.stop() }
+        if node.isPlaying {
+            // stop() shares play()'s uncatchable-NSException family; teardown
+            // must never abort the process. On a throw the node is abandoned —
+            // ensureEngine's rebuild path replaces it if it stays wedged.
+            if let err = BeaconCatchException({ node.stop() }) {
+                RedactLog.event("[PTTPlayer] stop threw", err.localizedDescription)
+            }
+        }
         if let link = activeLink {
             if keepBuffer { buffers[link]?.flush() } else { buffers.removeValue(forKey: link) }
         }
@@ -243,21 +259,73 @@ final class PTTPlayer: @unchecked Sendable {
 
     // MARK: Engine graph (queue-confined; IC5 — graph only, never the session)
 
-    private func ensureEngine() {
-        guard let format else { return }
-        if !engineWired {
-            engine.attach(node)
-            engine.connect(node, to: engine.mainMixerNode, format: format)
-            engineWired = true
-        }
+    /// Bring the graph up for a spurt. Returns false when the engine cannot be
+    /// made playable — the caller fails the spurt cleanly (`endSpurt`) instead
+    /// of limping into a `playing` state the engine can't back; the NEXT
+    /// `enqueue` re-claims and retries, so transient failures self-heal (the
+    /// same posture as `PTTSessionOwner.opened`'s activate-then-commit).
+    private func ensureEngine() -> Bool {
+        guard let format else { return false }
+        wireIfNeeded(format)
         if !engine.isRunning {
             engine.prepare()
             do { try engine.start() } catch {
-                RedactLog.event("[PTTPlayer] engine start failed", "\(type(of: error))")
-                return
+                // A persistent instance whose I/O unit died under a
+                // mediaserverd reconfigure can refuse start() forever — the
+                // capture side's field-confirmed failure. Replace engine+node
+                // ONCE and retry before giving up.
+                RedactLog.event("[PTTPlayer] engine start failed — rebuilding", "\(type(of: error))")
+                rebuildEngine()
+                wireIfNeeded(format)
+                engine.prepare()
+                do { try engine.start() } catch {
+                    RedactLog.event("[PTTPlayer] engine start failed after rebuild", "\(type(of: error))")
+                    return false
+                }
             }
         }
-        if !node.isPlaying { node.play() }
+        // start() returning cleanly is a snapshot, not a guarantee: the system
+        // stops engines from AVFoundation's own threads (session deactivation,
+        // route change), so re-read immediately before play(). A false read
+        // here fails the spurt; without it, play() on a stopped engine raises
+        // the uncatchable "_engine->IsRunning()" NSException and aborts.
+        guard engine.isRunning else {
+            RedactLog.event("[PTTPlayer] engine stopped before play", "spurt dropped")
+            return false
+        }
+        if !node.isPlaying {
+            // Even past the guard above, the system can stop the engine in the
+            // microseconds before play() executes — and play()'s NSException is
+            // uncatchable from Swift. The ObjC shim is the ONLY thing that can
+            // turn that abort into a dropped spurt.
+            if let err = BeaconCatchException({ node.play() }) {
+                RedactLog.event("[PTTPlayer] play threw", err.localizedDescription)
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Attach/connect once per engine INSTANCE — `engineWired` is reset only
+    /// by `rebuildEngine()`, so a rebuilt graph gets rewired and a live one is
+    /// never re-touched.
+    private func wireIfNeeded(_ format: AVAudioFormat) {
+        guard !engineWired else { return }
+        engine.attach(node)
+        engine.connect(node, to: engine.mainMixerNode, format: format)
+        engineWired = true
+    }
+
+    /// Replace a dead engine — playout twin of `PTTCaptureEngine.rebuildEngine()`
+    /// (engine ONLY, never the session; releasing the old instance releases its
+    /// dead I/O unit). The node is replaced with it: the old node belongs to the
+    /// dead instance's graph, the same reason the capture side re-fetches its
+    /// input node after a rebuild.
+    private func rebuildEngine() {
+        if engine.isRunning { engine.stop() }
+        engine = AVAudioEngine()
+        node = AVAudioPlayerNode()
+        engineWired = false
     }
 
     /// One 20 ms slot → the player node. `pcm == nil` schedules 960 samples of
