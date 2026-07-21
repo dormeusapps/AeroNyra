@@ -151,6 +151,11 @@ struct StreamView: View {
         }
         .background(Stillwater.Palette.abyss)
         .navigationBarBackButtonHidden(true)
+        // Hiding the system back button above also disables the stock
+        // edge-swipe-to-pop; the shim at the bottom of this file restores the
+        // swipe (chevron and swipe coexist — same pop, same onDisappear
+        // teardown).
+        .swipeBackEnabled()
         .task { markInboundRead() }
         .onChange(of: sortedMessages.count) { markInboundRead() }
         // N2 — suppress banners for the conversation on screen. The clear is
@@ -206,8 +211,16 @@ struct StreamView: View {
         HStack(spacing: 14) {
             Button { dismiss() } label: {
                 Text("‹").stillwaterSerif(15, color: Stillwater.Palette.mistDim)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // 44pt tap target without moving the glyph or its neighbors: the
+            // negative padding collapses the layout slot back to the glyph's
+            // intrinsic width, so the hit rect spills ~18pt into the body's
+            // 24pt inset on the left and grazes only the non-tappable presence
+            // circle on the right — never the title button.
+            .padding(.horizontal, -18)
 
             ZStack {
                 if tier == .near {
@@ -2061,5 +2074,73 @@ private final class WalkieCore {
             Path(ellipseIn: CGRect(x: cx - rr * 0.5, y: cy - rr * 0.5, width: rr, height: rr)),
             with: .radialGradient(core, center: CGPoint(x: cx, y: cy), startRadius: 0, endRadius: rr * 0.5)
         )
+    }
+}
+
+// MARK: - Swipe-back shim (UIKit bridge)
+
+/// WHY THIS EXISTS: this screen draws its own header chevron and hides the
+/// system back button (`.navigationBarBackButtonHidden(true)` in `body`).
+/// UIKit's interactive edge-swipe-to-pop refuses to begin when the system
+/// back button is hidden — `interactivePopGestureRecognizer`'s default
+/// delegate requires one — so the custom chevron silently killed swipe-back.
+/// This shim re-arms the gesture with a delegate that allows it whenever the
+/// stack has something to pop (`viewControllers.count > 1`). It ADDS the
+/// swipe; the header chevron and every bit of teardown are untouched (a
+/// swipe-pop runs the same `.onDisappear` the chevron's `dismiss()` does).
+///
+/// SCOPE: armed only while the view carrying `.swipeBackEnabled()` is on
+/// screen (StreamView is the only client), and it touches ONLY the enclosing
+/// navigation stack's `interactivePopGestureRecognizer`. Sheets and
+/// fullScreenCovers dismiss via presentation — a different mechanism this
+/// never sees — and the probe restores the saved delegate whenever the
+/// screen disappears, including underneath a presented cover.
+///
+/// CAVEAT (not API-guaranteed): leans on NavigationStack being backed by a
+/// UINavigationController reachable from an embedded child controller, and
+/// on the pop gesture tolerating a replacement delegate. Both have been
+/// stable across many iOS releases, but a future iOS could change either —
+/// worst case the swipe silently stops working again and this shim needs
+/// revisiting; the header chevron keeps working regardless.
+private extension View {
+    func swipeBackEnabled() -> some View {
+        background(SwipeBackEnabler())
+    }
+}
+
+private struct SwipeBackEnabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> SwipeBackProbe { SwipeBackProbe() }
+    func updateUIViewController(_ probe: SwipeBackProbe, context: Context) {}
+}
+
+/// Invisible child controller: finds the enclosing UINavigationController via
+/// the parent chain once on screen, swaps the pop gesture's delegate for
+/// itself, and restores the original on the way out. Idempotent per appear
+/// (a cancelled swipe re-runs viewDidAppear and re-arms).
+private final class SwipeBackProbe: UIViewController, UIGestureRecognizerDelegate {
+    private weak var nav: UINavigationController?
+    private weak var originalDelegate: UIGestureRecognizerDelegate?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard let nav = navigationController,
+              let pop = nav.interactivePopGestureRecognizer else { return }
+        self.nav = nav
+        if pop.delegate !== self {
+            originalDelegate = pop.delegate
+            pop.delegate = self
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Restore only if still ours — never clobber another delegate.
+        if let pop = nav?.interactivePopGestureRecognizer, pop.delegate === self {
+            pop.delegate = originalDelegate
+        }
+    }
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        (nav?.viewControllers.count ?? 0) > 1
     }
 }

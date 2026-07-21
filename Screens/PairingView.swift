@@ -87,6 +87,12 @@ struct PairingView: View {
             HStack {
                 Button { dismiss() } label: {
                     Text("‹").stillwaterSerif(20, color: Stillwater.Palette.mistDim)
+                        // 44pt tap target. Leading-aligned so the glyph holds its
+                        // exact spot; the widened layout slot is absorbed by the
+                        // trailing Spacer, so nothing moves — and the only thing
+                        // the hit rect reaches (the centered title) isn't tappable.
+                        .frame(width: 44, height: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 Spacer()
