@@ -116,8 +116,12 @@ struct StreamView: View {
     /// STEP 7f — whether this contact has completed the 4-word SAS (or was QR-paired).
     /// Drives the composer: unverified shows the verify-gate instead. Reads through
     /// the PairingService façade; nil (no env, e.g. previews) reads as unverified.
+    /// Touches `verificationEpoch` so a SAS confirm repaints this body live — the
+    /// epoch is a repaint signal only; truth is always the `isVerified(_:)` read.
     private var isVerified: Bool {
-        pairing?.isVerified(peer.publicKeyData) ?? false
+        guard let pairing else { return false }
+        _ = pairing.verificationEpoch
+        return pairing.isVerified(peer.publicKeyData)
     }
     private var peerName: String {
         if let n = peer.displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {

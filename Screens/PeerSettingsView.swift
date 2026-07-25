@@ -231,6 +231,8 @@ struct PeerSettingsView: View {
 
     // MARK: - Verification (SAS)
     private var verificationSection: some View {
+        // Repaint signal only — truth is the `isVerified(_:)` read below.
+        _ = pairing?.verificationEpoch
         let verified = pairing?.isVerified(conversation.peer?.publicKeyData ?? Data()) ?? false
         return SettingsGroup(
             header: "Verification",

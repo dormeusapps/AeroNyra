@@ -377,8 +377,12 @@ struct HomeView: View {
     }
 
     /// STEP 7f — verified state for a peer (nil env → unverified, e.g. previews).
+    /// Touches `verificationEpoch` so a SAS confirm repaints the rows/zones live —
+    /// the epoch is a repaint signal only; truth is always the `isVerified(_:)` read.
     private func isVerified(_ peer: Peer) -> Bool {
-        pairing?.isVerified(peer.publicKeyData) ?? false
+        guard let pairing else { return false }
+        _ = pairing.verificationEpoch
+        return pairing.isVerified(peer.publicKeyData)
     }
 
     /// Compact "3 h ago" style age from a Date, matching the mockup's whisper.

@@ -39,6 +39,23 @@ final class PairingService {
     @ObservationIgnored private let enrollment: EnrollmentService
     @ObservationIgnored private let ourNostrPublicKey: Data?
 
+    /// STEP 7f (REACTIVITY) — the verified-state REPAINT SIGNAL, and deliberately
+    /// the ONLY stored property here that is observable. `isVerified(_:)` reads a
+    /// non-observable service, so on its own it registers no SwiftUI dependency —
+    /// a SAS confirm repainted nothing until something unrelated invalidated the
+    /// view (the field's stale verify-gate). Views touch this inside their
+    /// verified checks to register the dependency, then STILL re-read
+    /// `isVerified(_:)`: the epoch is never truth. A wrong bump can only cost a
+    /// spurious repaint, never a wrong verified answer.
+    private(set) var verificationEpoch = 0
+
+    /// Bump the repaint signal. Called UNCONDITIONALLY on every non-throwing
+    /// return of a mutation that MAY have changed verified state: the enrollment
+    /// layer no-ops silently (not-enrolled / already-verified), so this façade
+    /// cannot tell success from no-op — and a missed bump is the stale-gate bug,
+    /// while a spurious one is a single repaint that re-reads truth.
+    private func bumpVerificationEpoch() { verificationEpoch += 1 }
+
     init(sessionStore: SignalSessionStore,
          coordinator: FirstContactCoordinator,
          enrollment: EnrollmentService,
@@ -89,6 +106,7 @@ final class PairingService {
     /// Promote a paired contact to verified after the 4 words matched.
     func markVerified(_ rawKey: Data) async throws {
         try await enrollment.markVerified(identity: rawKey)
+        bumpVerificationEpoch()
     }
 
     /// Remove a paired contact entirely (Remove Contact). Delegates to
@@ -97,6 +115,7 @@ final class PairingService {
     /// gates — they cannot reconnect or message again without re-pairing.
     func revoke(_ rawKey: Data) async throws {
         try await enrollment.revoke(identity: rawKey)
+        bumpVerificationEpoch()
     }
 
     // MARK: - Invite mint (remote pairing, outbound half)
@@ -168,6 +187,7 @@ final class PairingService {
         // second, and roll the enrollment back if the bundle was dropped or
         // establishment failed, so that state is unreachable.
         try await enrollment.enroll(identity: rawKey, verified: true)
+        bumpVerificationEpoch()
 
         switch await coordinator.onBundle(link: UUID(), data: payload.bundle.data) {
         case .initiated, .responder:
@@ -175,6 +195,7 @@ final class PairingService {
                     // our session forms on their first message.
         case .malformed, .droppedUnenrolled, .initiateFailed:
             try? await enrollment.revoke(identity: rawKey)
+            bumpVerificationEpoch()   // the rollback un-verifies — repaint too
             throw PairError.malformed
         }
 
