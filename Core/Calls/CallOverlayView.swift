@@ -24,6 +24,16 @@ struct CallOverlayView: View {
     let engine: CallEngine
     @Environment(\.modelContext) private var modelContext
 
+    /// Which corner the local-preview PIP is anchored to (FaceTime-style).
+    /// Stored as a CORNER, not a point: rotation or a size change re-derives
+    /// the concrete position from the corner, so the PIP re-anchors to the
+    /// same logical place in any orientation.
+    @State private var pipCorner: PIPCorner = .topTrailing
+    /// Live drag translation; zero at rest. The release animates it back to
+    /// zero in the same spring that re-anchors `pipCorner`, so new-home+zero
+    /// lands where the finger let go.
+    @State private var pipDragOffset: CGSize = .zero
+
     var body: some View {
         switch engine.state {
         case .idle:
@@ -141,6 +151,13 @@ struct CallOverlayView: View {
                 }
             }
 
+            // Draggable local-preview PIP — its own layer, OVER the video and
+            // UNDER the header/controls stack (empty stack regions pass
+            // touches through, and the buttons always win hit-testing).
+            if engine.cameraOn, let local = engine.localVideoSurface {
+                localPreviewPIP(local)
+            }
+
             VStack {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
@@ -151,14 +168,6 @@ struct CallOverlayView: View {
                     }
                     .padding(18)
                     Spacer()
-                    if engine.cameraOn, let local = engine.localVideoSurface {
-                        CallVideoSurface(view: local)
-                            .frame(width: 104, height: 148)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .overlay(RoundedRectangle(cornerRadius: 14)
-                                .strokeBorder(Stillwater.Palette.biolume.opacity(0.35)))
-                            .padding(18)
-                    }
                 }
                 Spacer()
                 HStack(spacing: 26) {
@@ -202,6 +211,82 @@ struct CallOverlayView: View {
                 .background(Circle().fill(active ? tint : tint.opacity(0.14)))
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: Local-preview PIP (draggable, corner-snapping)
+
+    private enum PIPCorner {
+        case topLeading, topTrailing, bottomLeading, bottomTrailing
+        var isLeading: Bool { self == .topLeading || self == .bottomLeading }
+        var isTop: Bool { self == .topLeading || self == .topTrailing }
+    }
+
+    private static let pipSize = CGSize(width: 104, height: 148)
+    /// Breathing room between a resting PIP and the container edge.
+    private static let pipMargin: CGFloat = 18
+    /// Bottom clearance so a bottom-snapped PIP rests ABOVE the control row
+    /// (44pt bottom padding + 56pt buttons + a gap), never under a button —
+    /// which also means a drag can never START on top of a control.
+    private static let pipControlClearance: CGFloat = 130
+
+    /// The floating local preview. Dragging is a PURE LAYOUT TRANSFORM — the
+    /// same hosted UIView instance just moves (`.position` on one stable node,
+    /// so the renderer is never remounted); the WebRTC track, capturer, and
+    /// renderer are untouched.
+    private func localPreviewPIP(_ local: UIView) -> some View {
+        GeometryReader { geo in
+            // geo measures the SAFE-AREA region (only the backdrop and remote
+            // video ignore safe areas), so corner math clears the notch and
+            // home indicator for free — and re-derives on rotation, snapping
+            // the PIP back to the same logical corner in the new geometry.
+            let home = Self.pipCenter(for: pipCorner, in: geo.size)
+            CallVideoSurface(view: local)
+                .frame(width: Self.pipSize.width, height: Self.pipSize.height)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Stillwater.Palette.biolume.opacity(0.35)))
+                .position(x: home.x + pipDragOffset.width,
+                          y: home.y + pipDragOffset.height)
+                .gesture(
+                    DragGesture()
+                        .onChanged { pipDragOffset = $0.translation }
+                        .onEnded { v in
+                            // Snap to the corner nearest the PREDICTED end, so
+                            // a flick carries the PIP across (FaceTime feel).
+                            // Corner re-anchor + offset reset share one spring:
+                            // new-home + zero lands where the motion pointed.
+                            let dropped = CGPoint(
+                                x: home.x + v.predictedEndTranslation.width,
+                                y: home.y + v.predictedEndTranslation.height)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                pipCorner = Self.nearestCorner(to: dropped, in: geo.size)
+                                pipDragOffset = .zero
+                            }
+                        }
+                )
+                // Camera toggled off mid-drag drops the gesture without an
+                // onEnded — clear any stale offset when the PIP returns.
+                .onAppear { pipDragOffset = .zero }
+        }
+    }
+
+    private static func pipCenter(for corner: PIPCorner, in size: CGSize) -> CGPoint {
+        CGPoint(
+            x: corner.isLeading
+                ? pipMargin + pipSize.width / 2
+                : size.width - pipMargin - pipSize.width / 2,
+            y: corner.isTop
+                ? pipMargin + pipSize.height / 2
+                : size.height - pipControlClearance - pipSize.height / 2)
+    }
+
+    private static func nearestCorner(to p: CGPoint, in size: CGSize) -> PIPCorner {
+        switch (p.x < size.width / 2, p.y < size.height / 2) {
+        case (true, true):   return .topLeading
+        case (false, true):  return .topTrailing
+        case (true, false):  return .bottomLeading
+        case (false, false): return .bottomTrailing
+        }
     }
 
     // MARK: Ended
