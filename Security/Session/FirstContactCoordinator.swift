@@ -967,12 +967,59 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // cleartext id and the receiver's dedup drops it. On a first send reuseID
         // is nil → a fresh random id, exactly as before.
         let envelope = Envelope(id: reuseID ?? .random(), ciphertext: sealed)
-        // tracked: a real message earns a receipt. nostrRecipient enables the
-        // router's Tier-2 fallback (BLE → Nostr) when BLE is out of range;
-        // peerKey lets a BLE-drop reroute find this message and hand it to Nostr
-        // instantly (rather than after the stuck-send timeout).
-        try await routeOut(envelope, peerKey: rawKey, nostrRecipient: nostrRecipient)
+        // TRANSPORT COMMIT (ISSUE-3, text): pick the transport up front on THIS
+        // peer's verified-reachable state, mirroring sendMedia. BLE is broadcast-
+        // flood, so "BLE has someone in range" is NOT "this peer is in range": if
+        // the intended peer is absent but any other device is linked, a BLE-first
+        // send SUCCEEDS into the wrong link (which can't open it), the row reads
+        // .sent, and the relay is never tried — the text strands. Committing on
+        // `lastReachableKeys` (read, not emitReachablePeers() — that would also
+        // yield a presence tick) closes that hole:
+        //   • peer verified-reachable → today's BLE path, unchanged. The router's
+        //     Tier-2 fallback still catches a presence/link race, and a mid-flight
+        //     departure is still rescued by rerouteToNostr.
+        //   • peer NOT reachable + npub known → commit to Nostr up front, tracked
+        //     (a text IS its envelope — the ack must find an outbox entry).
+        //   • peer NOT reachable + no npub → nothing can carry it; throw so the
+        //     inbox marks the row .notDelivered and flush-on-reachable retries.
+        if lastReachableKeys.contains(rawKey) {
+            // tracked: a real message earns a receipt. nostrRecipient enables the
+            // router's Tier-2 fallback (BLE → Nostr) when BLE is out of range;
+            // peerKey lets a BLE-drop reroute find this message and hand it to
+            // Nostr instantly (rather than after the stuck-send timeout).
+            try await routeOut(envelope, peerKey: rawKey, nostrRecipient: nostrRecipient)
+        } else if let recipient = nostrRecipient {
+            try await castOverNostr(envelope, to: recipient)
+        } else {
+            throw TransportError.noReachablePeers
+        }
         return envelope.id
+    }
+
+    /// Commit ONE tracked text envelope to the Nostr relay leg up front,
+    /// bypassing the router's BLE-first path (the text half of ISSUE-3; media's
+    /// analogue is `emitOverNostr` in `sendMedia`). Order matters:
+    ///   1. `beginTracking` BEFORE the publish, so an ack that races back still
+    ///      finds an outbox entry to confirm (same rationale as media). The
+    ///      entry carries no envelope/peerKey, so `rerouteToNostr` and
+    ///      `router.resend` skip it — correct: it is already on the relay leg,
+    ///      and a user resend re-seals via the inbox row (B2 reuseID).
+    ///   2. `publishOverNostr` seen-marks the id and hands the wrap to >= 1
+    ///      live relay (.cast) or reports .waitingForRange (no relay took it).
+    ///   3. `commitToRelay` on success: records .cast and guarantees no
+    ///      stuck-send timer is armed — a relay wrap has no bounded ack window
+    ///      (the peer may be offline for hours); only a real ack may resolve it.
+    /// On a relay miss the tracked entry is failed (`confirmFailure`) and the
+    /// throw lets the inbox keep its optimistic row as .notDelivered.
+    private func castOverNostr(_ envelope: Envelope, to recipient: Data) async throws {
+        guard let router else { throw TransportError.notStarted }
+        await router.beginTracking(of: envelope.id)
+        let state = await router.publishOverNostr(envelope, to: recipient)
+        guard state == .sent || state == .cast else {
+            await router.confirmFailure(of: envelope.id)
+            throw TransportError.sendFailed
+        }
+        await router.commitToRelay(envelope.id)
     }
     
     /// Seal + send a media blob as a manifest followed by N chunks, each its own
