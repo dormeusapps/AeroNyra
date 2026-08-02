@@ -80,6 +80,26 @@ public final class CallEngine {
         controller.onStateChange = { [weak self] newState in
             guard let self else { return }
             self.state = newState
+            // SCREEN STAYS AWAKE FOR EVERY IN-CALL STATE — voice AND video.
+            // Auto-lock is not "the screen dims": lock → didEnterBackground →
+            // endForExternalEvent (below) TEARS THE CALL DOWN (v1 policy — no
+            // CallKit, no audio background mode). So a dimming screen mid-call
+            // DROPS the call; keeping it lit is the only correct behavior for
+            // both call kinds (nothing enables proximity monitoring, so a
+            // voice call held to the ear never blanks anyway). Derived from
+            // state on EVERY transition, so every exit — hangup, remote end,
+            // decline, timeout, connect-fail, ring-out, and backgrounding
+            // (which lands in .ended via endForExternalEvent) — re-enables
+            // the idle timer mechanically; no exit path can leak a lit
+            // screen. Lives HERE, not in CallController: the state machine is
+            // deliberately UIKit-free (Foundation + Security only) and this
+            // closure is its one app-facing mirror.
+            switch newState {
+            case .idle, .ended:
+                UIApplication.shared.isIdleTimerDisabled = false
+            case .outgoingRinging, .incomingRinging, .connecting, .active:
+                UIApplication.shared.isIdleTimerDisabled = true
+            }
             self.cameraOn = self.activeMedia?.cameraEnabled ?? false
             self.micMuted = self.activeMedia?.micMuted ?? false
             self.speakerEnabled = self.activeMedia?.speakerEnabled ?? false
