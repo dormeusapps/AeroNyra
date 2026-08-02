@@ -1225,16 +1225,47 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// Seal + route one call-signaling frame to a verified peer (FaceTime v1).
     /// UNTRACKED, like a delivery ack: signaling earns no delivery state and
     /// is never acked — ring timeouts belong to CallController, not the
-    /// outbox. Rides the same addressed rail as text (BLE if reachable,
-    /// Nostr Tier-2 fallback via `nostrRecipient`); throws if no transport
-    /// takes it, so the call layer can end the attempt immediately.
+    /// outbox. Throws if no transport takes it, so the call layer can end the
+    /// attempt immediately.
+    ///
+    /// TRANSPORT COMMIT (ISSUE-3, call signals — the b2db4f5 pattern): pick
+    /// the transport up front on THIS peer's verified-reachable state. BLE is
+    /// broadcast-flood, so a BLE-first send "succeeds" whenever ANY link
+    /// exists — a bystander device eats the frame, the relay is never tried,
+    /// and the callee never rings (or the caller never gets the answer) with
+    /// no error anywhere. Gating here covers ALL kinds — request, answer,
+    /// decline (user / cancel-outgoing / busy) — every CallController send
+    /// rides this one seam, and each kind must reach a peer who may be out of
+    /// BLE range (an answer to a relay-delivered ring goes back over the
+    /// relay):
+    ///   • peer verified-reachable → today's BLE path, unchanged (the
+    ///     router's Tier-2 fallback still catches a presence/link race).
+    ///   • peer NOT reachable + npub known → publish over the relay up front.
+    ///     Signals are untracked, so `publishOverNostr` alone is the whole
+    ///     commit — no outbox entry / `.cast` state to record (that
+    ///     composition exists for text's ack→delivered flow; the ring timer
+    ///     in CallController is the only deadline a signal has). A relay miss
+    ///     throws so `startCall`/`accept` fail FAST (.ended(.failed)) rather
+    ///     than ringing against nothing; decline-kind sends are `try?` at the
+    ///     call sites and stay best-effort.
+    ///   • peer NOT reachable + no npub → nothing can carry it; throw, as the
+    ///     no-transport case always has.
     func sendCallSignal(_ signal: CallSignal, toRawKey rawKey: Data,
                         nostrRecipient: Data? = nil) async throws {
         let peer = store.peerIdentity(fromRawKey: rawKey)
         let session = try store.session(with: peer)
         let sealed = try session.seal(MessagePayload.callSignal(signal).sealedPlaintext())
-        try await routeOut(Envelope(ciphertext: sealed), tracked: false,
-                           peerKey: rawKey, nostrRecipient: nostrRecipient)
+        let envelope = Envelope(ciphertext: sealed)
+        if lastReachableKeys.contains(rawKey) {
+            try await routeOut(envelope, tracked: false,
+                               peerKey: rawKey, nostrRecipient: nostrRecipient)
+        } else if let recipient = nostrRecipient {
+            guard let router else { throw TransportError.notStarted }
+            let state = await router.publishOverNostr(envelope, to: recipient)
+            guard state == .sent || state == .cast else { throw TransportError.sendFailed }
+        } else {
+            throw TransportError.noReachablePeers
+        }
     }
 
     /// Open a live PTT (walkie) session AS INITIATOR to a verified peer (Part B):
