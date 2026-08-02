@@ -1203,20 +1203,45 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// blocks or fails inbound handling. `wireID` is the acked message's id —
     /// the envelope id for text, or the mediaID-derived id for a media transfer.
     ///
-    /// Part B (NOSTR_KEY_PROPAGATION): relay-capable, same threading as the
-    /// announce. `nostrRecipient` (the peer's current npub, resolved by the
-    /// caller) enables the Tier-2 BLE→Nostr fallback, so a message received
-    /// over the relay gets its receipt back over the relay — the sender's
-    /// `.cast` can then advance to a real delivered state.
+    /// TRANSPORT COMMIT (ISSUE-3, acks — the b2db4f5 / call-signal pattern):
+    /// pick the transport up front on the SENDER's verified-reachable state.
+    /// BLE is broadcast-flood, so the old BLE-first send "succeeded" whenever
+    /// ANY link existed — a bystander device ate the receipt, the relay was
+    /// never tried, and the far sender's row stranded at "Sent". A lost ack is
+    /// effectively permanent: the sender's resend reuses the same wire id, so
+    /// the receiver's router seen-cache swallows the retry before this layer
+    /// ever re-opens (and re-acks) it. Committing up front:
+    ///   • sender verified-reachable → today's BLE path, unchanged (Tier-2
+    ///     still behind it for a presence/link race).
+    ///   • NOT reachable + npub known → publish over the relay up front —
+    ///     `publishOverNostr` alone, untracked (there is no ack-of-ack flow) —
+    ///     so a message received over the relay gets its receipt back the
+    ///     same way and the sender's `.cast` can advance to delivered.
+    ///   • NOT reachable + no npub → nothing can carry it; log and drop.
+    /// Every branch stays BEST-EFFORT (this function never throws past seal):
+    /// the receiving side has nothing to surface — the message arrived — and
+    /// inbound handling must never fail because a receipt couldn't go out.
+    /// The remote sender's stuck-send timeout remains the honest fallback.
     private func sendDeliveryAck(wireID: MessageID, hops: UInt8, to peer: PublicIdentity,
                                  nostrRecipient: Data? = nil) async {
         do {
             let session = try store.session(with: peer)
             let payload = MessagePayload.deliveryAck(wireID: wireID, hops: hops)
             let sealed = try session.seal(payload.sealedPlaintext())
-            await router?.send(Envelope(ciphertext: sealed), tracked: false,
-                               peerKey: store.rawPublicKey(of: peer),
-                               nostrRecipient: nostrRecipient)
+            let envelope = Envelope(ciphertext: sealed)
+            let rawKey = store.rawPublicKey(of: peer)
+            if lastReachableKeys.contains(rawKey) {
+                await router?.send(envelope, tracked: false,
+                                   peerKey: rawKey,
+                                   nostrRecipient: nostrRecipient)
+            } else if let recipient = nostrRecipient {
+                let state = await router?.publishOverNostr(envelope, to: recipient)
+                if state != .sent && state != .cast {
+                    RedactLog.event("first-contact: delivery-ack relay miss", "→ \(wireID)")
+                }
+            } else {
+                RedactLog.event("first-contact: delivery-ack undeliverable (peer out of range, no npub)", "→ \(wireID)")
+            }
         } catch {
             RedactLog.event("first-contact: delivery-ack seal/send failed", "\(type(of: error))")
         }
