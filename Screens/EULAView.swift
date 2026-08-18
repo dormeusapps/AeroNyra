@@ -65,7 +65,7 @@ enum EULA {
         ),
         Section(
             heading: "Blocking and reporting.",
-            body: "You can block any contact at any time. Blocking immediately removes their messages from your device and permanently prevents further contact. You can report a contact or a message to the developer at support@dormeusapps.com. Reports are reviewed and responded to within 24 hours. Because AeroNyra is encrypted and serverless, the developer cannot see message content or identify users — you may include any information you choose in your report. Where a report indicates illegal activity, you should contact law enforcement, and the developer will assist to the extent technically possible."
+            body: "You can block any contact at any time. Blocking immediately removes their conversation from your chat list and permanently prevents further contact. Your message history with them is preserved and remains readable in Settings, so you keep any record you may need. You can report a contact or a message to the developer at support@dormeusapps.com. Reports are reviewed and responded to within 24 hours. Because AeroNyra is encrypted and serverless, the developer cannot see message content or identify users — you may include any information you choose in your report. Where a report indicates illegal activity, you should contact law enforcement, and the developer will assist to the extent technically possible."
         ),
         Section(
             heading: "Content filtering.",

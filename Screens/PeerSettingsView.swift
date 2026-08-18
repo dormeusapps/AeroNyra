@@ -52,6 +52,15 @@ struct PeerSettingsView: View {
     /// Block (Guideline 1.2): the confirm dialog + failure alert.
     @State private var confirmBlock = false
     @State private var blockFailed = false
+    /// Guideline 1.2 also wants blocking to offer notifying the developer:
+    /// after a SUCCESSFUL block (only), this presents the report follow-up.
+    /// `onBlocked` (sheet dismiss + conversation pop) is DEFERRED until the
+    /// prompt resolves — an alert needs a live presenter, so dismissing first
+    /// would race it. Every exit from the prompt ends in `onBlocked`.
+    @State private var promptReportAfterBlock = false
+    /// True only on the blocked-flow's failed mail-open: the shared
+    /// no-mail-client alert then finishes the deferred dismissal on close.
+    @State private var finishAfterMailFallback = false
 
     private var hairlineColor: Color { Stillwater.Palette.biolume.opacity(0.09) }
 
@@ -103,10 +112,19 @@ struct PeerSettingsView: View {
             }
         }
         .alert("No mail app available", isPresented: $reportMailUnavailable) {
-            Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
-            Button("OK", role: .cancel) {}
+            Button("Copy address") {
+                UIPasteboard.general.string = ReportMail.address
+                finishDeferredDismissalIfNeeded()
+            }
+            Button("OK", role: .cancel) { finishDeferredDismissalIfNeeded() }
         } message: {
             Text("Send your report to \(ReportMail.address) from any email account. Reports are answered within 24 hours.")
+        }
+        .alert("Report this contact?", isPresented: $promptReportAfterBlock) {
+            Button("Report") { reportBlockedContact() }
+            Button("Not now", role: .cancel) { onBlocked?() }
+        } message: {
+            Text("You can send a report to the developer. Reports are reviewed within 24 hours.")
         }
         .alert("Block \(displayName)?", isPresented: $confirmBlock) {
             Button("Block", role: .destructive) { performBlock() }
@@ -381,12 +399,47 @@ struct PeerSettingsView: View {
         Task {
             do {
                 try await pairing.block(rawKey: rawKey, petname: petname)
-                onBlocked?()
+                // Success ONLY: offer the report follow-up (Guideline 1.2 —
+                // blocking should also notify the developer). The block is
+                // fully in effect already; `onBlocked` fires when the prompt
+                // resolves, whatever the user chooses. Failure keeps the
+                // existing alert path and never prompts.
+                promptReportAfterBlock = true
             } catch {
                 RedactLog.event("block: FAILED", "\(type(of: error))")
                 blockFailed = true
             }
         }
+    }
+
+    /// The blocked-flow report: same recipient, same ReportMail pre-fill
+    /// contract, same fallback semantics as the plain Report row — only the
+    /// completion differs, because this path still owes the deferred
+    /// `onBlocked` dismissal. The Peer row survives blocking (nothing is
+    /// deleted), so the petname/conversation inputs are still live.
+    private func reportBlockedContact() {
+        guard let url = ReportMail.url(contactNickname: conversation.peer?.displayName,
+                                       conversationID: conversation.id,
+                                       messageID: nil) else {
+            onBlocked?()
+            return
+        }
+        openURL(url) { accepted in
+            if accepted {
+                onBlocked?()
+            } else {
+                finishAfterMailFallback = true
+                reportMailUnavailable = true
+            }
+        }
+    }
+
+    /// Close-out for the shared no-mail-client alert: a no-op on the plain
+    /// Report path; on the blocked flow it runs the deferred `onBlocked`.
+    private func finishDeferredDismissalIfNeeded() {
+        guard finishAfterMailFallback else { return }
+        finishAfterMailFallback = false
+        onBlocked?()
     }
 
     /// Open the user's mail client pre-filled with the ReportMail body. Passes
