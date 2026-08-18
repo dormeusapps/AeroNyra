@@ -30,6 +30,10 @@ struct PeerSettingsView: View {
 
     @Bindable var conversation: Conversation
 
+    /// Called after a successful Block so the presenting Stream can dismiss
+    /// this sheet AND pop itself (the conversation is leaving the main list).
+    var onBlocked: (() -> Void)? = nil
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(PairingService.self) private var pairing: PairingService?
@@ -45,6 +49,10 @@ struct PeerSettingsView: View {
     @State private var reportMailUnavailable = false
     @Environment(\.openURL) private var openURL
 
+    /// Block (Guideline 1.2): the confirm dialog + failure alert.
+    @State private var confirmBlock = false
+    @State private var blockFailed = false
+
     private var hairlineColor: Color { Stillwater.Palette.biolume.opacity(0.09) }
 
     var body: some View {
@@ -57,6 +65,7 @@ struct PeerSettingsView: View {
                     verificationSection
                     identitySection
                     reportSection
+                    blockSection
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 44)
@@ -98,6 +107,17 @@ struct PeerSettingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Send your report to \(ReportMail.address) from any email account. Reports are answered within 24 hours.")
+        }
+        .alert("Block \(displayName)?", isPresented: $confirmBlock) {
+            Button("Block", role: .destructive) { performBlock() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They will no longer be able to reach you. This conversation moves to Blocked Contacts in Settings, where you can still read it.")
+        }
+        .alert("Couldn't block", isPresented: $blockFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Something went wrong saving the block. Please try again.")
         }
     }
 
@@ -322,6 +342,50 @@ struct PeerSettingsView: View {
                 }
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Block
+    private var blockSection: some View {
+        SettingsGroup(
+            footer: "Blocking is silent — they are never notified. Their messages stop arriving, they can't re-pair without you unblocking, and this conversation stays readable under Settings → Blocked Contacts."
+        ) {
+            Button { confirmBlock = true } label: {
+                SettingsRow {
+                    Text("Block")
+                        .font(Stillwater.Serif.regular(17))
+                        .foregroundStyle(blockColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .buttonStyle(.plain)
+            // REQUIRE the service (never a silent no-op à la the optional-chain
+            // hazard at HomeView.removeContact): with no PairingService or no
+            // Peer row, the action is unavailable, not quietly skipped.
+            .disabled(pairing == nil || conversation.peer == nil)
+        }
+    }
+
+    private var blockColor: Color { Color(hue: 0.02, saturation: 0.62, brightness: 0.86) }
+
+    /// Block this contact via PairingService (denylist + live drop + revoke).
+    /// The service is REQUIRED — the button is disabled without it — and any
+    /// failure surfaces as an alert, never a silent no-op.
+    private func performBlock() {
+        guard let pairing, let peer = conversation.peer else {
+            blockFailed = true
+            return
+        }
+        let rawKey = peer.publicKeyData
+        let petname = peer.displayName
+        Task {
+            do {
+                try await pairing.block(rawKey: rawKey, petname: petname)
+                onBlocked?()
+            } catch {
+                RedactLog.event("block: FAILED", "\(type(of: error))")
+                blockFailed = true
+            }
         }
     }
 

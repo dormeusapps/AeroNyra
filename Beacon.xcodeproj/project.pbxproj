@@ -20,9 +20,6 @@
 		7C3450F22FF6E1DD00148C83 /* Conversation1View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */; };
 		7C3450F92FF7025E00148C83 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450F82FF7025A00148C83 /* QRScannerView.swift */; };
 		7C3450FB2FF71E4400148C83 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3450FA2FF71E3F00148C83 /* SettingsView.swift */; };
-		7CEA1A012FF9EA1A00E01A01 /* EULAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEA1A022FF9EA1A00E01A02 /* EULAView.swift */; };
-		7CEA1A032FF9EA1A00E01A03 /* ReportMail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEA1A042FF9EA1A00E01A04 /* ReportMail.swift */; };
-		7CEA1A052FF9EA1A00E01A05 /* ContentFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEA1A062FF9EA1A00E01A06 /* ContentFilter.swift */; };
 		7C7A84042FF82B90004CACFC /* SASVerifySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C7A84032FF82B8C004CACFC /* SASVerifySheet.swift */; };
 		7CAEDF912FF16D6A0084A5C4 /* PhotoViewer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF902FF16D660084A5C4 /* PhotoViewer.swift */; };
 		7CAEDF932FF1708A0084A5C4 /* VoiceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CAEDF922FF170870084A5C4 /* VoiceRecorder.swift */; };
@@ -47,6 +44,10 @@
 		7CE0C87F2FEF3A2200151314 /* DeliveryChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C87E2FEF3A1D00151314 /* DeliveryChip.swift */; };
 		7CE0C8892FEF4B0500151314 /* PeerSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */; };
 		7CE0C8912FEF581000151314 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */; };
+		7CEA1A012FF9EA1A00E01A01 /* EULAView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEA1A022FF9EA1A00E01A02 /* EULAView.swift */; };
+		7CEA1A032FF9EA1A00E01A03 /* ReportMail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEA1A042FF9EA1A00E01A04 /* ReportMail.swift */; };
+		7CEA1A052FF9EA1A00E01A05 /* ContentFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEA1A062FF9EA1A00E01A06 /* ContentFilter.swift */; };
+		7CEA1A072FF9EA1A00E01A07 /* BlockedContactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEA1A082FF9EA1A00E01A08 /* BlockedContactsView.swift */; };
 		7CEC9F8E2FF0379000AA3D10 /* MeshPresence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEC9F8D2FF0379000AA3D10 /* MeshPresence.swift */; };
 		7CEC9F932FF0549300AA3D10 /* MessageInbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CEC9F922FF0549200AA3D10 /* MessageInbox.swift */; };
 		F2E8EC044F1CFA3555C9E47A /* Pods_Beacon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 03E293A426253218704E16E0 /* Pods_Beacon.framework */; };
@@ -79,9 +80,6 @@
 		7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Conversation1View.swift; sourceTree = "<group>"; };
 		7C3450F82FF7025A00148C83 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		7C3450FA2FF71E3F00148C83 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		7CEA1A022FF9EA1A00E01A02 /* EULAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EULAView.swift; sourceTree = "<group>"; };
-		7CEA1A042FF9EA1A00E01A04 /* ReportMail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportMail.swift; sourceTree = "<group>"; };
-		7CEA1A062FF9EA1A00E01A06 /* ContentFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentFilter.swift; sourceTree = "<group>"; };
 		7C3B094C2FED902E00AE9EC1 /* Beacon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Beacon.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C3B09592FED902F00AE9EC1 /* BeaconTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeaconTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7C7A84032FF82B8C004CACFC /* SASVerifySheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SASVerifySheet.swift; sourceTree = "<group>"; };
@@ -109,6 +107,10 @@
 		7CE0C87E2FEF3A1D00151314 /* DeliveryChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryChip.swift; sourceTree = "<group>"; };
 		7CE0C8882FEF4B0000151314 /* PeerSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerSettingsView.swift; sourceTree = "<group>"; };
 		7CE0C88E2FEF4F2E00151314 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		7CEA1A022FF9EA1A00E01A02 /* EULAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EULAView.swift; sourceTree = "<group>"; };
+		7CEA1A042FF9EA1A00E01A04 /* ReportMail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportMail.swift; sourceTree = "<group>"; };
+		7CEA1A062FF9EA1A00E01A06 /* ContentFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentFilter.swift; sourceTree = "<group>"; };
+		7CEA1A082FF9EA1A00E01A08 /* BlockedContactsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlockedContactsView.swift; sourceTree = "<group>"; };
 		7CEC9F8D2FF0379000AA3D10 /* MeshPresence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeshPresence.swift; sourceTree = "<group>"; };
 		7CEC9F922FF0549200AA3D10 /* MessageInbox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageInbox.swift; sourceTree = "<group>"; };
 		A5D673E5F52E3362AFBF48A7 /* Pods_Beacon_BeaconUITests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Beacon_BeaconUITests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -156,85 +158,61 @@
 		};
 		7C3B095C2FED902F00AE9EC1 /* BeaconTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = BeaconTests;
 			sourceTree = "<group>";
 		};
 		7C3B09762FED916500AE9EC1 /* Models */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Models;
 			sourceTree = "<group>";
 		};
 		7C3B097E2FED965B00AE9EC1 /* Routing */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Routing;
 			sourceTree = "<group>";
 		};
 		7C3B09822FED9AC700AE9EC1 /* Protocol_Seam */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Protocol_Seam;
 			sourceTree = "<group>";
 		};
 		7C3B09862FEDA0C900AE9EC1 /* Identity */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Identity;
 			sourceTree = "<group>";
 		};
 		7C3B098D2FEDAC3600AE9EC1 /* Session */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Session;
 			sourceTree = "<group>";
 		};
 		7C3B09912FEDADAD00AE9EC1 /* AtRest */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = AtRest;
 			sourceTree = "<group>";
 		};
 		7C3B09982FEDF37A00AE9EC1 /* Wipe */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Wipe;
 			sourceTree = "<group>";
 		};
 		7CAEDF7D2FF158A60084A5C4 /* Media */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Media;
 			sourceTree = "<group>";
 		};
 		7CCA110A2FF9000000C4113A /* Calls */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Calls;
 			sourceTree = "<group>";
 		};
 		7CD41F0A2FFB01AB00C4113A /* Notifications */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Notifications;
 			sourceTree = "<group>";
 		};
 		7CD41F0B2FFB01AB00C4113A /* Stories */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-			);
 			path = Stories;
 			sourceTree = "<group>";
 		};
@@ -376,6 +354,7 @@
 				7CEA1A022FF9EA1A00E01A02 /* EULAView.swift */,
 				7CEA1A042FF9EA1A00E01A04 /* ReportMail.swift */,
 				7CEA1A062FF9EA1A00E01A06 /* ContentFilter.swift */,
+				7CEA1A082FF9EA1A00E01A08 /* BlockedContactsView.swift */,
 				7C3450F82FF7025A00148C83 /* QRScannerView.swift */,
 				7C3450F12FF6E1CF00148C83 /* Conversation1View.swift */,
 				7CCB110B2FF9000000C4113B /* VideoBubble.swift */,
@@ -544,9 +523,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Beacon/Pods-Beacon-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Beacon/Pods-Beacon-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -608,6 +591,7 @@
 				7CEA1A012FF9EA1A00E01A01 /* EULAView.swift in Sources */,
 				7CEA1A032FF9EA1A00E01A03 /* ReportMail.swift in Sources */,
 				7CEA1A052FF9EA1A00E01A05 /* ContentFilter.swift in Sources */,
+				7CEA1A072FF9EA1A00E01A07 /* BlockedContactsView.swift in Sources */,
 				7CE0C8792FEF2CD300151314 /* PresenceChain.swift in Sources */,
 				7CAEDF952FF1732C0084A5C4 /* VoiceNoteBubble.swift in Sources */,
 				7CAEDF972FF1734B0084A5C4 /* VoicePlayer.swift in Sources */,

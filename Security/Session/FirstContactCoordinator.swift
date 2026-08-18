@@ -294,6 +294,18 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// is instead dropped at the `onReconnectItsMe` gate, so recognizing them costs
     /// nothing and needs no KAT change.
     private var verifiedIdentities: Set<Data> = []
+    /// BLOCKED identities (Guideline 1.2 Block) — the receive-path drop set.
+    /// Unlike the verified gate (which drops only user content), membership
+    /// here drops EVERY payload kind in `receive` before any side effect —
+    /// before the npub announce, before the payload switch, before any ack —
+    /// so nothing is ever emitted toward a blocked peer from the inbound path.
+    /// Seeded at boot from `BlockedContactsStore` (before transports start)
+    /// and kept live by `setBlockedIdentities` on block/unblock. A blocked
+    /// identity is ALSO revoked from the allowlist by `PairingService.block`,
+    /// so the reconnect recognizer / beacon emission set / presence exclude it
+    /// via the existing revoke machinery — this set is the belt on the seams
+    /// revoke leaves open (.ack / .nostrIdentity / .inviteEcho).
+    private var blockedIdentities: Set<Data> = []
     /// Injectable clock (seconds since Unix epoch) — wall-time in production, a
     /// fixed value in tests so epoch bucketing is deterministic.
     private var reconnectNow: @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) }
@@ -655,6 +667,14 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// `parseInviteEchoV2`.
     private func redeemInviteEcho(inviteID: Data, redeemerNostrPubkey: Data?,
                                   peer: PublicIdentity, rawKey: Data) async {
+        // BLOCKED (Guideline 1.2) — belt-and-braces: `receive`'s early guard
+        // already drops a blocked redeemer's echo before this is reached, but
+        // a blocked identity must never burn an invite or conjure a row even
+        // if a future caller bypasses that guard.
+        guard !blockedIdentities.contains(rawKey) else {
+            RedactLog.event("first-contact: invite-echo REFUSED — redeemer is blocked", "\(peer.userIDHex.prefix(16))…")
+            return
+        }
         do {
             let redeemed = try await inviteRedeemer?.redeemEcho(
                 inviteID: inviteID, redeemerIdentity: rawKey) ?? false
@@ -744,6 +764,17 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         guard verifiedIdentities.remove(rawIdentity) != nil else { return }
         emitReachablePeers()
         print("first-contact: verified contact revoked (\(verifiedIdentities.count) verified)")
+    }
+
+    /// PUBLIC block entry (Guideline 1.2). The composition root seeds this at
+    /// boot (before transports start) and `PairingService` replaces it whole on
+    /// every block/unblock. Whole-set replacement (not add/remove) so the live
+    /// set can never drift from the persisted denylist it mirrors. This method
+    /// only assigns the drop set — the presence/recognizer effects of a block
+    /// ride the existing revoke path, which `PairingService.block` invokes.
+    func setBlockedIdentities(_ identities: Set<Data>) {
+        blockedIdentities = identities
+        print("first-contact: blocked set updated (\(identities.count) blocked)")
     }
 
     /// Current epoch from the injected clock.
@@ -1482,7 +1513,23 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         do {
             let (peer, plaintext) = try store.openInbound(envelope.ciphertext)
             let rawKey = store.rawPublicKey(of: peer)
-            
+
+            // BLOCKED (Guideline 1.2) — drop EVERYTHING from a blocked
+            // identity before ANY side effect: before the npub announce just
+            // below (no backtalk), before the payload switch (so .ack,
+            // .nostrIdentity, and .inviteEcho are dropped too — closing the
+            // ghost-row resurrection through MessageInbox.peer(forRawKey:)),
+            // and before any delivery ack could fire (blocking is silent; the
+            // sender's row simply never advances). SCOPE: this guard tests
+            // exact membership of `rawKey` in `blockedIdentities` and nothing
+            // else — a non-blocked identity cannot match, so every other
+            // peer's traffic flows through this function byte-for-byte as
+            // before the guard existed.
+            guard !blockedIdentities.contains(rawKey) else {
+                RedactLog.event("first-contact: DROP inbound from BLOCKED", "\(peer.userIDHex.prefix(16))…")
+                return
+            }
+
             // npub-bootstrap (responder side): opening this proves our session
             // with the peer is live, so make sure they've learned our Nostr id
             // even if we haven't sent them anything yet. Once-per-peer + best-

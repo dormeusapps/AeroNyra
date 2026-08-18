@@ -65,10 +65,16 @@ struct HomeView: View {
 
     /// Stable within-zone order. NOT recency — the water sorts by physics
     /// (which zone), and inside a zone we sort by name so it doesn't jitter.
+    /// BLOCKED contacts (Guideline 1.2) are filtered out of the main list —
+    /// their Peer/Conversation/Message rows are PRESERVED, readable from
+    /// Settings → Blocked Contacts; `isBlocked` reads the observable denylist,
+    /// so a block/unblock repaints this roster immediately.
     private var sortedPeers: [Peer] {
-        peers.sorted {
-            displayName(for: $0).localizedCaseInsensitiveCompare(displayName(for: $1)) == .orderedAscending
-        }
+        peers
+            .filter { pairing?.isBlocked($0.publicKeyData) != true }
+            .sorted {
+                displayName(for: $0).localizedCaseInsensitiveCompare(displayName(for: $1)) == .orderedAscending
+            }
     }
 
     /// STEP 7f — "near" means VERIFIED + reachable. An unverified contact (even one

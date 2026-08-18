@@ -36,6 +36,7 @@ struct SettingsView: View {
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var showMyCode = false
     @State private var showTerms = false
+    @State private var showBlocked = false
     @State private var confirmErase = false
 
     private var hairlineColor: Color { Stillwater.Palette.biolume.opacity(0.09) }
@@ -52,6 +53,7 @@ struct SettingsView: View {
                     identitySection
                     appearanceSection
                     filterSection
+                    blockedSection
                     aboutSection
                     dangerSection
                 }
@@ -67,6 +69,7 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showMyCode) { PairingView() }
         .sheet(isPresented: $showTerms) { EULAView() }
+        .sheet(isPresented: $showBlocked) { BlockedContactsView() }
         .alert("Erase everything?", isPresented: $confirmErase) {
             Button("Erase", role: .destructive) { eraseEverything() }
             Button("Cancel", role: .cancel) {}
@@ -299,6 +302,30 @@ struct SettingsView: View {
                     .onSubmit { filterWordsFocused = false }
                 }
             }
+        }
+    }
+
+    // MARK: - Blocked contacts
+    private var blockedSection: some View {
+        SettingsGroup(
+            header: "Contacts",
+            footer: "Blocked contacts can't reach you or re-pair. Their conversations are preserved here, unread by the water."
+        ) {
+            Button { showBlocked = true } label: {
+                SettingsRow {
+                    HStack(spacing: 12) {
+                        Text("Blocked contacts").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                        Spacer(minLength: 12)
+                        if let count = pairing?.blockedContacts.count, count > 0 {
+                            Text("\(count)")
+                                .font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.mist)
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Stillwater.Palette.mistDim)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
         }
     }
 

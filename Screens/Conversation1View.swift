@@ -189,7 +189,13 @@ struct StreamView: View {
             teardownPTTIfHolding()
         }
         .sheet(isPresented: $showSettings) {
-            PeerSettingsView(conversation: currentConversation())
+            PeerSettingsView(conversation: currentConversation(),
+                             onBlocked: {
+                                 // The peer just left the main list — close the
+                                 // settings sheet and pop this conversation.
+                                 showSettings = false
+                                 dismiss()
+                             })
         }
         .fullScreenCover(isPresented: $showWalkie) {
             // The globe's hold-to-talk drives beginPTT/endPTT — the ONLY

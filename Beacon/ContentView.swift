@@ -486,6 +486,26 @@ struct ContentView: View {
             dek: try SessionStoreKey.loadOrCreate(
                 service: PendingInvitesStore.defaultKeychainService))
 
+        // Guideline 1.2 Block — persisted blocked-contact denylist. Own DEK (a
+        // distinct Keychain service) seals a distinct file in the same store
+        // directory. Loaded now so the drop set seeds the coordinator BEFORE
+        // transports start; registered in EmergencyWipe below. Same loud-degrade
+        // posture as the allowlist: a corrupt file logs and boots empty (the
+        // blocked identity was also revoked from the allowlist at block time, so
+        // it still cannot message — only the re-pair refusal is lost).
+        let blockedStore = try BlockedContactsStore(
+            directory: directory,
+            dek: try SessionStoreKey.loadOrCreate(
+                service: BlockedContactsStore.defaultKeychainService))
+        let loadedBlocked: [BlockedContact]
+        do {
+            loadedBlocked = try blockedStore.load()
+            print("blocked contacts loaded · \(loadedBlocked.count) blocked")
+        } catch {
+            RedactLog.event("⚠️ blocked-contact list load FAILED — booting empty", "\(type(of: error))")
+            loadedBlocked = []
+        }
+
         // ISSUE-5 — persisted Nostr backlog-replay ledger. Own DEK (a distinct
         // Keychain service) seals a distinct file in the same store directory.
         // Seeds NostrTransport's replay guard below and is registered in
@@ -686,7 +706,9 @@ struct ContentView: View {
         pairingService = PairingService(sessionStore: secure,
                                                 coordinator: coord,
                                                 enrollment: enroll,
-                                                ourNostrPublicKey: ourNostrPubkey)
+                                                ourNostrPublicKey: ourNostrPubkey,
+                                                blockedStore: blockedStore,
+                                                initialBlocked: loadedBlocked)
         
         // STEP 7b-3 — assemble the crypto-erase now that every secret-bearing
         // component exists. Service ids are the SAME `private var` constants used
@@ -710,6 +732,7 @@ struct ContentView: View {
                 NostrIdentityWipe(service: nostrIdentityService),
                 contactStore,
                 pendingInvitesStore,
+                blockedStore,
                 nostrEventLedgerStore,
                 try SwiftDataStoreWipe(),
                 DeviceResidueWipe(),   // self name/photo defaults + notifications + badge
@@ -741,6 +764,10 @@ struct ContentView: View {
             await coord.enableReconnect(agreementPrivate: identity.agreement,
                                         allowlistIdentities: pairedIdentities,
                                         verifiedIdentities: verifiedIdentities)
+            // Guideline 1.2 Block — seed the receive-path drop set BEFORE the
+            // transports start (mesh.start() below), so no envelope from a
+            // blocked identity can slip through the boot window.
+            await coord.setBlockedIdentities(Set(loadedBlocked.map(\.rawKey)))
             
             do {
                 try await mesh.start()   // starts BOTH transports: BLE radio + Nostr relay
@@ -1301,6 +1328,9 @@ private struct ReadyView: View {
         } catch PairingService.PairError.selfScan {
             redeemFailed = "that's your own invite"
             RedactLog.event("invite-redeem: FAILED self", "")
+        } catch PairingService.PairError.blocked {
+            redeemFailed = "this contact is blocked — unblock them in Settings to pair again"
+            RedactLog.event("invite-redeem: FAILED blocked", "")
         } catch {
             redeemFailed = "couldn't redeem the invite — try again"
             RedactLog.event("invite-redeem: FAILED downstream", "\(type(of: error))")

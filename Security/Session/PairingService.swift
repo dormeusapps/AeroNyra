@@ -38,6 +38,16 @@ final class PairingService {
     @ObservationIgnored private let coordinator: FirstContactCoordinator
     @ObservationIgnored private let enrollment: EnrollmentService
     @ObservationIgnored private let ourNostrPublicKey: Data?
+    /// The at-rest denylist (Guideline 1.2 Block). Optional so existing tests
+    /// construct without one; nil makes `block`/`unblock` throw `.blocked`-
+    /// adjacent errors rather than silently no-op. Production always passes it.
+    @ObservationIgnored private let blockedStore: BlockedContactsStore?
+
+    /// The live denylist — OBSERVABLE (deliberately not ignored) so HomeView's
+    /// roster filter and the Blocked Contacts list repaint the moment a
+    /// block/unblock lands. This @MainActor service is the single serializing
+    /// owner of the set; every mutation is save-then-adopt against the store.
+    private(set) var blockedContacts: [BlockedContact]
 
     /// STEP 7f (REACTIVITY) — the verified-state REPAINT SIGNAL, and deliberately
     /// the ONLY stored property here that is observable. `isVerified(_:)` reads a
@@ -59,11 +69,73 @@ final class PairingService {
     init(sessionStore: SignalSessionStore,
          coordinator: FirstContactCoordinator,
          enrollment: EnrollmentService,
-         ourNostrPublicKey: Data?) {
+         ourNostrPublicKey: Data?,
+         blockedStore: BlockedContactsStore? = nil,
+         initialBlocked: [BlockedContact] = []) {
         self.sessionStore = sessionStore
         self.coordinator = coordinator
         self.enrollment = enrollment
         self.ourNostrPublicKey = ourNostrPublicKey
+        self.blockedStore = blockedStore
+        self.blockedContacts = initialBlocked
+    }
+
+    // MARK: - Block / Unblock (Guideline 1.2)
+
+    public enum BlockError: Error {
+        /// No denylist store was wired (previews/tests) — never silently no-op.
+        case storeUnavailable
+    }
+
+    /// The blocked raw-key set (snapshot). Reading this in a view body
+    /// registers the observation dependency via `blockedContacts`.
+    var blockedKeys: Set<Data> { Set(blockedContacts.map(\.rawKey)) }
+
+    func isBlocked(_ rawKey: Data) -> Bool {
+        blockedContacts.contains { $0.rawKey == rawKey }
+    }
+
+    /// Block a contact. Order:
+    ///  1. persist the denylist entry (save-then-adopt — durable FIRST, with a
+    ///     petname + verified snapshot so unblock can restore exactly),
+    ///  2. push the live drop set into the coordinator (inbound dies NOW),
+    ///  3. revoke enrollment — the SHIPPED removal machinery drops the
+    ///     identity from the reconnect recognizer, beacon emission set,
+    ///     verified gate, and presence, so nothing is ever transmitted toward
+    ///     them again (blocking is silent; they are never notified).
+    /// Deliberately does NOT touch Peer/Conversation/Message rows — the
+    /// history is preserved for the Blocked Contacts screen. Throws on any
+    /// persist failure with nothing half-applied that the retry can't repair.
+    func block(rawKey: Data, petname: String?) async throws {
+        guard let blockedStore else { throw BlockError.storeUnavailable }
+        let entry = BlockedContact(rawKey: rawKey,
+                                   blockedAt: Int64(Date().timeIntervalSince1970 * 1000),
+                                   petname: petname,
+                                   wasVerified: enrollment.isVerified(rawKey))
+        var updated = blockedContacts.filter { $0.rawKey != rawKey }
+        updated.append(entry)
+        try blockedStore.save(updated)
+        blockedContacts = updated
+        await coordinator.setBlockedIdentities(blockedKeys)
+        // Revoke may no-op (already removed) — that's fine; on a persist throw
+        // the deny entry + drop set stay in force (blocked wins) and the UI
+        // surfaces the failure for retry.
+        try await enrollment.revoke(identity: rawKey)
+        bumpVerificationEpoch()
+    }
+
+    /// Unblock: re-enroll from the snapshot (the libsignal session was never
+    /// torn down, so messaging resumes on the existing ratchet), then remove
+    /// the denylist entry and release the coordinator's drop set.
+    func unblock(rawKey: Data) async throws {
+        guard let blockedStore else { throw BlockError.storeUnavailable }
+        guard let entry = blockedContacts.first(where: { $0.rawKey == rawKey }) else { return }
+        try await enrollment.enroll(identity: rawKey, verified: entry.wasVerified)
+        let updated = blockedContacts.filter { $0.rawKey != rawKey }
+        try blockedStore.save(updated)
+        blockedContacts = updated
+        await coordinator.setBlockedIdentities(blockedKeys)
+        bumpVerificationEpoch()
     }
 
     // MARK: - Our payload (QR / invite source)
@@ -140,6 +212,7 @@ final class PairingService {
         case malformed      // decoded bytes aren't a valid PairingPayload
         case selfScan       // it's our own code
         case expired        // an invite whose TTL has passed (redeem path)
+        case blocked        // identity is on the denylist — unblock to pair again
     }
 
     public struct PairResult: Sendable {
@@ -178,6 +251,11 @@ final class PairingService {
         guard rawKey != sessionStore.rawPublicKey(of: sessionStore.localIdentity) else {
             throw PairError.selfScan
         }
+
+        // BLOCKED (Guideline 1.2) — a blocked identity is refused BEFORE any
+        // enroll or establishment. Silent re-admission is exactly what Block
+        // must prevent; the user unblocks first (Settings → Blocked Contacts).
+        guard !isBlocked(rawKey) else { throw PairError.blocked }
 
         // ORDER (Finding A): enroll FIRST — onBundle's 7e closed-contact gate
         // reads the live enrolled set, and its own header assumes pairing
@@ -238,6 +316,10 @@ final class PairingService {
         guard rawKey != sessionStore.rawPublicKey(of: sessionStore.localIdentity) else {
             throw PairError.selfScan   // our own invite
         }
+
+        // BLOCKED (Guideline 1.2) — refuse an invite minted by a blocked
+        // identity before any establishment/echo/enroll (see pairFromScanned).
+        guard !isBlocked(rawKey) else { throw PairError.blocked }
 
         // READ-COMPARE-DECIDE (Finding B). The invite channel is explicitly
         // untrusted (CONTACT_MODEL §2) and the Invite envelope is
