@@ -19,6 +19,9 @@
 //   • The A2 Nostr identity-change breadcrumb (`lastLocalNostrPubkeyKey`) —
 //     the last local Nostr PUBLIC key, linking the install to its wiped
 //     identity. Clearing it is safe for A2 (see the constant's doc).
+//   • The content-filter defaults (`aeronyra.contentFilter.*`) — the word
+//     list is USER-AUTHORED text revealing what the owner chose to filter;
+//     fingerprinting residue, wiped like the name/photo.
 //
 //  A panic wipe should leave none of it. This rides `additionalSteps` so the
 //  wipe's core key-destruction sequence is untouched, exactly like
@@ -53,11 +56,21 @@ struct DeviceResidueWipe: Wipeable {
     /// this constant.
     static let lastLocalNostrPubkeyKey = "nostr.lastKnownLocalPubkey.v1"
 
+    /// Guideline 1.2 local content filter, written by Settings/Conversation
+    /// via `@AppStorage`. MUST match those keys exactly (`SettingsView` /
+    /// `Conversation1View`) or the residue survives. The word list is
+    /// user-authored; clearing the enabled key resets to the default-on
+    /// built-in list on the post-wipe install.
+    static let contentFilterEnabledKey = "aeronyra.contentFilter.enabled.v1"
+    static let contentFilterWordsKey   = "aeronyra.contentFilter.words.v1"
+
     func wipe() async throws {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: Self.displayNameKey)
         defaults.removeObject(forKey: Self.selfPhotoKey)
         defaults.removeObject(forKey: Self.lastLocalNostrPubkeyKey)
+        defaults.removeObject(forKey: Self.contentFilterEnabledKey)
+        defaults.removeObject(forKey: Self.contentFilterWordsKey)
 
         // UNUserNotificationCenter is @MainActor-facing in our use; hop once and
         // do all three there. Clearing an empty tray / zeroing an unset badge is

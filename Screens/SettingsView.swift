@@ -26,7 +26,13 @@ struct SettingsView: View {
     @AppStorage("aeronyra.selfPhoto") private var selfPhotoData = Data()
     @AppStorage("aeronyra.accentHex") private var accentHex = Int(Stillwater.Accent.defaultHex)
 
+    /// Content filter (Guideline 1.2). Keys mirrored in DeviceResidueWipe —
+    /// both die on crypto-erase. Default ON with the built-in list.
+    @AppStorage("aeronyra.contentFilter.enabled.v1") private var contentFilterEnabled = true
+    @AppStorage("aeronyra.contentFilter.words.v1") private var contentFilterWords = ""
+
     @FocusState private var nameFocused: Bool
+    @FocusState private var filterWordsFocused: Bool
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var showMyCode = false
     @State private var showTerms = false
@@ -45,6 +51,7 @@ struct SettingsView: View {
                     youSection
                     identitySection
                     appearanceSection
+                    filterSection
                     aboutSection
                     dangerSection
                 }
@@ -256,6 +263,40 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
                     Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    // MARK: - Content filter
+    private var filterSection: some View {
+        SettingsGroup(
+            header: "Content filter",
+            footer: "Checked on this device only, after messages arrive — nothing is transmitted. Hidden messages can always be revealed with a tap. Add your own words, separated by commas."
+        ) {
+            SettingsRow {
+                Toggle(isOn: $contentFilterEnabled) {
+                    Text("Hide messages containing offensive language")
+                        .font(Stillwater.Serif.regular(17))
+                        .foregroundStyle(Stillwater.Palette.foam)
+                }
+                .tint(Stillwater.Palette.biolume)
+            }
+            if contentFilterEnabled {
+                SettingsRow {
+                    TextField(text: $contentFilterWords, axis: .vertical) {
+                        Text("your own words, comma-separated")
+                            .foregroundStyle(Stillwater.Palette.mistDim)
+                    }
+                    .textFieldStyle(.plain)
+                    .font(Stillwater.Serif.regular(17))
+                    .foregroundStyle(Stillwater.Palette.foam)
+                    .tint(Stillwater.Palette.biolume)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .focused($filterWordsFocused)
+                    .submitLabel(.done)
+                    .onSubmit { filterWordsFocused = false }
                 }
             }
         }

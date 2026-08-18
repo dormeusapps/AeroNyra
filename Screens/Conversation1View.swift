@@ -102,6 +102,14 @@ struct StreamView: View {
     @State private var reportMailUnavailable = false
     @Environment(\.openURL) private var openURL
 
+    /// Content filter (Guideline 1.2): render-time check of INBOUND text only.
+    /// Keys mirrored in DeviceResidueWipe — both die on crypto-erase. Reveal
+    /// state is per-session display state (Message.id), never persisted; the
+    /// model row is untouched either way.
+    @AppStorage("aeronyra.contentFilter.enabled.v1") private var contentFilterEnabled = true
+    @AppStorage("aeronyra.contentFilter.words.v1") private var contentFilterWords = ""
+    @State private var revealedFilteredIDs = Set<UUID>()
+
     /// Observe the app-wide accent so the stream recolours on change.
     @AppStorage("aeronyra.accentHex") private var accentHex = Int(Stillwater.Accent.defaultHex)
 
@@ -1016,14 +1024,34 @@ struct StreamView: View {
             Circle().fill(Stillwater.Palette.biolume)
                 .frame(width: 5, height: 5).padding(.top, 6)
             VStack(alignment: .leading, spacing: 5) {
-                Text(m.content)
-                    .font(Stillwater.Serif.regular(17))
-                    .foregroundColor(Stillwater.Palette.foam)
+                if isFilteredHidden(m) {
+                    // Tap-to-reveal placeholder. DISPLAY-ONLY: the row is
+                    // untouched, so a false positive is a one-tap non-event
+                    // and disabling the filter restores everything.
+                    Text("hidden by your content filter · tap to view")
+                        .font(Stillwater.Serif.italic(15))
+                        .foregroundColor(Stillwater.Palette.mistDim)
+                        .onTapGesture { revealedFilteredIDs.insert(m.id) }
+                } else {
+                    Text(m.content)
+                        .font(Stillwater.Serif.regular(17))
+                        .foregroundColor(Stillwater.Palette.foam)
+                }
                 Text(time(m))
                     .stillwaterMono(8.5, trackingEm: 0.18, color: Stillwater.Palette.mistDimmest)
             }
             Spacer(minLength: 40)
         }
+    }
+
+    /// Render-time filter check — inbound text only (`theirLine` is already
+    /// inbound-only; the `isOutbound` guard is belt-and-braces so the filter
+    /// can never touch the send side). Reads the model, never writes it.
+    private func isFilteredHidden(_ m: Message) -> Bool {
+        contentFilterEnabled
+            && !m.isOutbound
+            && !revealedFilteredIDs.contains(m.id)
+            && ContentFilter.matches(m.content, userWords: contentFilterWords)
     }
 
     @ViewBuilder
