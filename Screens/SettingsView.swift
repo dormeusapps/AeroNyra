@@ -29,6 +29,7 @@ struct SettingsView: View {
     @FocusState private var nameFocused: Bool
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var showMyCode = false
+    @State private var showTerms = false
     @State private var confirmErase = false
 
     private var hairlineColor: Color { Stillwater.Palette.biolume.opacity(0.09) }
@@ -44,6 +45,7 @@ struct SettingsView: View {
                     youSection
                     identitySection
                     appearanceSection
+                    aboutSection
                     dangerSection
                 }
                 .padding(.top, 24)
@@ -57,6 +59,7 @@ struct SettingsView: View {
             Task { await applyPickedPhoto(item) }
         }
         .sheet(isPresented: $showMyCode) { PairingView() }
+        .sheet(isPresented: $showTerms) { EULAView() }
         .alert("Erase everything?", isPresented: $confirmErase) {
             Button("Erase", role: .destructive) { eraseEverything() }
             Button("Cancel", role: .cancel) {}
@@ -256,6 +259,39 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - About
+    private var aboutSection: some View {
+        SettingsGroup(header: "About") {
+            SettingsRow {
+                HStack(spacing: 12) {
+                    Text("Version").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                    Spacer(minLength: 12)
+                    Text(Self.appVersion)
+                        .font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.mist)
+                }
+            }
+            Button { showTerms = true } label: {
+                SettingsRow {
+                    HStack(spacing: 12) {
+                        Text("Terms of Use").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                        Spacer(minLength: 12)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Stillwater.Palette.mistDim)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// "1.0 (8)" — marketing version + build, from the generated Info.plist.
+    private static var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = info?["CFBundleVersion"] as? String ?? "—"
+        return "\(version) (\(build))"
     }
 
     // MARK: - Danger

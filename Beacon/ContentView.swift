@@ -6,11 +6,14 @@
 //  Keychain, and constructs the persistent SwiftData ModelContainer the
 //  rest of the app reads from.
 //
-//  Three phases:
+//  Phases:
 //   1. .launching   — checking the Keychain. Brief.
-//   2. .onboarding  — no identity yet. OnboardingView generates one on
+//   2. .eula        — Terms of Use not yet accepted on this device
+//                     (Guideline 1.2). Holds the computed BootRoute until
+//                     the user explicitly accepts.
+//   3. .onboarding  — no identity yet. OnboardingView generates one on
 //                     user tap; we save it, then transition to .ready.
-//   3. .ready       — identity loaded; render the main tabbed app.
+//   4. .ready       — identity loaded; render the main tabbed app.
 //
 //  Identity persistence goes through IdentityStore. On a real device
 //  the long-term identity is Enclave-wrapped; on the simulator (no
@@ -56,6 +59,14 @@ struct ContentView: View {
     
     private enum Phase {
         case launching
+        /// Terms of Use not yet accepted on this device (fresh install, or a
+        /// reinstall whose UserDefaults were cleared while the identity
+        /// survived in the Keychain). Holds the fully-computed BootRoute so
+        /// acceptance applies it directly — bootstrap() is not re-run and
+        /// BootRouter's decision table is untouched. `.bootFailed` routes are
+        /// never held here: the recovery door stays reachable without
+        /// acceptance.
+        case eula(BootRoute, IdentityStore)
         case onboarding(IdentityStore)
         /// Boot could not reach `.ready`. Carries the store so the door's
         /// "Erase and start over" can delete the real identity item, and the
@@ -164,7 +175,13 @@ struct ContentView: View {
             case .launching:
                 launchScreen
                     .task { bootstrap() }
-                
+
+            case .eula(let route, let store):
+                EULAView {
+                    EULA.recordAcceptance()
+                    enter(route, store: store)
+                }
+
             case .onboarding(let store):
                 OnboardingView { identity in
                     completeOnboarding(identity: identity, store: store)
@@ -354,7 +371,30 @@ struct ContentView: View {
                 return container
             })
 
-        // EXACTLY ONE `phase =` per route arm. No catch-all.
+        // EULA gate (Guideline 1.2): the Terms of Use must be accepted once
+        // per install before ANY use — gating BOTH .onboarding and .ready,
+        // because the Keychain survives app deletion, so a delete-and-
+        // reinstall user routes straight to .ready and would otherwise never
+        // see the terms. `.bootFailed` is exempt: it is a recovery door, not
+        // use of the app. The gate lives here, not in BootRouter, so the
+        // router's pinned decision table (BootRouterTests) stays untouched.
+        // The acceptance flag deliberately survives crypto-erase (a legal
+        // fact about the person, not identifying residue) and is NOT in
+        // DeviceResidueWipe's allowlist.
+        if case .bootFailed = route {
+            enter(route, store: store)
+        } else if EULA.isAccepted {
+            enter(route, store: store)
+        } else {
+            phase = .eula(route, store)
+        }
+    }
+
+    /// Apply a computed BootRoute to the phase. EXACTLY ONE `phase =` per
+    /// route arm. No catch-all. Called from bootstrap() (directly when the
+    /// EULA is already accepted, or for `.bootFailed`) and from the `.eula`
+    /// arm's accept action.
+    private func enter(_ route: BootRoute, store: IdentityStore) {
         switch route {
         case .onboarding:
             phase = .onboarding(store)
