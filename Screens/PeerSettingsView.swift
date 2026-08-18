@@ -40,6 +40,11 @@ struct PeerSettingsView: View {
     @State private var showColorPicker = false
     @State private var showVerify = false
 
+    /// Report (Guideline 1.2): true when no mail client accepted the mailto:
+    /// URL — shows the copy-the-address fallback alert.
+    @State private var reportMailUnavailable = false
+    @Environment(\.openURL) private var openURL
+
     private var hairlineColor: Color { Stillwater.Palette.biolume.opacity(0.09) }
 
     var body: some View {
@@ -51,6 +56,7 @@ struct PeerSettingsView: View {
                     profileSection
                     verificationSection
                     identitySection
+                    reportSection
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 44)
@@ -86,6 +92,12 @@ struct PeerSettingsView: View {
                 .presentationDetents([.medium])
                 .preferredColorScheme(.dark)
             }
+        }
+        .alert("No mail app available", isPresented: $reportMailUnavailable) {
+            Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Send your report to \(ReportMail.address) from any email account. Reports are answered within 24 hours.")
         }
     }
 
@@ -291,6 +303,39 @@ struct PeerSettingsView: View {
                     .lineSpacing(4)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+        }
+    }
+
+    // MARK: - Report
+    private var reportSection: some View {
+        SettingsGroup(
+            footer: "Reports go to the developer by email. The app adds only your app version, a timestamp, your local nickname for this contact, and internal reference numbers — never message content or keys. Answered within 24 hours."
+        ) {
+            Button { reportContact() } label: {
+                SettingsRow {
+                    HStack(spacing: 12) {
+                        Text("Report contact").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                        Spacer(minLength: 12)
+                        Image(systemName: "envelope")
+                            .font(.system(size: 15, weight: .regular)).foregroundStyle(Stillwater.Palette.biolume)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Open the user's mail client pre-filled with the ReportMail body. Passes
+    /// the RAW local petname (`peer.displayName`) — deliberately NOT this
+    /// view's `displayName`, whose fallback is a key-derived fingerprint stub —
+    /// and the locally-minted Conversation UUID. See ReportMail's privacy
+    /// contract for what may never be included.
+    private func reportContact() {
+        guard let url = ReportMail.url(contactNickname: conversation.peer?.displayName,
+                                       conversationID: conversation.id,
+                                       messageID: nil) else { return }
+        openURL(url) { accepted in
+            if !accepted { reportMailUnavailable = true }
         }
     }
 

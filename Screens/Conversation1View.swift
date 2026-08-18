@@ -96,6 +96,12 @@ struct StreamView: View {
     @State private var videoSendNotice: String?
     @State private var showMicDenied = false
 
+    /// Report (Guideline 1.2): opens the user's mail client with a pre-filled
+    /// report to the support address. True when no mail client accepted the
+    /// mailto: URL — shows the copy-the-address fallback alert.
+    @State private var reportMailUnavailable = false
+    @Environment(\.openURL) private var openURL
+
     /// Observe the app-wide accent so the stream recolours on change.
     @AppStorage("aeronyra.accentHex") private var accentHex = Int(Stillwater.Accent.defaultHex)
 
@@ -207,6 +213,12 @@ struct StreamView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Enable microphone access in Settings to send voice notes.")
+        }
+        .alert("No mail app available", isPresented: $reportMailUnavailable) {
+            Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Send your report to \(ReportMail.address) from any email account. Reports are answered within 24 hours.")
         }
     }
 
@@ -324,6 +336,9 @@ struct StreamView: View {
                                             Button("Select") {
                                                 selection = [m.persistentModelID]
                                                 isSelecting = true
+                                            }
+                                            Button("Report") {
+                                                reportMessage(m)
                                             }
                                             Button("Delete", role: .destructive) {
                                                 deleteMessage(m)
@@ -732,6 +747,19 @@ struct StreamView: View {
         guard !m.isDeleted, m.mediaData != nil else { return }
         m.mediaData = nil
         try? modelContext.save()
+    }
+
+    /// Report a specific message: open the user's mail client pre-filled with
+    /// the ReportMail body. Passes the RAW local petname (`peer.displayName`),
+    /// never a key-derived name fallback, and the locally-minted row UUIDs —
+    /// see ReportMail's privacy contract for what may never be included.
+    private func reportMessage(_ m: Message) {
+        guard let url = ReportMail.url(contactNickname: peer.displayName,
+                                       conversationID: m.conversation?.id ?? conversation?.id,
+                                       messageID: m.id) else { return }
+        openURL(url) { accepted in
+            if !accepted { reportMailUnavailable = true }
+        }
     }
 
     /// Local delete of a single message (media bytes go with the row). The
