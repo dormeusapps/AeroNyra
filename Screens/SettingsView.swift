@@ -22,6 +22,13 @@ struct SettingsView: View {
     @Environment(PairingService.self) private var pairing: PairingService?
     @Environment(\.eraseEverything) private var eraseEverything
 
+    /// Report (Guideline 1.2): the contact-less "Report a problem" row —
+    /// reachable with ZERO contacts, unlike the per-contact report inside
+    /// PeerSettingsView. Same ReportMail composer, same no-mail-client
+    /// fallback semantics.
+    @Environment(\.openURL) private var openURL
+    @State private var reportMailUnavailable = false
+
     @AppStorage("aeronyra.displayName") private var myName = ""
     @AppStorage("aeronyra.selfPhoto") private var selfPhotoData = Data()
     @AppStorage("aeronyra.accentHex") private var accentHex = Int(Stillwater.Accent.defaultHex)
@@ -54,6 +61,7 @@ struct SettingsView: View {
                     appearanceSection
                     filterSection
                     blockedSection
+                    supportSection
                     aboutSection
                     dangerSection
                 }
@@ -70,6 +78,12 @@ struct SettingsView: View {
         .sheet(isPresented: $showMyCode) { PairingView() }
         .sheet(isPresented: $showTerms) { EULAView() }
         .sheet(isPresented: $showBlocked) { BlockedContactsView() }
+        .alert("No mail app available", isPresented: $reportMailUnavailable) {
+            Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Send your report to \(ReportMail.address) from any email account. Reports are answered within 24 hours.")
+        }
         .alert("Erase everything?", isPresented: $confirmErase) {
             Button("Erase", role: .destructive) { eraseEverything() }
             Button("Cancel", role: .cancel) {}
@@ -316,16 +330,50 @@ struct SettingsView: View {
                     HStack(spacing: 12) {
                         Text("Blocked contacts").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
                         Spacer(minLength: 12)
-                        if let count = pairing?.blockedContacts.count, count > 0 {
-                            Text("\(count)")
-                                .font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.mist)
-                        }
+                        // Always labelled — "None" when empty — so the row
+                        // reads as a live, working feature to someone (an App
+                        // Reviewer) who has never blocked anyone.
+                        let count = pairing?.blockedContacts.count ?? 0
+                        Text(count > 0 ? "\(count)" : "None")
+                            .font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.mist)
                         Image(systemName: "chevron.right")
                             .font(.system(size: 13, weight: .semibold)).foregroundStyle(Stillwater.Palette.mistDim)
                     }
                 }
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Report a problem
+    private var supportSection: some View {
+        SettingsGroup(
+            header: "Support",
+            footer: "Reports go to the developer by email and are answered within 24 hours. The app adds only your app version and a timestamp — never message content or keys."
+        ) {
+            Button { reportProblem() } label: {
+                SettingsRow {
+                    HStack(spacing: 12) {
+                        Text("Report a problem").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                        Spacer(minLength: 12)
+                        Image(systemName: "envelope")
+                            .font(.system(size: 15, weight: .regular)).foregroundStyle(Stillwater.Palette.biolume)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// The contact-less report: same ReportMail composer and privacy contract
+    /// as the per-contact rows, with all context fields nil — the body carries
+    /// only version + timestamp and the user types the rest.
+    private func reportProblem() {
+        guard let url = ReportMail.url(contactNickname: nil,
+                                       conversationID: nil,
+                                       messageID: nil) else { return }
+        openURL(url) { accepted in
+            if !accepted { reportMailUnavailable = true }
         }
     }
 

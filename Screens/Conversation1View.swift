@@ -110,6 +110,15 @@ struct StreamView: View {
     @AppStorage("aeronyra.contentFilter.words.v1") private var contentFilterWords = ""
     @State private var revealedFilteredIDs = Set<UUID>()
 
+    /// Reported messages (Guideline 1.2): a reported message leaves the feed
+    /// the moment the report is INITIATED — not conditional on the mail being
+    /// sent — and stays gone across relaunch (UserDefaults; key mirrored in
+    /// DeviceResidueWipe, dies on crypto-erase). RENDERING EXCLUSION only, no
+    /// placeholder and no reveal: the row is never deleted and never mutated,
+    /// so the record survives for a user who needs it (report to authorities);
+    /// it just does not render. See `ReportedMessages` for the storage contract.
+    @AppStorage("aeronyra.reportedMessages.v1") private var reportedMessageIDs = ""
+
     /// Observe the app-wide accent so the stream recolours on change.
     @AppStorage("aeronyra.accentHex") private var accentHex = Int(Stillwater.Accent.defaultHex)
 
@@ -123,6 +132,16 @@ struct StreamView: View {
     }
     private var sortedMessages: [Message] {
         (conversation?.messages ?? []).sorted { $0.timestamp < $1.timestamp }
+    }
+    /// What the stream actually renders: every row except reported ones —
+    /// all kinds (text, photo, video, voice note, story), the exclusion sits
+    /// above the row dispatch. Day marks and the empty state derive from THIS
+    /// list, so a day whose messages are all reported gets no orphaned
+    /// separator and an all-reported conversation shows still water. Read
+    /// bookkeeping (`markInboundRead`) and selection deletes still operate on
+    /// the full set, so a reported message can't strand the app badge.
+    private var visibleMessages: [Message] {
+        sortedMessages.filter { !ReportedMessages.contains($0.id, in: reportedMessageIDs) }
     }
     private var tier: Stillwater.Presence {
         presence.isReachable(peer.publicKeyData) ? .near : .gone
@@ -319,7 +338,7 @@ struct StreamView: View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 26) {
-                    if sortedMessages.isEmpty {
+                    if visibleMessages.isEmpty {
                         emptyWater
                     } else {
                         ForEach(streamItems) { item in
@@ -463,7 +482,11 @@ struct StreamView: View {
     }
 
     private var normalComposer: some View {
-        HStack(spacing: 12) {
+        // Bottom-aligned so the plus and mic/send buttons stay pinned beside
+        // the LAST line as the field grows; the field's small bottom padding
+        // re-centers a single line against the 34–38pt buttons, so the
+        // one-line composer looks exactly as before.
+        HStack(alignment: .bottom, spacing: 12) {
             photoButton
 
             ZStack(alignment: .leading) {
@@ -472,7 +495,12 @@ struct StreamView: View {
                         .font(Stillwater.Serif.italic(16))
                         .foregroundColor(Stillwater.Palette.mistDim)
                 }
-                TextField("", text: $draft)
+                // Vertical axis: grows with the draft up to 6 lines, then
+                // scrolls internally — the whole message stays visible while
+                // typing. submitLabel(.send) keeps return as SEND (it submits,
+                // it does not insert a newline).
+                TextField("", text: $draft, axis: .vertical)
+                    .lineLimit(1...6)
                     .font(Stillwater.Serif.regular(16))
                     .foregroundColor(Stillwater.Palette.foam)
                     .tint(Stillwater.Palette.biolume)
@@ -480,6 +508,7 @@ struct StreamView: View {
                     .submitLabel(.send)
                     .onSubmit(sendDraft)
             }
+            .padding(.bottom, 8)
 
             Spacer(minLength: 8)
 
@@ -768,6 +797,10 @@ struct StreamView: View {
     /// never a key-derived name fallback, and the locally-minted row UUIDs —
     /// see ReportMail's privacy contract for what may never be included.
     private func reportMessage(_ m: Message) {
+        // Hide FIRST, unconditionally: initiating the report is the signal,
+        // not the mail actually sending — a user who backs out of Mail has
+        // still flagged the message, and it must leave the feed immediately.
+        reportedMessageIDs = ReportedMessages.adding(m.id, to: reportedMessageIDs)
         guard let url = ReportMail.url(contactNickname: peer.displayName,
                                        conversationID: m.conversation?.id ?? conversation?.id,
                                        messageID: m.id) else { return }
@@ -926,7 +959,7 @@ struct StreamView: View {
     private var streamItems: [StreamItem] {
         var out: [StreamItem] = []
         var lastDay: String?
-        for m in sortedMessages {
+        for m in visibleMessages {
             let label = dayLabel(m.timestamp)
             if label != lastDay { out.append(.day(label)); lastDay = label }
             out.append(.message(m))
@@ -935,6 +968,8 @@ struct StreamView: View {
     }
 
     // MARK: Message rendering
+    // (Reported messages never reach this dispatch — `visibleMessages`
+    // excludes them before `streamItems` is built.)
     @ViewBuilder
     private func messageView(_ m: Message) -> some View {
         if m.mediaMimeRaw != nil {
@@ -1042,6 +1077,11 @@ struct StreamView: View {
                     Text(m.content)
                         .font(Stillwater.Serif.regular(17))
                         .foregroundColor(Stillwater.Palette.foam)
+                        // Explicit, not inherited: wrapped inbound lines share
+                        // one flush LEFT edge (the mirror of myLine's
+                        // .trailing), immune to any ancestor ever putting a
+                        // different alignment into the environment.
+                        .multilineTextAlignment(.leading)
                 }
                 Text(time(m))
                     .stillwaterMono(8.5, trackingEm: 0.18, color: Stillwater.Palette.mistDimmest)
@@ -1094,7 +1134,10 @@ struct StreamView: View {
                 Text(m.content)
                     .font(Stillwater.Serif.regular(17))
                     .foregroundColor(Stillwater.Palette.biolume.opacity(0.9))
-                    .multilineTextAlignment(.trailing)
+                    // Block right-anchored in the row; interior wrapping
+                    // flush-left so long messages read like messaging, not
+                    // ragged-left poetry. Mirrored in WaitingLine.
+                    .multilineTextAlignment(.leading)
                 Text(meta)
                     .stillwaterMono(8.5, trackingEm: 0.18, color: Stillwater.Palette.mistDimmest)
             }
@@ -1797,7 +1840,8 @@ private struct WaitingLine: View {
                 Text(text)
                     .font(Stillwater.Serif.regular(17))
                     .foregroundColor(Stillwater.Palette.biolume.opacity(0.36))
-                    .multilineTextAlignment(.trailing)
+                    // Flush-left interior, matching myLine.
+                    .multilineTextAlignment(.leading)
                 Circle()
                     .strokeBorder(Stillwater.Palette.mistDim, lineWidth: 1)
                     .frame(width: 5, height: 5).padding(.top, 6)

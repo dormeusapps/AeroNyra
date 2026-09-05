@@ -28,8 +28,10 @@ enum ReportMail {
     static let subject = "AeroNyra report"
 
     /// The complete `mailto:` URL for a report. `messageID` is nil when
-    /// reporting a contact rather than a specific message. Returns nil only
-    /// if URL composition fails (never expected for this fixed shape).
+    /// reporting a contact rather than a specific message; ALL THREE nil is
+    /// the contact-less "Report a problem" variant (Settings) — the body then
+    /// carries only version + timestamp and the user types the rest. Returns
+    /// nil only if URL composition fails (never expected for this fixed shape).
     static func url(contactNickname: String?,
                     conversationID: UUID?,
                     messageID: UUID?) -> URL? {
@@ -58,8 +60,15 @@ enum ReportMail {
             "App version: \(appVersion)",
             "Reported at: \(ISO8601DateFormatter().string(from: Date()))",
         ]
-        let nickname = contactNickname?.trimmingCharacters(in: .whitespacesAndNewlines)
-        lines.append("Contact (your local nickname): \((nickname?.isEmpty == false) ? nickname! : "(no nickname set)")")
+        // The contact line only when the report is ABOUT a contact or message
+        // (any context field present). The contact-less Settings variant
+        // passes all nil, and "(no nickname set)" there would imply a contact
+        // exists. Existing callers always pass a conversationID, so their
+        // bodies are unchanged.
+        if contactNickname != nil || conversationID != nil || messageID != nil {
+            let nickname = contactNickname?.trimmingCharacters(in: .whitespacesAndNewlines)
+            lines.append("Contact (your local nickname): \((nickname?.isEmpty == false) ? nickname! : "(no nickname set)")")
+        }
         if let conversationID {
             lines.append("Conversation ref: \(conversationID.uuidString)")
         }
@@ -75,5 +84,30 @@ enum ReportMail {
         let version = info?["CFBundleShortVersionString"] as? String ?? "—"
         let build = info?["CFBundleVersion"] as? String ?? "—"
         return "\(version) (\(build))"
+    }
+}
+
+/// Persisted "you reported this message" display state (Guideline 1.2: a
+/// reported message must leave the feed immediately, and stay gone across
+/// relaunch). The set of reported Message UUIDs lives in UserDefaults as a
+/// comma-joined string — `@AppStorage("aeronyra.reportedMessages.v1")` at the
+/// view call site, constant mirrored in `DeviceResidueWipe` (cleared on
+/// crypto-erase). PRESENTATION ONLY, same contract as ContentFilter: the
+/// model row is never mutated and never deleted — `MessageInbox.resend`
+/// transmits from the persisted row, and the user may need the record —
+/// so the hidden state lives BESIDE the row, not in it. UUIDs here are the
+/// locally-minted SwiftData ids that correlate to nothing on the wire.
+enum ReportedMessages {
+
+    /// True when `id` is in the persisted set (`raw` is the stored string).
+    static func contains(_ id: UUID, in raw: String) -> Bool {
+        raw.split(separator: ",").contains(Substring(id.uuidString))
+    }
+
+    /// The stored string with `id` added. Idempotent — reporting the same
+    /// message twice never duplicates the entry.
+    static func adding(_ id: UUID, to raw: String) -> String {
+        guard !contains(id, in: raw) else { return raw }
+        return raw.isEmpty ? id.uuidString : "\(raw),\(id.uuidString)"
     }
 }

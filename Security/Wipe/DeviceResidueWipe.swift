@@ -64,6 +64,14 @@ struct DeviceResidueWipe: Wipeable {
     static let contentFilterEnabledKey = "aeronyra.contentFilter.enabled.v1"
     static let contentFilterWordsKey   = "aeronyra.contentFilter.words.v1"
 
+    /// Guideline 1.2 reported-message hiding, written by Conversation via
+    /// `@AppStorage` (`Conversation1View` / `ReportedMessages`). A comma-joined
+    /// list of locally-minted Message UUIDs the user reported — residue
+    /// revealing that (and how often) the owner reported, and stale anyway
+    /// once the SwiftData store is destroyed. MUST match the view's key
+    /// exactly or the residue survives.
+    static let reportedMessagesKey = "aeronyra.reportedMessages.v1"
+
     func wipe() async throws {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: Self.displayNameKey)
@@ -71,6 +79,7 @@ struct DeviceResidueWipe: Wipeable {
         defaults.removeObject(forKey: Self.lastLocalNostrPubkeyKey)
         defaults.removeObject(forKey: Self.contentFilterEnabledKey)
         defaults.removeObject(forKey: Self.contentFilterWordsKey)
+        defaults.removeObject(forKey: Self.reportedMessagesKey)
 
         // UNUserNotificationCenter is @MainActor-facing in our use; hop once and
         // do all three there. Clearing an empty tray / zeroing an unset badge is
