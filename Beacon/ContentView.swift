@@ -1068,8 +1068,15 @@ private struct ReadyView: View {
     /// Live PTT-over-IP (step 4): the walkie-link layer, app-lifetime for the
     /// same reason as the call engine (an inbound link request must be
     /// answered on any screen). Built beside CallEngine in the boot task;
-    /// not yet injected into the environment or rendered — step 5.
+    /// injected into the environment (the walkie cover drives it) and
+    /// rendered by the responder banner overlay (step 5).
     @State private var pttLinkEngine: PTTLinkEngine?
+
+    /// The app's programmatic-navigation primitive (step 5 deep link): the
+    /// responder banner posts "open this peer's walkie", the chats root
+    /// replaces its path, the stream view raises the cover and adopts the
+    /// link. App-lifetime, like the engines.
+    @State private var navigationIntent = NavigationIntent()
 
     /// STEP 7d-3 outcome surface. The same success/failure pair PairingView
     /// keeps for scan-to-pair (pairMessage/pairFailed), shown as a transient
@@ -1107,6 +1114,8 @@ private struct ReadyView: View {
                     .environment(inbox)
                     .environment(pairingService)
                     .environment(callEngine)
+                    .environment(pttLinkEngine)
+                    .environment(navigationIntent)
                     .task { await inbox.run() }
                     .task { await inbox.runDeliveryUpdates(router.deliveryUpdates) }   // 7b.2a
             } else {
@@ -1145,6 +1154,17 @@ private struct ReadyView: View {
         .overlay {
             if let callEngine, callEngine.state != .idle {
                 CallOverlayView(engine: callEngine)
+            }
+        }
+        // Live PTT-over-IP (step 5): the RESPONDER's honest surface for an
+        // auto-answered link — mic on, nothing sends unless you hold, one
+        // tap to close. Renders nothing unless a responder-role link exists
+        // (or just ended). App-wide, like the call overlay: the link can
+        // open while the user is on any screen.
+        .overlay {
+            if let pttLinkEngine {
+                PTTLinkBannerView(engine: pttLinkEngine, intent: navigationIntent)
+                    .animation(.easeOut(duration: 0.22), value: pttLinkEngine.state)
             }
         }
         .modelContainer(container)
