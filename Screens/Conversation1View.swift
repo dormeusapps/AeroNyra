@@ -35,6 +35,16 @@ struct StreamView: View {
     /// FaceTime v1 (P4): the app-wide call layer; nil until the boot task
     /// builds it (and in previews).
     @Environment(CallEngine.self) private var callEngine: CallEngine?
+    /// Live PTT-over-IP (step 5): the walkie-link layer; nil until the boot
+    /// task builds it (and in previews — the shipped note path, untouched).
+    /// The walkie cover OWNS the link while it is up: opened on appear,
+    /// adopted if already opening/open to this peer, closed on dismiss.
+    @Environment(PTTLinkEngine.self) private var pttLinkEngine: PTTLinkEngine?
+    /// Step 5 deep link: a walkie request for THIS peer raises the cover on
+    /// arrival (and on a repeat tap while already here). The cover then
+    /// adopts the link already open to this peer — no request, no reconnect.
+    @Environment(NavigationIntent.self) private var navigationIntent: NavigationIntent?
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -78,6 +88,11 @@ struct StreamView: View {
     /// left here would be the token race one layer up.
     @State private var pttSessionID: Data?
     @State private var pttAutoPlay = PTTAutoPlay()
+    /// Live PTT-over-IP (step 5): true while the CURRENT hold rides the live
+    /// link (WebRTC track un-muted) instead of the BLE/note path
+    /// (`pttHolding`). Exactly one of the two is chosen at press time, in
+    /// `beginPTT`; they never overlap.
+    @State private var linkHolding = false
 
     /// Full-screen "walkie mode" (globe surface) for this ONE peer. Rides the
     /// shipped async `isPushToTalk` path — presentation only, no new transport.
@@ -162,6 +177,12 @@ struct StreamView: View {
         }
         return String(peer.userIDHex.prefix(6)).uppercased()
     }
+    /// Live PTT-over-IP (step 5): the link engine's state as it applies to
+    /// THIS peer (see `WalkieLinkStatus.derive`). Drives the cover's mode
+    /// label and the `beginPTT` branch. `.notes` without an engine (previews).
+    private var walkieLinkStatus: WalkieLinkStatus {
+        WalkieLinkStatus.derive(from: pttLinkEngine?.state, for: peer.publicKeyData)
+    }
 
     // MARK: Body
     var body: some View {
@@ -198,7 +219,11 @@ struct StreamView: View {
         // N2 — suppress banners for the conversation on screen. The clear is
         // guarded: navigating A → B can run B's onAppear before A's onDisappear,
         // and an unguarded nil-out would clobber B's freshly-set key.
-        .onAppear { notifier?.activeConversationID = peer.publicKeyData }
+        .onAppear {
+            notifier?.activeConversationID = peer.publicKeyData
+            consumeWalkieIntent()
+        }
+        .onChange(of: navigationIntent?.request) { _, _ in consumeWalkieIntent() }
         .onDisappear {
             if notifier?.activeConversationID == peer.publicKeyData {
                 notifier?.activeConversationID = nil
@@ -206,6 +231,14 @@ struct StreamView: View {
             // Belt for the cover teardown below: reachable mid-hold only if
             // the whole screen pops with the cover up (programmatic).
             teardownPTTIfHolding()
+            // Same belt for the link + idle timer (step 5): a screen popped
+            // with the cover up never runs the cover's onChange. Guarded on
+            // the cover — leaving a chat must NOT close a responder-role link
+            // that lives app-wide behind its banner.
+            if showWalkie {
+                pttLinkEngine?.close()
+                UIApplication.shared.isIdleTimerDisabled = callEngine?.isCallInProgress ?? false
+            }
         }
         .sheet(isPresented: $showSettings) {
             PeerSettingsView(conversation: currentConversation(),
@@ -223,6 +256,7 @@ struct StreamView: View {
             WalkieGlobeView(peerName: peerName,
                             capture: pttCapture,
                             autoPlay: pttAutoPlay,
+                            link: walkieLinkStatus,
                             onPressDown: { beginPTT() },
                             onPressUp: { endPTT() })
         }
@@ -232,8 +266,85 @@ struct StreamView: View {
         // stop(holdToken:) could ever match the wedged owner again. Without
         // this the engine keeps SEALING AND TRANSMITTING to the stale
         // session's link indefinitely.
+        //
+        // Live PTT-over-IP (step 5) — the cover OWNS two more things while up:
+        //  • the LINK: opened on appear (`openWalkieLink`), closed on dismiss.
+        //    `close()` is a no-op when nothing is in flight, so a dismiss
+        //    after a failed open (notes mode) touches nothing.
+        //  • the IDLE TIMER: the screen stays awake while the cover is up, in
+        //    BOTH modes (live link or the shipped BLE/note path). DELIBERATE
+        //    change to shipping BLE walkie behavior, operator-approved
+        //    2026-09-11: a walkie you are holding to your face must not dim
+        //    and lock — and lock → background → the link engine CLOSES the
+        //    link (v1 policy). The release is conditional: when the cover
+        //    drops FOR A CALL (below), the call now owns the lit screen
+        //    (CallEngine wrote `true` on the ring), and writing `false` here
+        //    would let a ringing screen sleep — the two-writers fight
+        //    PTTLinkEngine's header warns about, resolved by ordering: the
+        //    cover only ever releases what nobody else holds.
         .onChange(of: showWalkie) { _, shown in
             if !shown { teardownPTTIfHolding() }
+            if shown {
+                openWalkieLink()
+            } else {
+                pttLinkEngine?.close()
+            }
+            UIApplication.shared.isIdleTimerDisabled =
+                shown || (callEngine?.isCallInProgress ?? false)
+        }
+        // DISMISS ON CALL (step 5, operator-approved 2026-09-11): any call
+        // state — a ring in, an outgoing ring, connecting, active — drops the
+        // cover. The ring banner is `CallOverlayView`, an `.overlay` on the
+        // root, which a `fullScreenCover` presents ABOVE: with the cover up an
+        // incoming ring was INVISIBLE (pre-existing hidden-ring bug under the
+        // shipped BLE walkie cover — this fixes it, not only the link case).
+        // The link itself is already closed by then: CallEngine pre-empts it
+        // synchronously inside its media factory / on the ring, so the
+        // dismiss above finds `.closed(.preempted)` and its close() no-ops.
+        .onChange(of: callEngine?.state) { _, state in
+            guard showWalkie, let state else { return }
+            switch state {
+            case .idle, .ended:
+                break
+            case .outgoingRinging, .incomingRinging, .connecting, .active:
+                showWalkie = false
+            }
+        }
+        // While the cover is up, the engine is OURS: a link that appears for
+        // anyone else (an inbound request auto-answered while ours sits in
+        // `.closed` — notes mode — since `.closed` reads as free) is closed at
+        // once, so a responder-role link can never run with its banner hidden
+        // under this cover (the no-mutual-cover ruling's one safeguard). The
+        // other side sees the link end — honest: we are in a walkie already.
+        .onChange(of: pttLinkEngine?.state) { _, state in
+            guard showWalkie, let engine = pttLinkEngine, let state else { return }
+            if let other = state.peerKey, other != peer.publicKeyData {
+                engine.close()
+                return
+            }
+            // HOLD THROUGH OPENING (Rubins' ruling 2026-09-11, field log 11.6):
+            // a hold that began while the link was opening goes LIVE the
+            // moment it connects — no second press. The controller mutes and
+            // switches to loudspeaker inside its connected callback BEFORE it
+            // sets `.open`, so this un-mute lands after both and sticks. A
+            // release before connect cleared `linkHolding`, so nothing
+            // auto-transmits then. Audio spoken before connect is LOST BY
+            // DESIGN: capturing it would mean running PTTCaptureEngine beside
+            // link media, the exact hazard the mutual-exclusion rule forbids.
+            if linkHolding, case .open(_, let p, _) = state, p == peer.publicKeyData {
+                engine.pressBegan()
+            }
+        }
+        // Reopen after foreground (step 5 policy): backgrounding closes the
+        // link with `.interrupted` (engine, v1 policy, no resume). If the
+        // cover is still up when we return, the user still wants the walkie:
+        // reopen through the same path. Any OTHER closed reason stays as it
+        // is — a failed reach must not retry silently every time the phone
+        // wakes.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, showWalkie, let engine = pttLinkEngine,
+                  case .closed(.interrupted) = engine.state else { return }
+            openWalkieLink()
         }
         .sheet(isPresented: $showVerify) {
             SASVerifySheet(peerName: peerName,
@@ -573,8 +684,53 @@ struct StreamView: View {
         .buttonStyle(.plain)
     }
 
+    /// Live PTT-over-IP (step 5): the cover appeared (or the app came back to
+    /// it) — make the link engine's state OURS. Adopt a link already opening
+    /// or open to this peer (the responder answering back through the chat:
+    /// its banner is under this cover now, this cover is the surface); close
+    /// one to anyone else (the user's explicit act wins; that side sees it
+    /// end); reset a stale terminal state so an old outcome never reads as
+    /// this cover's; then open. No engine (previews) → nothing, the shipped
+    /// note path is untouched.
+    /// Step 5 deep link: take-once, only for this peer (see NavigationIntent).
+    @MainActor
+    private func consumeWalkieIntent() {
+        guard let navigationIntent,
+              navigationIntent.takeWalkieRequest(for: peer.publicKeyData) else { return }
+        showWalkie = true
+    }
+
+    @MainActor
+    private func openWalkieLink() {
+        guard let engine = pttLinkEngine else { return }
+        let key = peer.publicKeyData
+        if let current = engine.state.peerKey {
+            if current == key { return }                   // adopt
+            engine.close()                                 // someone else's: ours wins
+        }
+        engine.reset()                                     // .closed → .idle (else no-op)
+        Task { await engine.open(to: key) }
+    }
+
     @MainActor
     private func beginPTT() {
+        // Live PTT-over-IP (step 5): while a link to THIS peer exists —
+        // opening OR open — the hold is the LINK's: un-mute the WebRTC track,
+        // and NEVER start PTTCaptureEngine. Its `finish()` deactivates the
+        // shared session UNGUARDED (the one `setActive(false)` site that does
+        // not read `PTTSessionOwner.isLive`), under WebRTC's audio unit: the
+        // link would go deaf and mute while both screens still read "open".
+        // Before `.open`, `pressBegan` returns false and un-mutes nothing;
+        // the cover's mode label says why ("reaching…" / "connecting…").
+        // The 20 s reach window against an old-build peer (builds ≤10 drop
+        // kind 14 silently — every current real user) is therefore a hold
+        // that sends NOTHING until the timeout lands in `.closed(.unreachable)`
+        // and this branch falls through to the shipped note path.
+        if let engine = pttLinkEngine, walkieLinkStatus.isLink {
+            linkHolding = true
+            engine.pressBegan()
+            return
+        }
         pttHolding = true
         pttHoldToken &+= 1
         let myToken = pttHoldToken
@@ -652,6 +808,12 @@ struct StreamView: View {
     /// armed, reset the hold state. Idempotent via the `pttHolding` guard.
     @MainActor
     private func teardownPTTIfHolding() {
+        // Link hold (step 5): re-mute the track; the cover's own dismiss
+        // handler closes the link right after this.
+        if linkHolding {
+            linkHolding = false
+            pttLinkEngine?.pressEnded()
+        }
         guard pttHolding else { return }
         pttHolding = false
         pttCapture.cancelUnowned()
@@ -664,6 +826,13 @@ struct StreamView: View {
 
     @MainActor
     private func endPTT() {
+        // Link hold (step 5): release = mute. No note, no session close — the
+        // link stays open for the next press.
+        if linkHolding {
+            linkHolding = false
+            pttLinkEngine?.pressEnded()
+            return
+        }
         guard pttHolding else { return }
         pttHolding = false
         // Stop first (synchronous — the mic is off before anything else), then
@@ -1922,6 +2091,64 @@ private struct RecordingWaveform: View {
         .environment(presence)
 }
 
+// MARK: - Walkie link status (live PTT-over-IP, step 5)
+/// The link engine's state AS IT APPLIES TO ONE PEER'S COVER. Pure, so it is
+/// pinned hardware-free (WalkieLinkStatusTests). `.notes` is the shipped path
+/// (BLE-live spurt + note); `.ended` is that same path after a link failed or
+/// closed with a reason worth showing — notes again, and the label says so.
+enum WalkieLinkStatus: Equatable {
+    case notes                                     // no link: the shipped path (BLE-live spurt + note)
+    case reaching                                  // request sent, no answer yet
+    case connecting                                // answered, ICE running
+    case live                                      // open: a hold un-mutes the track
+    case ended(PTTLinkController.CloseReason)      // closed, user-visible reason
+
+    /// True while a link to this peer EXISTS (opening or open) — the states
+    /// in which `PTTCaptureEngine` must never run (see StreamView.beginPTT).
+    var isLink: Bool {
+        switch self {
+        case .reaching, .connecting, .live: return true
+        case .notes, .ended: return false
+        }
+    }
+
+    /// A link to ANOTHER peer reads as `.notes`: it is not this cover's (and
+    /// the cover closes it, see StreamView). `.closed` carries no peer, so a
+    /// visible close reason is shown wherever it lands — the cover resets a
+    /// stale one on appear (`openWalkieLink`), so it is always this cover's.
+    static func derive(from state: PTTLinkController.State?, for peerKey: Data) -> WalkieLinkStatus {
+        guard let state else { return .notes }
+        switch state {
+        case .opening(_, let peer, _, .awaitingAnswer) where peer == peerKey: return .reaching
+        case .opening(_, let peer, _, .connecting) where peer == peerKey:     return .connecting
+        case .open(_, let peer, _) where peer == peerKey:                     return .live
+        case .closed(let reason) where reason.isUserVisible:                  return .ended(reason)
+        case .idle, .closed, .opening, .open:                                 return .notes
+        }
+    }
+
+    /// The label under the peer's name in the cover header.
+    func modeLabel(peerName: String) -> String {
+        switch self {
+        case .notes:      return "walkie"
+        case .reaching:   return "reaching \(peerName)…"
+        case .connecting: return "connecting…"
+        case .live:       return "walkie · live"
+        case .ended(let reason):
+            switch reason {
+            case .unreachable:    return "couldn't reach \(peerName) · notes"
+            case .remoteDeclined: return "\(peerName) isn't accepting walkies · notes"
+            case .connectFailed:  return "couldn't connect · notes"
+            case .remoteEnded:    return "walkie ended · notes"
+            case .interrupted:    return "walkie paused · notes"
+            case .failed:         return "walkie couldn't start · notes"
+            case .localClosed, .preempted:
+                return "walkie"                    // never user-visible; not reachable
+            }
+        }
+    }
+}
+
 // MARK: - Walkie mode (full-screen particle sphere · Step 2: voice-reactive)
 /// A full-screen "walkie mode" surface for the ONE peer this conversation is
 /// bound to. The visual is a fibonacci-sphere particle core (`WalkieCore`,
@@ -1943,6 +2170,12 @@ private struct WalkieGlobeView: View {
     /// (`busyID != nil`), its `inboundLevel` drives the sphere so it reacts to
     /// the peer's voice the same way it reacts to mine.
     let autoPlay: PTTAutoPlay
+    /// Live PTT-over-IP (step 5): the link's status for this peer, derived
+    /// by StreamView. Read for COPY ONLY — the mode label under the name and
+    /// the hold hint; the press path is StreamView's. Under a live link the
+    /// sphere has no mic meter to react to (`capture` is idle — the WebRTC
+    /// track is the mic), so it breathes calmly while transmitting.
+    let link: WalkieLinkStatus
     /// Forwarded to StreamView's `beginPTT`/`endPTT`. This view never touches
     /// the recorder's lifecycle or the wire — it only reports press/release.
     let onPressDown: () -> Void
@@ -1969,13 +2202,25 @@ private struct WalkieGlobeView: View {
     /// alert hides behind it. Flips true after a hold hits a denied capture.
     private var micDenied: Bool { capture.permissionDenied }
 
+    /// Hold-through-opening copy (11.6/11.7): a hold during opening is kept
+    /// armed and goes live at connect, so the hint says to keep holding —
+    /// never "transmitting" until the link is actually open.
     private var hintText: String {
         if micDenied { return "microphone off" }
-        return holding ? "transmitting…" : "hold to talk"
+        guard holding else { return "hold to talk" }
+        switch link {
+        case .reaching, .connecting: return "connecting… keep holding"
+        case .live, .notes:          return "transmitting…"
+        case .ended:                 return "nothing sent · release, then press again"
+        }
     }
     private var hintColor: Color {
         if micDenied { return Stillwater.Palette.mistDim }
-        return holding ? Stillwater.Palette.biolume : Stillwater.Palette.mistDimmest
+        guard holding else { return Stillwater.Palette.mistDimmest }
+        switch link {
+        case .reaching, .connecting, .ended: return Stillwater.Palette.mistDim   // held, not live
+        case .live, .notes:                  return Stillwater.Palette.biolume
+        }
     }
 
     var body: some View {
@@ -2004,8 +2249,9 @@ private struct WalkieGlobeView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(peerName)
                     .stillwaterSerif(22, color: Stillwater.Palette.foam)
-                Text("walkie")
+                Text(link.modeLabel(peerName: peerName))
                     .stillwaterMono(8.5, trackingEm: 0.3, color: Stillwater.Palette.mistDim)
+                    .animation(.easeOut(duration: 0.2), value: link)
             }
             Spacer()
             Button { dismiss() } label: {
@@ -2049,6 +2295,11 @@ private struct WalkieGlobeView: View {
                 .onChanged { _ in if !holding { holding = true; onPressDown() } }
                 .onEnded { _ in holding = false; onPressUp() }
         )
+        // THE APP'S FIRST HAPTIC — and, by convention (Rubins, 2026-09-11),
+        // it means exactly ONE thing: the link just went live. No haptic on
+        // press, release, or failure, so the pulse is unambiguous: "you can
+        // talk now" — the moment a held press starts transmitting.
+        .sensoryFeedback(.success, trigger: link) { _, new in new == .live }
         .accessibilityLabel("Hold to talk")
         .accessibilityHint("Press and hold to send a walkie-talkie voice note")
     }
