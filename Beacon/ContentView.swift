@@ -1065,6 +1065,11 @@ private struct ReadyView: View {
     /// FaceTime v1 (P3): app-wide call layer — a ring must reach the user on
     /// any screen, so it lives beside the inbox, not in a chat view.
     @State private var callEngine: CallEngine?
+    /// Live PTT-over-IP (step 4): the walkie-link layer, app-lifetime for the
+    /// same reason as the call engine (an inbound link request must be
+    /// answered on any screen). Built beside CallEngine in the boot task;
+    /// not yet injected into the environment or rendered — step 5.
+    @State private var pttLinkEngine: PTTLinkEngine?
 
     /// STEP 7d-3 outcome surface. The same success/failure pair PairingView
     /// keeps for scan-to-pair (pairMessage/pairFailed), shown as a transient
@@ -1172,10 +1177,41 @@ private struct ReadyView: View {
                     onMissedCall: { [weak built] key in
                         built?.recordMissedCall(peerKey: key)
                     })
-                built.onCallSignal = { [weak engine] signal, key in
-                    Task { await engine?.handleInbound(signal, from: key) }
-                }
                 callEngine = engine
+                // Live PTT-over-IP (step 4): the walkie-link layer beside the
+                // call layer, same sealer, same rail. Its auto-answer policy
+                // reads the call engine — a link never pre-empts a call — and
+                // fails CLOSED (no engine → decline). The call engine's
+                // pre-emption seam points back at it — a call always
+                // pre-empts a link — and fires synchronously inside the call
+                // media factory (see CallEngine), so the link's media is dead
+                // before any call media exists.
+                let link = PTTLinkEngine(
+                    sendSignal: { [weak built] signal, key in
+                        try await coordinator.sendCallSignal(
+                            signal, toRawKey: key,
+                            nostrRecipient: built?.nostrKey(forRawKey: key))
+                    },
+                    autoAnswerPolicy: { [weak engine] in
+                        guard let engine else { return false }
+                        return !engine.isCallInProgress
+                    })
+                engine.preemptLink = { [weak link] in link?.preempt() }
+                pttLinkEngine = link
+                // FAN-OUT, not a kind switch: every call-kind frame goes to
+                // BOTH controllers, in ONE Task, call engine FIRST. Each drops
+                // what it does not own (pinned on both sides): CallController
+                // ignores `.pttRequest`; the link ignores `.request` and any
+                // id it did not mint or answer. Ordering is load-bearing: a
+                // `.request` must pre-empt the link (in CallEngine) before the
+                // link sees the frame it will drop; a `.pttRequest` must be
+                // dropped by the call engine before the link's policy runs.
+                built.onCallSignal = { [weak engine, weak link] signal, key in
+                    Task {
+                        await engine?.handleInbound(signal, from: key)
+                        await link?.handleInbound(signal, from: key)
+                    }
+                }
                 // PTT C-3c (IC5-revised): the walkie session anchor. Wire-
                 // session open/close events (`.pttOpened`/`.pttClosed`) drive
                 // the AVAudioSession owner — the session is anchored to the
