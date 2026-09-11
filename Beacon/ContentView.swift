@@ -1214,6 +1214,9 @@ private struct ReadyView: View {
                     },
                     autoAnswerPolicy: { [weak engine] in
                         guard let engine else { return false }
+                        // Kill switch (WalkieSettings): the user refused
+                        // inbound walkies → decline before any media exists.
+                        guard WalkieSettings.allowsInbound() else { return false }
                         return !engine.isCallInProgress
                     })
                 engine.preemptLink = { [weak link] in link?.preempt() }

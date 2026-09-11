@@ -72,6 +72,12 @@ struct DeviceResidueWipe: Wipeable {
     /// exactly or the residue survives.
     static let reportedMessagesKey = "aeronyra.reportedMessages.v1"
 
+    /// Walkie kill switch (`WalkieSettings.allowInboundKey`, written by
+    /// `SettingsView` via `@AppStorage`). Residue revealing the owner chose
+    /// to refuse inbound walkies; clearing it resets to default-on on the
+    /// post-wipe install. MUST match `WalkieSettings.allowInboundKey`.
+    static let walkieAllowInboundKey = "aeronyra.walkie.allowInbound.v1"
+
     func wipe() async throws {
         let defaults = UserDefaults.standard
         defaults.removeObject(forKey: Self.displayNameKey)
@@ -80,6 +86,7 @@ struct DeviceResidueWipe: Wipeable {
         defaults.removeObject(forKey: Self.contentFilterEnabledKey)
         defaults.removeObject(forKey: Self.contentFilterWordsKey)
         defaults.removeObject(forKey: Self.reportedMessagesKey)
+        defaults.removeObject(forKey: Self.walkieAllowInboundKey)
 
         // UNUserNotificationCenter is @MainActor-facing in our use; hop once and
         // do all three there. Clearing an empty tray / zeroing an unset badge is

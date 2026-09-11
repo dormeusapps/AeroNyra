@@ -20,6 +20,10 @@ struct SettingsView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(PairingService.self) private var pairing: PairingService?
+    /// Walkie kill switch: switching OFF also closes a responder-role link
+    /// that is already open (the policy only gates NEW requests), so the
+    /// banner clears and the far side is told (close signal).
+    @Environment(PTTLinkEngine.self) private var pttLinkEngine: PTTLinkEngine?
     @Environment(\.eraseEverything) private var eraseEverything
 
     /// Report (Guideline 1.2): the contact-less "Report a problem" row —
@@ -36,6 +40,8 @@ struct SettingsView: View {
     /// Content filter (Guideline 1.2). Keys mirrored in DeviceResidueWipe —
     /// both die on crypto-erase. Default ON with the built-in list.
     @AppStorage("aeronyra.contentFilter.enabled.v1") private var contentFilterEnabled = true
+    /// Walkie kill switch (key mirrored in WalkieSettings + DeviceResidueWipe).
+    @AppStorage(WalkieSettings.allowInboundKey) private var allowInboundWalkie = true
     @AppStorage("aeronyra.contentFilter.words.v1") private var contentFilterWords = ""
 
     @FocusState private var nameFocused: Bool
@@ -60,6 +66,7 @@ struct SettingsView: View {
                     identitySection
                     appearanceSection
                     filterSection
+                    walkieSection
                     blockedSection
                     supportSection
                     aboutSection
@@ -315,6 +322,32 @@ struct SettingsView: View {
                     .submitLabel(.done)
                     .onSubmit { filterWordsFocused = false }
                 }
+            }
+        }
+    }
+
+    // MARK: - Walkie (kill switch — see WalkieSettings)
+    private var walkieSection: some View {
+        SettingsGroup(
+            header: "Walkie",
+            footer: "When on, a verified contact can open a live walkie with you. Your mic hardware turns on when they do, and nothing sends unless you hold. When off, requests are declined before your mic is touched."
+        ) {
+            SettingsRow {
+                Toggle(isOn: $allowInboundWalkie) {
+                    Text("Allow walkie from contacts")
+                        .font(Stillwater.Serif.regular(17))
+                        .foregroundStyle(Stillwater.Palette.foam)
+                }
+                .tint(Stillwater.Palette.biolume)
+            }
+        }
+        .onChange(of: allowInboundWalkie) { _, allowed in
+            guard !allowed, let engine = pttLinkEngine else { return }
+            switch engine.state {
+            case .opening(_, _, .responder, _), .open(_, _, .responder):
+                engine.close()          // a link WE initiated is the user's choice — left alone
+            case .idle, .closed, .opening, .open:
+                break
             }
         }
     }
