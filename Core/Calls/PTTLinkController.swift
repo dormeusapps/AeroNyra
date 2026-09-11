@@ -270,9 +270,21 @@ public final class PTTLinkController {
     /// already closed.
     public func close(reason: CloseReason = .localClosed) {
         switch state {
-        case .opening, .open:
+        case .opening(let id, let peer, _, _), .open(let id, let peer, _):
             RedactLog.event("ptt-link: close(\(reason)) from \(Self.describe(state))",
                             Self.detail(state.linkID, state.peerKey))
+            // CLOSE SIGNAL (Rubins' ruling 2026-09-11 — "end it and tell
+            // them"): every reason that reaches close() is LOCAL (✕, cover
+            // dismiss, background, interruption, pre-emption, kill switch),
+            // and post-connect there is no other wire signal — the far side
+            // would otherwise learn only by ICE decay, 15–30 s. Reuses
+            // kind 10 (`.decline`, callID-keyed, parsed by every shipped
+            // build): "I am not in / no longer in this session". Fire-and-
+            // forget on the signal rail, independent of the media teardown
+            // below; best-effort like every decline. Old builds drop a
+            // mid-session decline in their default arm — today's behavior.
+            let signal = sendSignal
+            Task { try? await signal(.decline(callID: id), peer) }
             stopOpenTimer()
             teardownMedia()
             state = .closed(reason)
@@ -388,6 +400,21 @@ public final class PTTLinkController {
             stopOpenTimer()
             teardownMedia()
             state = .closed(.remoteDeclined)
+
+        // THE CLOSE SIGNAL, received: a decline for the link we are
+        // connecting or open on, from its peer, means they ended it (see
+        // `close(reason:)`). Land in remote-ended NOW instead of waiting for
+        // ICE decay. Id-keyed: a late busy-decline for an abandoned id, or a
+        // decline for someone else's link, matches nothing and is dropped.
+        case (.decline(let id), .opening(let ourID, let ourPeer, _, .connecting))
+            where id == ourID && peerKey == ourPeer,
+             (.decline(let id), .open(let ourID, let ourPeer, _))
+            where id == ourID && peerKey == ourPeer:
+            RedactLog.event("ptt-link: peer closed the link (close signal) while \(Self.describe(state))",
+                            Self.detail(ourID, peerKey))
+            stopOpenTimer()
+            teardownMedia()
+            state = .closed(.remoteEnded)
 
         // Everything else is a call frame, stale, or crossed — ignore.
         // Log the ptt-relevant drops (a late answer/decline, a foreign id) —

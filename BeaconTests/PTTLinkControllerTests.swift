@@ -145,14 +145,16 @@ final class PTTLinkControllerTests: XCTestCase {
         XCTAssertEqual(h.controller.state, .closed(.remoteDeclined))
     }
 
-    func testRemoteDeclineWhileConnectingIsDropped() async throws {
+    /// RE-PINNED 2026-09-11 (close signal, scoping doc 11.13): a decline for
+    /// our current id from its peer while connecting is the peer CLOSING —
+    /// it used to be dropped. Full pins in PTTLinkCloseSignalTests.
+    func testRemoteDeclineWhileConnectingEndsAsRemoteEnded() async throws {
         let h = Harness()
         await h.controller.open(to: peerA)
         let linkID = try XCTUnwrap(h.controller.state.linkID)
         await h.controller.handleInbound(.answer(callID: linkID, sdp: "a"), from: peerA)
         await h.controller.handleInbound(.decline(callID: linkID), from: peerA)
-        XCTAssertEqual(h.controller.state,
-                       .opening(linkID: linkID, peerKey: peerA, role: .initiator, phase: .connecting))
+        XCTAssertEqual(h.controller.state, .closed(.remoteEnded))
     }
 
     // MARK: - Timeout (injected duration, visible terminal state)
@@ -449,15 +451,20 @@ final class PTTLinkControllerTests: XCTestCase {
             XCTAssertEqual(h.session.startCalls, [])
             XCTAssertEqual(h.sent.count, 1)
         }
-        // open: answers and declines are meaningless.
+        // open: an answer is meaningless; a decline for our id from the WRONG
+        // peer is dropped; a decline for our id from ITS peer is the close
+        // signal (re-pinned 2026-09-11, 11.13) and ends the link.
         do {
             let h = Harness()
             await h.controller.handleInbound(.pttRequest(callID: idX, sdp: "o"), from: peerA)
             h.session.onConnected?()
             await h.controller.handleInbound(.answer(callID: idX, sdp: "a"), from: peerA)
-            await h.controller.handleInbound(.decline(callID: idX), from: peerA)
+            await h.controller.handleInbound(.decline(callID: idX), from: peerB)
             XCTAssertTrue(h.controller.isOpen)
             XCTAssertEqual(h.session.closeCalls, 0)
+            await h.controller.handleInbound(.decline(callID: idX), from: peerA)
+            XCTAssertEqual(h.controller.state, .closed(.remoteEnded))
+            XCTAssertEqual(h.session.closeCalls, 1)
         }
     }
 
@@ -686,7 +693,10 @@ private final class Harness {
             self.sessions.append(s)
             return s
         }
-        send = { [unowned self] signal, peer in
+        // weak, not unowned: the close signal (11.13) is a fire-and-forget
+        // Task that can run after a test's harness is gone.
+        send = { [weak self] signal, peer in
+            guard let self else { return }
             self.sent.append((signal, peer))
             self.journalBox.entries.append("send:\(Self.name(of: signal))")
             if let error = self.sendError { throw error }

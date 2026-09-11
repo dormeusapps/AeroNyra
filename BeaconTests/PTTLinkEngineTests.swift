@@ -128,6 +128,8 @@ private final class Harness {
             self.sessions.append(s)
             return s
         }
-        recordSend = { [unowned self] in self.sent.append($0) }
+        // weak: the close signal (11.13) is a fire-and-forget Task that can
+        // run after a test's harness is gone.
+        recordSend = { [weak self] in self?.sent.append($0) }
     }
 }
