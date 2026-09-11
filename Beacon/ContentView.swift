@@ -1421,10 +1421,32 @@ private struct ReadyView: View {
 /// Settings live in the Chats top bar. `MeshPresence` is injected above by
 /// ContentView and read here for per-row and per-conversation reachability.
 private struct ChatsRootView: View {
+    /// Step 5 deep link: a request here replaces the path with that peer's
+    /// conversation (popping anything deeper). `Peer` is the path value —
+    /// `PersistentModel` is Hashable — so rows push the same object they
+    /// always did; the only lookup is the intent's key → row, done once.
+    @Environment(NavigationIntent.self) private var intent: NavigationIntent?
+    @Environment(\.modelContext) private var modelContext
+    @State private var path: [Peer] = []
+
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             HomeView()
+                .navigationDestination(for: Peer.self) { peer in
+                    StreamView(peer: peer)
+                }
         }
         .tint(Color.brand)
+        .onChange(of: intent?.request) { _, request in
+            guard let request, let peer = peer(for: request.key) else { return }
+            path = [peer]
+        }
+    }
+
+    /// Small-roster in-memory lookup (the same shape BlockedContactsView
+    /// trusts) — no #Predicate, nothing here can misfire.
+    private func peer(for key: Data) -> Peer? {
+        let all = (try? modelContext.fetch(FetchDescriptor<Peer>())) ?? []
+        return all.first { $0.publicKeyData == key }
     }
 }

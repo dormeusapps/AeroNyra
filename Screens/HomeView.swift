@@ -253,9 +253,10 @@ struct HomeView: View {
             .padding(.bottom, 10)
 
             ForEach(z.peers, id: \.publicKeyData) { peer in
-                NavigationLink {
-                    StreamView(peer: peer)
-                } label: {
+                // Value link (step 5 deep link): the destination is declared
+                // once on the chats root's stack, so a programmatic path can
+                // reach the same screen. Same push, same back swipe.
+                NavigationLink(value: peer) {
                     // The menu rides the INNER cell — on the NavigationLink
                     // itself the link swallows the long-press and no menu shows.
                     peerRow(peer, presence: z.presence)
