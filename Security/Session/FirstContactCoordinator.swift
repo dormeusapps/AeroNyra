@@ -1680,6 +1680,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 }
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
 
+            case .pttRequest(let body):
+                // Live PTT-over-IP link request (kind 14): gated and parsed
+                // EXACTLY like .callRequest, routed on the same .callSignal
+                // event. COMPAT NOTE: a pre-kind-14 build (App Store build 10
+                // and earlier) decodes this as an unknown tag and drops it
+                // silently at `decodeSealed` — no decline comes back. The
+                // initiator must rely on its OWN open timeout to give up; do
+                // not wait for a wire reply that an old peer will never send.
+                guard verifiedIdentities.contains(rawKey) else {
+                    RedactLog.event("first-contact: DROP ptt-request from unverified", "\(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                guard let signal = CallSignal.parsePTTRequestBody(body) else {
+                    RedactLog.event("first-contact: malformed ptt-request", "from \(peer.userIDHex.prefix(16))…")
+                    return
+                }
+                eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
+
             case .callAnswer(let body):
                 // F1 (7f STRICT-VERIFIED): gated exactly like .callRequest —
                 // an answer from an unverified holder is dropped, no reply.

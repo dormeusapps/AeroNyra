@@ -68,6 +68,15 @@
 // text/ack/nostr to decode (media is unaffected). Sessions are untouched (padding
 // is inside the seal, not the ratchet), so no re-handshake is needed.
 //
+// LIVE PTT-OVER-IP (wire step) adds a fourteenth kind — PTT REQUEST (14) — the
+// no-ring counterpart of `callRequest`: byte-identical body (callID(16) ‖
+// complete SDP offer), answered/declined with the SAME kinds 9/10 keyed by the
+// same 16-byte id. There is no session-close kind; closing the peer connection
+// is the hang-up. It is NOT the BLE-live `pttOpen`/`pttClose` pair (12/13):
+// those carry the 32-byte session secret and seed the BLE receiver; this one
+// carries SDP and opens an internet audio link. Padded like the call kinds, so
+// kind 8 and kind 14 with the same SDP are the same size on the wire.
+//
 
 import Foundation
 import Security   // SecRandomCopyBytes (pttID CSPRNG mint)
@@ -90,6 +99,7 @@ public enum WirePayloadKind: UInt8, Sendable, CaseIterable {
     case inviteEchoV2  = 11  // remote-invite echo v2: inviteID(16) ‖ redeemer npub(32)
     case pttOpen       = 12  // PTT session open: pttID(16) ‖ S(32) — 32-byte session-secret handover
     case pttClose      = 13  // PTT session close: pttID(16)
+    case pttRequest    = 14  // live PTT-over-IP link request: callID(16) ‖ complete SDP offer — body-identical to callRequest, no ring
 }
 
 // MARK: - MessagePayload
@@ -111,6 +121,7 @@ public enum MessagePayload: Sendable, Equatable {
     case inviteEchoV2(Data)    // remote-invite echo v2: inviteID(16) ‖ npub(32)
     case pttOpen(Data)         // PTT open: pttID(16) ‖ S(32) — session-secret handover
     case pttClose(Data)        // PTT close: pttID(16)
+    case pttRequest(Data)      // live PTT-over-IP link request: callID(16) ‖ SDP offer
 
     public var kind: WirePayloadKind {
         switch self {
@@ -127,6 +138,7 @@ public enum MessagePayload: Sendable, Equatable {
         case .inviteEchoV2:  return .inviteEchoV2
         case .pttOpen:       return .pttOpen
         case .pttClose:      return .pttClose
+        case .pttRequest:    return .pttRequest
         }
     }
 
@@ -145,7 +157,8 @@ public enum MessagePayload: Sendable, Equatable {
              .callDecline(let d),
              .inviteEchoV2(let d),
              .pttOpen(let d),
-             .pttClose(let d):
+             .pttClose(let d),
+             .pttRequest(let d):
             return d
         }
     }
@@ -172,7 +185,7 @@ public enum MessagePayload: Sendable, Equatable {
             return encoded()                        // already bucket-shaped
         case .text, .ack, .nostrIdentity, .reconnectHello, .inviteEcho,
              .inviteEchoV2, .callRequest, .callAnswer, .callDecline,
-             .pttOpen, .pttClose:
+             .pttOpen, .pttClose, .pttRequest:
             return PayloadPadding.pad(encoded())    // collapse length to a bucket
         }
     }
@@ -214,6 +227,9 @@ public enum MessagePayload: Sendable, Equatable {
         case .pttClose:
             guard body.count == pttIDByteCount else { return nil }
             return .pttClose(body)
+        // Length-permissive like .callRequest: the strict callID‖SDP check is
+        // CallSignal.parsePTTRequestBody on the receive path.
+        case .pttRequest:    return .pttRequest(body)
         }
     }
 

@@ -46,6 +46,14 @@ public enum CallSignal: Equatable, Sendable {
     /// Callee → caller, on Decline (also: hang-up before connect). Body:
     /// exactly callID(16). Carries no SDP — there is nothing to negotiate.
     case decline(callID: Data)
+
+    /// Initiator → responder: open a live PTT-over-IP link WITHOUT ringing
+    /// (wire kind 14). Body: callID(16) ‖ SDP offer — byte-identical to
+    /// `.request`; only the kind tag differs. The responder replies with the
+    /// same `.answer` / `.decline` kinds keyed by this callID. Not consumed
+    /// by CallController (its `handleInbound` default arm drops it); the PTT
+    /// link controller is its consumer (a later step).
+    case pttRequest(callID: Data, sdp: String)
 }
 
 // MARK: - Layout constants
@@ -72,7 +80,8 @@ public extension CallSignal {
     /// wire tag byte, owned by MessagePayload.
     func encodedBody() -> Data {
         switch self {
-        case .request(let callID, let sdp), .answer(let callID, let sdp):
+        case .request(let callID, let sdp), .answer(let callID, let sdp),
+             .pttRequest(let callID, let sdp):
             var out = Data(capacity: Self.callIDByteCount + sdp.utf8.count)
             out.append(callID)
             out.append(contentsOf: sdp.utf8)
@@ -102,6 +111,13 @@ public extension CallSignal {
         return .answer(callID: callID, sdp: sdp)
     }
 
+    /// Parse a `.pttRequest` body: callID(16) ‖ UTF-8 SDP. Same strictness as
+    /// `parseRequestBody` — the layout is identical, only the kind differs.
+    static func parsePTTRequestBody(_ body: Data) -> CallSignal? {
+        guard let (callID, sdp) = splitIDAndSDP(body) else { return nil }
+        return .pttRequest(callID: callID, sdp: sdp)
+    }
+
     /// Parse a `.decline` body: exactly callID(16), nothing else. Returns nil
     /// on any other length.
     static func parseDeclineBody(_ body: Data) -> CallSignal? {
@@ -128,7 +144,8 @@ public extension CallSignal {
     /// The id tying this frame to its call attempt.
     var callID: Data {
         switch self {
-        case .request(let id, _), .answer(let id, _), .decline(let id):
+        case .request(let id, _), .answer(let id, _), .decline(let id),
+             .pttRequest(let id, _):
             return id
         }
     }
@@ -136,7 +153,8 @@ public extension CallSignal {
     /// The SDP this frame carries, if its kind carries one.
     var sdp: String? {
         switch self {
-        case .request(_, let sdp), .answer(_, let sdp): return sdp
+        case .request(_, let sdp), .answer(_, let sdp),
+             .pttRequest(_, let sdp):                    return sdp
         case .decline:                                  return nil
         }
     }
@@ -146,7 +164,7 @@ public extension CallSignal {
 
 public extension MessagePayload {
 
-    /// Wrap a CallSignal in its tagged payload (WirePayloadKind 8–10), the
+    /// Wrap a CallSignal in its tagged payload (WirePayloadKind 8–10, 14), the
     /// exact bytes `sealedPlaintext()` pads and the session seals. Kept here —
     /// not in MessagePayload.swift — so call knowledge stays in Core/Calls,
     /// mirroring how `deliveryAck` builders live beside their feature.
@@ -155,6 +173,7 @@ public extension MessagePayload {
         case .request: return .callRequest(signal.encodedBody())
         case .answer:  return .callAnswer(signal.encodedBody())
         case .decline: return .callDecline(signal.encodedBody())
+        case .pttRequest: return .pttRequest(signal.encodedBody())
         }
     }
 }
