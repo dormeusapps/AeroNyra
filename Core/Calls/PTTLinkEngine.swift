@@ -97,10 +97,12 @@ public final class PTTLinkEngine {
     /// Split out (internal) so the policy is unit-testable without posting
     /// notifications through the real center.
     func interruptionBegan() {
+        RedactLog.event("ptt-link engine: audio interruption began — closing link", "state \(PTTLinkController.describe(state))")
         controller.close(reason: .interrupted)
     }
 
     func didEnterBackground() {
+        RedactLog.event("ptt-link engine: entered background — closing link", "state \(PTTLinkController.describe(state))")
         controller.close(reason: .interrupted)
     }
 

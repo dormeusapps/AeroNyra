@@ -159,7 +159,15 @@ public final class PTTLinkController {
     public static let defaultOpenTimeout: Duration = .seconds(20)
 
     public private(set) var state: State = .idle {
-        didSet { onStateChange?(state) }
+        didSet {
+            // FIELD DIAGNOSTICS (2026-09-11): every transition, through the
+            // redacting logger. Label = state names / role / phase / reason
+            // only; link id prefix + peer hex prefix ride in the DEBUG-only
+            // private detail, same discipline as first-contact's lines.
+            RedactLog.event("ptt-link: \(Self.describe(oldValue)) → \(Self.describe(state))",
+                            Self.detail(state.linkID ?? oldValue.linkID, state.peerKey ?? oldValue.peerKey))
+            onStateChange?(state)
+        }
     }
 
     /// True while the local mic is un-muted by a press. Forced false by every
@@ -171,6 +179,26 @@ public final class PTTLinkController {
     public var isOpen: Bool {
         if case .open = state { return true }
         return false
+    }
+
+    // MARK: Diagnostics helpers (labels carry NO identifier — RedactLog contract)
+
+    static func describe(_ state: State) -> String {
+        switch state {
+        case .idle:                                  return "idle"
+        case .opening(_, _, let role, let phase):    return "opening(\(role), \(phase))"
+        case .open(_, _, let role):                  return "open(\(role))"
+        case .closed(let reason):                    return "closed(\(reason))"
+        }
+    }
+
+    static func detail(_ linkID: Data?, _ peerKey: Data?) -> String {
+        "link \(hexPrefix(linkID)) peer \(hexPrefix(peerKey))…"
+    }
+
+    private static func hexPrefix(_ data: Data?) -> String {
+        guard let data else { return "-" }
+        return data.prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: Seams + hooks
@@ -205,7 +233,10 @@ public final class PTTLinkController {
     public func open(to peerKey: Data) async {
         switch state {
         case .idle, .closed: break
-        case .opening, .open: return
+        case .opening, .open:
+            RedactLog.event("ptt-link: open(to:) refused — already \(Self.describe(state))",
+                            Self.detail(state.linkID, peerKey))
+            return
         }
         let linkID = Self.randomLinkID()
         let session = makeMediaSession()
@@ -222,9 +253,11 @@ public final class PTTLinkController {
             session.setMicMuted(true)
             try await sendSignal(.pttRequest(callID: linkID, sdp: offer), peerKey)
             guard isCurrent(session, linkID) else { return }
+            RedactLog.event("ptt-link: request sent, open timer armed", Self.detail(linkID, peerKey))
             armOpenTimer(linkID: linkID)
         } catch {
             guard isCurrent(session, linkID) else { return }
+            RedactLog.event("ptt-link: open failed (offer or send)", "\(type(of: error)) \(Self.detail(linkID, peerKey))")
             teardownMedia()
             state = .closed(.failed)
         }
@@ -238,6 +271,8 @@ public final class PTTLinkController {
     public func close(reason: CloseReason = .localClosed) {
         switch state {
         case .opening, .open:
+            RedactLog.event("ptt-link: close(\(reason)) from \(Self.describe(state))",
+                            Self.detail(state.linkID, state.peerKey))
             stopOpenTimer()
             teardownMedia()
             state = .closed(reason)
@@ -261,7 +296,10 @@ public final class PTTLinkController {
     /// open, so the caller can fall through to the BLE-live path.
     @discardableResult
     public func pressBegan() -> Bool {
-        guard isOpen, let media else { return false }
+        guard isOpen, let media else {
+            RedactLog.event("ptt-link: press ignored — \(Self.describe(state))", Self.detail(state.linkID, state.peerKey))
+            return false
+        }
         media.setMicMuted(false)
         isTransmitting = true
         return true
@@ -290,9 +328,13 @@ public final class PTTLinkController {
         case (.pttRequest(let id, let sdp), .idle),
              (.pttRequest(let id, let sdp), .closed):
             guard autoAnswerPolicy() else {
+                RedactLog.event("ptt-link: inbound request while free — policy refused, declining",
+                                Self.detail(id, peerKey))
                 try? await sendSignal(.decline(callID: id), peerKey)
                 return
             }
+            RedactLog.event("ptt-link: inbound request while \(Self.describe(state)) — auto-answering",
+                            Self.detail(id, peerKey))
             await autoAnswer(linkID: id, peerKey: peerKey, offer: sdp)
 
         // GLARE: the peer we are waiting on opened to us at the same time.
@@ -303,17 +345,22 @@ public final class PTTLinkController {
             if theirID.lexicographicallyPrecedes(ourID) {
                 // They win: abandon ours silently (their decline of it, if
                 // any, arrives stale) and answer theirs.
+                RedactLog.event("ptt-link: glare — they win, abandoning ours, answering theirs",
+                                Self.detail(theirID, peerKey))
                 stopOpenTimer()
                 teardownMedia()
                 await autoAnswer(linkID: theirID, peerKey: peerKey, offer: sdp)
             } else {
                 // We win: decline theirs; they abandon it and answer ours.
+                RedactLog.event("ptt-link: glare — we win, declining theirs", Self.detail(theirID, peerKey))
                 try? await sendSignal(.decline(callID: theirID), peerKey)
             }
 
         // A request while a link is in flight or open: busy — decline the
         // NEW attempt, current link untouched.
         case (.pttRequest(let id, _), _):
+            RedactLog.event("ptt-link: inbound request while \(Self.describe(state)) — busy, declining",
+                            Self.detail(id, peerKey))
             try? await sendSignal(.decline(callID: id), peerKey)
 
         // Their answer to our request: apply it, ICE runs.
@@ -321,11 +368,13 @@ public final class PTTLinkController {
               .opening(let ourID, let ourPeer, .initiator, .awaitingAnswer))
             where id == ourID && peerKey == ourPeer:
             guard let session = media else { return }
+            RedactLog.event("ptt-link: answer received — applying", Self.detail(ourID, peerKey))
             state = .opening(linkID: ourID, peerKey: ourPeer, role: .initiator, phase: .connecting)
             do {
                 try await session.start(remoteAnswer: sdp)
             } catch {
                 guard isCurrent(session, ourID) else { return }
+                RedactLog.event("ptt-link: applying answer failed", "\(type(of: error)) \(Self.detail(ourID, peerKey))")
                 stopOpenTimer()
                 teardownMedia()
                 state = .closed(.connectFailed)
@@ -335,13 +384,23 @@ public final class PTTLinkController {
         case (.decline(let id),
               .opening(let ourID, let ourPeer, .initiator, .awaitingAnswer))
             where id == ourID && peerKey == ourPeer:
+            RedactLog.event("ptt-link: our request was declined", Self.detail(ourID, peerKey))
             stopOpenTimer()
             teardownMedia()
             state = .closed(.remoteDeclined)
 
         // Everything else is a call frame, stale, or crossed — ignore.
+        // Log the ptt-relevant drops (a late answer/decline, a foreign id) —
+        // call rings (`.request`) are CallController's and stay silent here.
         default:
-            break
+            switch signal {
+            case .answer(let id, _):
+                RedactLog.event("ptt-link: dropped answer while \(Self.describe(state))", Self.detail(id, peerKey))
+            case .decline(let id):
+                RedactLog.event("ptt-link: dropped decline while \(Self.describe(state))", Self.detail(id, peerKey))
+            default:
+                break
+            }
         }
     }
 
@@ -360,9 +419,11 @@ public final class PTTLinkController {
             session.setMicMuted(true)   // track exists now; nothing transmits pre-press
             try await sendSignal(.answer(callID: linkID, sdp: answer), peerKey)
             guard isCurrent(session, linkID) else { return }
+            RedactLog.event("ptt-link: answer sent, open timer armed", Self.detail(linkID, peerKey))
             armOpenTimer(linkID: linkID)
         } catch {
             guard isCurrent(session, linkID) else { return }
+            RedactLog.event("ptt-link: auto-answer failed (answer or send)", "\(type(of: error)) \(Self.detail(linkID, peerKey))")
             teardownMedia()
             state = .closed(.failed)
         }
@@ -380,7 +441,11 @@ public final class PTTLinkController {
         session.onConnected = { [weak self] in
             guard let self,
                   case .opening(let id, let peer, let role, _) = self.state,
-                  id == linkID, let media = self.media else { return }
+                  id == linkID, let media = self.media else {
+                RedactLog.event("ptt-link: media connected for a non-current link — ignored", Self.detail(linkID, nil))
+                return
+            }
+            RedactLog.event("ptt-link: media connected", Self.detail(id, peer))
             self.stopOpenTimer()
             // Locked order: mute, then loudspeaker (the session is active on
             // both roles by now, so the override sticks).
@@ -391,19 +456,25 @@ public final class PTTLinkController {
         session.onFailed = { [weak self] in
             guard let self else { return }
             switch self.state {
-            case .opening(let id, _, _, _) where id == linkID:
+            case .opening(let id, let peer, _, _) where id == linkID:
+                RedactLog.event("ptt-link: media failed before connect (ICE failed/closed)", Self.detail(id, peer))
                 self.stopOpenTimer()
                 self.teardownMedia()
                 self.state = .closed(.connectFailed)
-            case .open(let id, _, _) where id == linkID:
+            case .open(let id, let peer, _) where id == linkID:
+                RedactLog.event("ptt-link: media failed while open (ICE decay → remote ended)", Self.detail(id, peer))
                 self.teardownMedia()
                 self.state = .closed(.remoteEnded)
             default:
-                break
+                RedactLog.event("ptt-link: media failed for a non-current link — ignored", Self.detail(linkID, nil))
             }
         }
         session.onRemoteEnded = { [weak self] in
-            guard let self, case .open(let id, _, _) = self.state, id == linkID else { return }
+            guard let self, case .open(let id, let peer, _) = self.state, id == linkID else {
+                RedactLog.event("ptt-link: media remote-ended for a non-current link — ignored", Self.detail(linkID, nil))
+                return
+            }
+            RedactLog.event("ptt-link: media remote-ended (ICE decay after connect)", Self.detail(id, peer))
             self.teardownMedia()
             self.state = .closed(.remoteEnded)
         }
@@ -422,7 +493,8 @@ public final class PTTLinkController {
     }
 
     private func openTimedOut(linkID: Data) {
-        guard case .opening(let id, _, _, let phase) = state, id == linkID else { return }
+        guard case .opening(let id, let peer, _, let phase) = state, id == linkID else { return }
+        RedactLog.event("ptt-link: open timer fired while opening(\(phase))", Self.detail(id, peer))
         teardownMedia()
         state = .closed(phase == .awaitingAnswer ? .unreachable : .connectFailed)
     }
