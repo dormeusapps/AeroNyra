@@ -292,6 +292,25 @@ before any archive.**
 > is currently missing from disk — flagged for restoration; not load-bearing for
 > this closure, which rests on source + tests.)
 
+**Call-time IP disclosure (calls and live PTT-over-IP).** Call media is
+direct peer-to-peer WebRTC with no STUN and no TURN configured
+(`CallICEConfig.operatorSupplied` is empty). Each party therefore learns the
+other's real network address at call time: the address appears in the ICE
+candidates exchanged over the sealed signaling channel and in the media path
+itself. This is inherent to P2P media, is already true of calls as shipped, and
+is unchanged by live PTT-over-IP. Exposure is to the counterparty (adversary
+set: the verified contact you chose to call). The addresses are never disclosed
+to a relay or to a passive observer of the signaling channel, since the offer
+and answer travel sealed. Note that once media flows, an observer positioned on
+the network path can still see that the two endpoints are exchanging real-time
+traffic — content stays encrypted, but the fact and timing of a direct call
+between two addresses is visible to a path observer. Verified 2026-09-11: a
+Wi-Fi to cellular call connected host-to-host over globally routable IPv6 with
+zero ICE servers. Consequence of the no-infrastructure choice: no operator host
+ever learns call-time IPs or call timing. Cross-network calling requires both
+sides to have working IPv6; IPv4-only endpoints on either side fail to connect
+rather than falling back to a relay.
+
 ### 9.4 Current disposition
 
 | Exposure | Adversary | Disposition |
@@ -307,6 +326,7 @@ before any archive.**
 | Identity in app logs | local | **Closed** — `RedactLog`, Release-verified |
 | Identity in OS URL-router logs | local | **Accepted/documented** (§9.3) |
 | Locked-Keychain identity overwrite via BLE restoration | — | **Closed** — `BootRouter` single-preimage routing + `load()` error taxonomy, regression-tested (§9.3) |
+| Call-time IP of each party | the counterparty (flow visible to path observer) | **Accepted** — inherent to P2P media; no relay means no third party learns it (§9.3) |
 
 ## 10. Push-to-talk (PTT) live voice — per-frame session crypto
 
