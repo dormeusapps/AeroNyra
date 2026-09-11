@@ -128,6 +128,27 @@ final class PTTSessionOwner {
     /// last close (1 → 0).
     private var openSessions: Set<Data> = []
 
+    /// EXTERNAL HOLDS (live PTT-over-IP, step 5 — explicit operator approval
+    /// to touch this BLE-adjacent file, 2026-09-11): a SECOND set of reasons
+    /// for the process-global session to be live, keyed by walkie-link id.
+    /// A WebRTC link activates the session itself (inside WebRTCCallMedia,
+    /// at `start` / `makeAnswer`), so a hold never activates — it only
+    /// raises the IC8 flag so the GUARDED deactivation sites in this codebase
+    /// hold while a link is up. Of the six `setActive(false)` sites, four
+    /// read `isLive` (VoicePlayer, VoiceRecorder, the story preview in
+    /// StreamView, WebRTCCallMedia) and two do not: this owner's own release
+    /// (it IS the flag) and `PTTCaptureEngine.finish()` — which is why the
+    /// walkie surface must never run the capture engine while a link
+    /// exists, opening OR open (see StreamView.beginPTT). Without this hold,
+    /// any guarded site finishing would `setActive(false)` under WebRTC's
+    /// audio unit and the link would go silently deaf and mute while both
+    /// screens still read "open" — a REAL, reachable state (an inbound
+    /// walkie note auto-playing under the cover; the responder playing a
+    /// note anywhere in the app), not a theoretical one. Same last-one-out
+    /// rule as `openSessions`: the session is released only when BOTH sets
+    /// are empty. `isLive` stays THE flag — nothing here duplicates a guard.
+    private var externalHolds: Set<Data> = []
+
     private var observers: [NSObjectProtocol] = []
 
     init(audioSession: any PTTAudioSessionControlling = SystemPTTAudioSession()) {
@@ -186,8 +207,32 @@ final class PTTSessionOwner {
     func closed(pttID: Data) {
         guard openSessions.remove(pttID) != nil else { return } // double-close: no-op
         guard openSessions.isEmpty else { return }              // others still live
+        guard externalHolds.isEmpty else { return }             // a link still holds it live
         isLive = false                   // IC8 — lower the flag…
         audioSession.deactivate()        // …then release (.notifyOthers…)
+    }
+
+    // MARK: External holds (live PTT-over-IP link — see `externalHolds`)
+
+    /// A walkie link is opening or open: hold the session live under its id.
+    /// Never activates (WebRTC owns that); idempotent per id.
+    func hold(externalID: Data) {
+        guard !externalHolds.contains(externalID) else { return }
+        externalHolds.insert(externalID)
+        isLive = true                    // IC8 — raise (or keep) the flag
+    }
+
+    /// The link closed: drop its hold. When it was the LAST reason — no BLE
+    /// session and no other hold — lower the flag and release the session
+    /// politely, exactly as `closed(pttID:)` does for the last BLE session.
+    /// WebRTCCallMedia has already skipped its own deactivation by then (it
+    /// read `isLive` true at close), so the session is released exactly once,
+    /// here, with `.notifyOthersOnDeactivation` so music resumes.
+    func release(externalID: Data) {
+        guard externalHolds.remove(externalID) != nil else { return } // double-release: no-op
+        guard externalHolds.isEmpty, openSessions.isEmpty else { return }
+        isLive = false
+        audioSession.deactivate()
     }
 
     // MARK: Interruption (mirrors CallEngine's v1 policy)

@@ -54,6 +54,15 @@ public final class PTTLinkEngine {
 
     private var lifecycleObservers: [NSObjectProtocol] = []
 
+    /// The link id currently registered with `PTTSessionOwner` as an external
+    /// hold (see that file): registered on the FIRST `.opening` state (the
+    /// responder's session is active from `makeAnswer`, before connect) and
+    /// released on `.closed` / `.idle`, AFTER the controller has closed the
+    /// media — so WebRTC skips its own deactivation (it reads `isLive`) and
+    /// the owner releases the session exactly once. A nil `shared` owner
+    /// (not yet wired) means no hold and WebRTC's own deactivation runs.
+    private var heldLinkID: Data?
+
     /// `makeMediaSession`: test seam. nil (the app) means the real
     /// `WebRTCCallMedia`, camera off — the link never negotiates video on.
     public init(sendSignal: @escaping (CallSignal, Data) async throws -> Void,
@@ -68,12 +77,36 @@ public final class PTTLinkEngine {
             openTimeout: openTimeout,
             autoAnswerPolicy: autoAnswerPolicy)
         controller.onStateChange = { [weak self] newState in
-            self?.state = newState
+            guard let self else { return }
+            self.state = newState
+            self.syncSessionHold(for: newState)
         }
         controller.onTransmitChange = { [weak self] transmitting in
             self?.isTransmitting = transmitting
         }
         installLifecycleObservers()
+    }
+
+    // MARK: - Audio-session hold (IC8 choke point, see PTTSessionOwner)
+
+    private func syncSessionHold(for newState: PTTLinkController.State) {
+        switch newState {
+        case .opening(let id, _, _, _), .open(let id, _, _):
+            guard heldLinkID != id else { return }
+            // Glare re-key: HOLD the new id BEFORE releasing the old one, so
+            // the owner's set is never empty mid-hand-off and the flag never
+            // dips (a dip would deactivate the session between the abandoned
+            // attempt's close and the answer's activation). The last close
+            // still releases exactly once.
+            let old = heldLinkID
+            PTTSessionOwner.shared?.hold(externalID: id)
+            heldLinkID = id
+            if let old { PTTSessionOwner.shared?.release(externalID: old) }
+        case .idle, .closed:
+            guard let old = heldLinkID else { return }
+            heldLinkID = nil
+            PTTSessionOwner.shared?.release(externalID: old)
+        }
     }
 
     // MARK: - Teardown on the world intruding (mirrors CallEngine)
