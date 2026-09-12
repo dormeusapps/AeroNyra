@@ -2149,6 +2149,24 @@ enum WalkieLinkStatus: Equatable {
     }
 }
 
+// MARK: - Walkie sphere level (the one signal the globe reacts to)
+/// Pure selector behind `WalkieGlobeView.liveLevel`, pinned hardware-free
+/// (WalkieSphereLevelTests). Order: my mic while holding on the NOTE path;
+/// the auto-playing inbound clip; else idle. Under a link (opening OR open)
+/// the capture engine never runs (see StreamView.beginPTT), so its `levels`
+/// history is STALE — the last sample of the previous note — and must not be
+/// read: a hold under a link froze the sphere at that sample. The link's own
+/// levels arrive in later steps.
+enum WalkieSphereLevel {
+    static func select(holding: Bool, link: WalkieLinkStatus,
+                       micLevel: CGFloat?, inboundBusy: Bool,
+                       inboundLevel: CGFloat) -> Double {
+        if holding, !link.isLink { return Double(micLevel ?? 0) }
+        if inboundBusy { return Double(inboundLevel) }
+        return 0
+    }
+}
+
 // MARK: - Walkie mode (full-screen particle sphere · Step 2: voice-reactive)
 /// A full-screen "walkie mode" surface for the ONE peer this conversation is
 /// bound to. The visual is a fibonacci-sphere particle core (`WalkieCore`,
@@ -2171,10 +2189,11 @@ private struct WalkieGlobeView: View {
     /// the peer's voice the same way it reacts to mine.
     let autoPlay: PTTAutoPlay
     /// Live PTT-over-IP (step 5): the link's status for this peer, derived
-    /// by StreamView. Read for COPY ONLY — the mode label under the name and
-    /// the hold hint; the press path is StreamView's. Under a live link the
-    /// sphere has no mic meter to react to (`capture` is idle — the WebRTC
-    /// track is the mic), so it breathes calmly while transmitting.
+    /// by StreamView. Read for the copy (the mode label under the name, the
+    /// hold hint) and for the level selector; the press path is StreamView's.
+    /// Under a link the sphere has no mic meter to react to (`capture` is
+    /// idle — the WebRTC track is the mic), so it breathes calmly while
+    /// transmitting.
     let link: WalkieLinkStatus
     /// Forwarded to StreamView's `beginPTT`/`endPTT`. This view never touches
     /// the recorder's lifecycle or the wire — it only reports press/release.
@@ -2192,10 +2211,14 @@ private struct WalkieGlobeView: View {
 
     /// The single signal the sphere reacts to: my mic while holding, else the
     /// peer's playback level when a received clip is auto-playing, else idle.
+    /// Under a link the capture engine never runs, so its `levels` history is
+    /// STALE (the last sample of the previous note) — the pure selector
+    /// (`WalkieSphereLevel`) refuses that read; see it for the order.
     private var liveLevel: Double {
-        if holding { return Double(capture.levels.last ?? 0) }
-        if autoPlay.busyID != nil { return Double(autoPlay.inboundLevel) }
-        return 0
+        WalkieSphereLevel.select(holding: holding, link: link,
+                                 micLevel: capture.levels.last,
+                                 inboundBusy: autoPlay.busyID != nil,
+                                 inboundLevel: autoPlay.inboundLevel)
     }
 
     /// Mic permission denied — surfaced INSIDE the cover, since the StreamView
