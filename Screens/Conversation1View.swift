@@ -259,6 +259,8 @@ struct StreamView: View {
                             autoPlay: pttAutoPlay,
                             link: walkieLinkStatus,
                             linkEngine: pttLinkEngine,
+                            near: tier == .near,
+                            holdIsLinkHold: linkHolding,
                             onPressDown: { beginPTT() },
                             onPressUp: { endPTT() })
         }
@@ -2134,14 +2136,21 @@ enum WalkieLinkStatus: Equatable {
         }
     }
 
-    /// The label under the peer's name in the cover header.
-    func modeLabel(peerName: String) -> String {
+    /// The label under the peer's name in the cover header. `near` is the
+    /// chat header's tier (identity-resolved BLE reachability): when the peer
+    /// is near, a hold goes BLE-live no matter what the last IP attempt did,
+    /// so `.notes` and every `.ended` reason read "walkie · near" — the
+    /// failure copy was written for the FAR case, where a hold really does
+    /// become a note. (2026-09-12: the label read "couldn't connect · notes"
+    /// while BLE audio was flowing — it had no idea the peer was near.)
+    func modeLabel(peerName: String, near: Bool) -> String {
         switch self {
-        case .notes:      return "walkie"
+        case .notes:      return near ? "walkie · near" : "walkie"
         case .reaching:   return "reaching \(peerName)…"
         case .connecting: return "connecting…"
         case .live:       return "walkie · live"
         case .ended(let reason):
+            if near { return "walkie · near" }
             switch reason {
             case .unreachable:    return "couldn't reach \(peerName) · notes"
             case .remoteDeclined: return "\(peerName) isn't accepting walkies · notes"
@@ -2152,6 +2161,33 @@ enum WalkieLinkStatus: Equatable {
             case .localClosed, .preempted:
                 return "walkie"                    // never user-visible; not reachable
             }
+        }
+    }
+
+    /// The cover's hold hint, as a pure value so text and color cannot
+    /// disagree (WalkieLinkStatusTests). `holdIsLinkHold` is StreamView's
+    /// `linkHolding`: true only for a hold that began while the link was
+    /// opening and was refused when it died — THAT hold sent nothing and
+    /// must be released. A FRESH hold after a failure goes down the note
+    /// path and TRANSMITS (BLE-live when near, a note when far). 2026-09-12:
+    /// the hint said "nothing sent" for that fresh hold while the peer was
+    /// hearing it — the honest-failure principle inverted, the app lying
+    /// about success. Now only the dead link-hold reads "nothing sent".
+    enum Hint: Equatable {
+        case micOff          // permission denied: nothing can transmit
+        case holdToTalk      // idle
+        case keepHolding     // held while the link is still opening
+        case transmitting    // held and sending: live link, BLE-live, or a note
+        case nothingSent     // the dead link-hold: release, then press again
+    }
+
+    func hint(holding: Bool, holdIsLinkHold: Bool, micDenied: Bool) -> Hint {
+        if micDenied { return .micOff }
+        guard holding else { return .holdToTalk }
+        switch self {
+        case .reaching, .connecting: return .keepHolding
+        case .live, .notes:          return .transmitting
+        case .ended:                 return holdIsLinkHold ? .nothingSent : .transmitting
         }
     }
 }
@@ -2213,6 +2249,12 @@ private struct WalkieGlobeView: View {
     /// while holding — sampled per frame like the two meters above. Intents
     /// stay StreamView's (open/close/press/meter).
     let linkEngine: PTTLinkEngine?
+    /// The chat header's tier, for the mode label: near → "walkie · near".
+    let near: Bool
+    /// StreamView's `linkHolding`: the current hold is the dead link-hold
+    /// (began during opening, refused when the link died) — the ONE hold
+    /// whose hint must read "nothing sent". See `WalkieLinkStatus.hint`.
+    let holdIsLinkHold: Bool
     /// Forwarded to StreamView's `beginPTT`/`endPTT`. This view never touches
     /// the recorder's lifecycle or the wire — it only reports press/release.
     let onPressDown: () -> Void
@@ -2248,21 +2290,24 @@ private struct WalkieGlobeView: View {
     /// Hold-through-opening copy (11.6/11.7): a hold during opening is kept
     /// armed and goes live at connect, so the hint says to keep holding —
     /// never "transmitting" until the link is actually open.
+    private var hint: WalkieLinkStatus.Hint {
+        link.hint(holding: holding, holdIsLinkHold: holdIsLinkHold, micDenied: micDenied)
+    }
     private var hintText: String {
-        if micDenied { return "microphone off" }
-        guard holding else { return "hold to talk" }
-        switch link {
-        case .reaching, .connecting: return "connecting… keep holding"
-        case .live, .notes:          return "transmitting…"
-        case .ended:                 return "nothing sent · release, then press again"
+        switch hint {
+        case .micOff:       return "microphone off"
+        case .holdToTalk:   return "hold to talk"
+        case .keepHolding:  return "connecting… keep holding"
+        case .transmitting: return "transmitting…"
+        case .nothingSent:  return "nothing sent · release, then press again"
         }
     }
     private var hintColor: Color {
-        if micDenied { return Stillwater.Palette.mistDim }
-        guard holding else { return Stillwater.Palette.mistDimmest }
-        switch link {
-        case .reaching, .connecting, .ended: return Stillwater.Palette.mistDim   // held, not live
-        case .live, .notes:                  return Stillwater.Palette.biolume
+        switch hint {
+        case .micOff:                     return Stillwater.Palette.mistDim
+        case .holdToTalk:                 return Stillwater.Palette.mistDimmest
+        case .keepHolding, .nothingSent:  return Stillwater.Palette.mistDim   // held, not live
+        case .transmitting:               return Stillwater.Palette.biolume
         }
     }
 
@@ -2292,7 +2337,7 @@ private struct WalkieGlobeView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(peerName)
                     .stillwaterSerif(22, color: Stillwater.Palette.foam)
-                Text(link.modeLabel(peerName: peerName))
+                Text(link.modeLabel(peerName: peerName, near: near))
                     .stillwaterMono(8.5, trackingEm: 0.3, color: Stillwater.Palette.mistDim)
                     .animation(.easeOut(duration: 0.2), value: link)
             }

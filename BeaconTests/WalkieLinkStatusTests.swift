@@ -59,7 +59,9 @@ final class WalkieLinkStatusTests: XCTestCase {
             let status = WalkieLinkStatus.derive(from: .closed(reason), for: me)
             XCTAssertEqual(status, .ended(reason))
             XCTAssertFalse(status.isLink, "\(reason): the shipped note path again")
-            XCTAssertTrue(status.modeLabel(peerName: "Maya").hasSuffix("notes"), "\(reason) label names the fallback")
+            XCTAssertTrue(status.modeLabel(peerName: "Maya", near: false).hasSuffix("notes"), "\(reason) label names the fallback when FAR")
+            XCTAssertEqual(status.modeLabel(peerName: "Maya", near: true), "walkie · near",
+                           "\(reason): near, the failed attempt is irrelevant — a hold goes BLE-live")
         }
     }
 
@@ -68,11 +70,51 @@ final class WalkieLinkStatusTests: XCTestCase {
         XCTAssertEqual(WalkieLinkStatus.derive(from: .closed(.preempted), for: me), .notes)
     }
 
-    func testLabels() {
-        XCTAssertEqual(WalkieLinkStatus.notes.modeLabel(peerName: "Maya"), "walkie")
-        XCTAssertEqual(WalkieLinkStatus.reaching.modeLabel(peerName: "Maya"), "reaching Maya…")
-        XCTAssertEqual(WalkieLinkStatus.live.modeLabel(peerName: "Maya"), "walkie · live")
-        XCTAssertEqual(WalkieLinkStatus.ended(.unreachable).modeLabel(peerName: "Maya"),
+    func testLabelsFar() {
+        XCTAssertEqual(WalkieLinkStatus.notes.modeLabel(peerName: "Maya", near: false), "walkie")
+        XCTAssertEqual(WalkieLinkStatus.reaching.modeLabel(peerName: "Maya", near: false), "reaching Maya…")
+        XCTAssertEqual(WalkieLinkStatus.live.modeLabel(peerName: "Maya", near: false), "walkie · live")
+        XCTAssertEqual(WalkieLinkStatus.ended(.unreachable).modeLabel(peerName: "Maya", near: false),
                        "couldn't reach Maya · notes")
+    }
+
+    // MARK: Loop 7 (2026-09-12): the tier is the label's second input
+
+    func testLabelsNear() {
+        XCTAssertEqual(WalkieLinkStatus.notes.modeLabel(peerName: "Maya", near: true), "walkie · near")
+        XCTAssertEqual(WalkieLinkStatus.ended(.connectFailed).modeLabel(peerName: "Maya", near: true),
+                       "walkie · near", "the field symptom: 'couldn't connect · notes' while BLE audio flowed")
+        // A link that EXISTS is still a link, near or not.
+        XCTAssertEqual(WalkieLinkStatus.reaching.modeLabel(peerName: "Maya", near: true), "reaching Maya…")
+        XCTAssertEqual(WalkieLinkStatus.connecting.modeLabel(peerName: "Maya", near: true), "connecting…")
+        XCTAssertEqual(WalkieLinkStatus.live.modeLabel(peerName: "Maya", near: true), "walkie · live")
+    }
+
+    // MARK: Loop 7: the hold hint's second input is WHICH hold this is
+
+    func testHintIdleAndMicOff() {
+        XCTAssertEqual(WalkieLinkStatus.notes.hint(holding: false, holdIsLinkHold: false, micDenied: false), .holdToTalk)
+        XCTAssertEqual(WalkieLinkStatus.live.hint(holding: true, holdIsLinkHold: false, micDenied: true), .micOff,
+                       "mic denied wins over everything")
+    }
+
+    func testHintWhileOpeningIsKeepHolding() {
+        for status in [WalkieLinkStatus.reaching, .connecting] {
+            XCTAssertEqual(status.hint(holding: true, holdIsLinkHold: true, micDenied: false), .keepHolding)
+        }
+    }
+
+    func testHintTransmittingOnLiveAndNotePaths() {
+        XCTAssertEqual(WalkieLinkStatus.live.hint(holding: true, holdIsLinkHold: true, micDenied: false), .transmitting)
+        XCTAssertEqual(WalkieLinkStatus.notes.hint(holding: true, holdIsLinkHold: false, micDenied: false), .transmitting)
+    }
+
+    func testHintAfterFailureDependsOnWhichHold() {
+        let ended = WalkieLinkStatus.ended(.connectFailed)
+        XCTAssertEqual(ended.hint(holding: true, holdIsLinkHold: true, micDenied: false), .nothingSent,
+                       "the hold that began during opening and was refused: it sent nothing")
+        XCTAssertEqual(ended.hint(holding: true, holdIsLinkHold: false, micDenied: false), .transmitting,
+                       "a FRESH hold after the failure is on the note path and IS sending — the inverted-honesty bug")
+        XCTAssertEqual(ended.hint(holding: false, holdIsLinkHold: false, micDenied: false), .holdToTalk)
     }
 }
