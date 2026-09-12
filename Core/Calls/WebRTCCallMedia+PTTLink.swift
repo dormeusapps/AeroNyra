@@ -39,4 +39,27 @@ extension WebRTCCallMedia {
         }
         return nil
     }
+
+    /// My own voice level while transmitting (globe pulse, loop 3), LINEAR
+    /// 0…1, from the audio sender's `media-source` stats entry — the level of
+    /// the mic as WebRTC encodes it, the only in-process source of it. ASYNC:
+    /// one `statisticsForSender:` request per call (spec getStats with the
+    /// sender's selection), callback on the signaling thread, libwebrtc
+    /// caches the report for 50 ms. nil with no peer connection (closed), no
+    /// audio sender, or no such entry — the engine logs that once per run.
+    /// libwebrtc always invokes the completion, on a closed connection too,
+    /// so the continuation cannot leak; the `pc` guard runs before every
+    /// request regardless.
+    public func localAudioLevel() async -> Double? {
+        guard let pc,
+              let sender = pc.senders.first(where: { $0.track is RTCAudioTrack }) else { return nil }
+        return await withCheckedContinuation { cont in
+            pc.statistics(for: sender) { report in
+                let source = report.statistics.values.first {
+                    $0.type == "media-source" && ($0.values["kind"] as? String) == "audio"
+                }
+                cont.resume(returning: (source?.values["audioLevel"] as? NSNumber)?.doubleValue)
+            }
+        }
+    }
 }

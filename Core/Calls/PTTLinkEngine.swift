@@ -56,14 +56,29 @@ public final class PTTLinkEngine {
     /// meter running AND the link is `.open` (globe pulse, loop 2).
     public private(set) var remoteLevel: Double = 0
 
-    /// The cover's intent (`setRemoteLevelMeter`); the loop itself only ticks
-    /// while the link is open — see `syncMeter`.
+    /// My own voice while a press un-mutes the mic, on the same meter scale
+    /// (globe pulse, loop 3). 0 unless the cover has the meter running AND
+    /// `isTransmitting` — nothing is polled between presses.
+    public private(set) var localLevel: Double = 0
+
+    /// The cover's intent (`setLevelMeter`); each loop below only ticks
+    /// while its own condition also holds — see `syncMeter` / `syncLocalMeter`.
     private var meterWanted = false
     private var meterTask: Task<Void, Never>?
-    /// 20 Hz: RTP packets arrive every 20 ms and the sphere eases between
-    /// samples, so faster buys nothing. Deliberately unpinned (timer loop,
-    /// same ruling as the open timeout).
+    private var localMeterTask: Task<Void, Never>?
+    /// Remote, 20 Hz: a synchronous read (no stats), sampled at the rate RTP
+    /// packets arrive. Deliberately unpinned (timer loop, same ruling as the
+    /// open timeout).
     private static let meterInterval: Duration = .milliseconds(50)
+    /// Local, 10 Hz (Rubins, 2026-09-12): each tick is a stats request
+    /// (~1–2 ms CPU across threads). The sphere's own easing is 170–250 ms
+    /// (`WalkieCore.draw`: k = dt·4 / dt·6), so it CANNOT display anything
+    /// faster than ~10 Hz regardless of input rate — 20 Hz would be double
+    /// the CPU to render identical pixels. libwebrtc caches the report for
+    /// 50 ms anyway. If a future session wants every meter on one number,
+    /// that is a consistency argument, not a visual one: do not bump this
+    /// expecting it to look better.
+    private static let localMeterInterval: Duration = .milliseconds(100)
 
     public let controller: PTTLinkController
 
@@ -96,9 +111,12 @@ public final class PTTLinkEngine {
             self.state = newState
             self.syncSessionHold(for: newState)
             self.syncMeter()
+            self.syncLocalMeter()
         }
         controller.onTransmitChange = { [weak self] transmitting in
-            self?.isTransmitting = transmitting
+            guard let self else { return }
+            self.isTransmitting = transmitting
+            self.syncLocalMeter()
         }
         installLifecycleObservers()
     }
@@ -125,15 +143,17 @@ public final class PTTLinkEngine {
         }
     }
 
-    // MARK: - Remote level meter (globe pulse, loop 2)
+    // MARK: - Level meters (globe pulse, loops 2 + 3)
 
-    /// The walkie cover's intent: run the meter while the cover is up. The
-    /// loop runs only while ALSO `.open` — nothing ticks while reaching,
-    /// connecting, ended, or with no cover (a responder-role link behind its
+    /// The walkie cover's intent: run the meters while the cover is up. The
+    /// remote loop runs only while ALSO `.open`; the local loop only while
+    /// ALSO transmitting — nothing ticks while reaching, connecting, ended,
+    /// between presses, or with no cover (a responder-role link behind its
     /// banner meters nothing). Idempotent.
-    public func setRemoteLevelMeter(wanted: Bool) {
+    public func setLevelMeter(wanted: Bool) {
         meterWanted = wanted
         syncMeter()
+        syncLocalMeter()
     }
 
     /// The one place the loop starts or stops. Called from the intent and
@@ -175,6 +195,47 @@ public final class PTTLinkEngine {
             meterTask?.cancel()
             meterTask = nil
             remoteLevel = 0
+        }
+    }
+
+    /// The local twin of `syncMeter`, keyed on the press: starts on
+    /// `isTransmitting` (which implies `.open`), stops on release, close, or
+    /// cover dismiss. Each tick AWAITS a stats request, then re-checks the
+    /// press before writing — a level that arrives after release is dropped.
+    /// Same once-per-run log lines, `local` prefixed, so the field log can
+    /// tell "never polled" from "polled, no level" from "level, no pulse".
+    private func syncLocalMeter() {
+        let shouldRun = meterWanted && controller.isTransmitting
+        if shouldRun {
+            guard localMeterTask == nil else { return }
+            RedactLog.event("ptt-link meter: local started", "state \(PTTLinkController.describe(state))")
+            localMeterTask = Task { [weak self] in
+                var reportedUnavailable = false
+                var reportedAvailable = false
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: Self.localMeterInterval)
+                    guard let self, !Task.isCancelled else { return }
+                    let raw = await self.controller.localAudioLevel()
+                    guard !Task.isCancelled, self.controller.isTransmitting else { return }
+                    if raw == nil, !reportedUnavailable {
+                        reportedUnavailable = true
+                        RedactLog.event("ptt-link meter: local level unavailable (media-source audioLevel absent from the sender stats)", "")
+                    } else if raw != nil, !reportedAvailable {
+                        reportedAvailable = true
+                        RedactLog.event("ptt-link meter: local level available", "")
+                    }
+                    let mapped = Double(PTTCaptureDSP.meterLevel(rms: Float(raw ?? 0)))
+                    if mapped != self.localLevel { self.localLevel = mapped }
+                }
+            }
+        } else {
+            guard localMeterTask != nil || localLevel != 0 else { return }
+            if localMeterTask != nil {
+                RedactLog.event("ptt-link meter: local stopped", "wanted \(meterWanted) transmitting \(controller.isTransmitting) state \(PTTLinkController.describe(state))")
+            }
+            localMeterTask?.cancel()
+            localMeterTask = nil
+            localLevel = 0
         }
     }
 

@@ -88,10 +88,14 @@ public protocol PTTLinkMediaSession: CallMediaSession {
     /// session that cannot meter fails closed; `WebRTCCallMedia`'s real read
     /// is in `WebRTCCallMedia+PTTLink.swift`.
     var remoteAudioLevel: Double? { get }
+    /// My own voice level, LINEAR 0…1, nil when unknown. Async because the
+    /// real read is a stats request. Defaulted to nil below (fails closed).
+    func localAudioLevel() async -> Double?
 }
 
 extension PTTLinkMediaSession {
     public var remoteAudioLevel: Double? { nil }
+    public func localAudioLevel() async -> Double? { nil }
 }
 
 extension WebRTCCallMedia: PTTLinkMediaSession {}
@@ -194,6 +198,15 @@ public final class PTTLinkController {
     /// in every other state, so a closing or superseded session can never
     /// leak a level. Read by `PTTLinkEngine`'s meter (globe pulse, loop 2).
     public var remoteAudioLevel: Double? { isOpen ? media?.remoteAudioLevel : nil }
+
+    /// My own voice level (linear 0…1) — nil unless the link is open AND a
+    /// press is un-muting the mic, so nothing is ever polled between presses
+    /// (globe pulse, loop 3). The await is a real suspension: the caller
+    /// re-checks `isTransmitting` before using the value.
+    public func localAudioLevel() async -> Double? {
+        guard isOpen, isTransmitting, let media else { return nil }
+        return await media.localAudioLevel()
+    }
 
     // MARK: Diagnostics helpers (labels carry NO identifier — RedactLog contract)
 
