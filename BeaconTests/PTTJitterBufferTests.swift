@@ -108,22 +108,34 @@ final class PTTJitterBufferTests: XCTestCase {
         XCTAssertEqual(jb.count, 1)
     }
 
-    // MARK: Overflow — cap 8 (transport ring K), drop-OLDEST
+    // MARK: Overflow — cap 16 (6a, 2026-09-12: 320 ms, clears the measured
+    // start-of-spurt peak of 9–10), drop-OLDEST (the policy is 6c's)
+
+    func testCapacityClearsTheMeasuredStartOfSpurtPeak() {
+        // Field log: the first clump plus the next burst stack to 9–10 frames;
+        // the old cap of 8 evicted the frame about to play every time.
+        XCTAssertEqual(PTTJitterBuffer.capacity, 16)
+        var jb = PTTJitterBuffer()
+        for seq: UInt64 in 0..<10 { jb.push(seq: seq, pcm: frame(seq)) }
+        XCTAssertEqual(jb.count, 10, "a 10-deep start-of-spurt stack must not evict")
+        XCTAssertEqual(jb.pop(expectedSeq: 0), .frame(frame(0)))
+    }
 
     func testOverflowBeyondCapacityDropsOldest() {
+        let cap = UInt64(PTTJitterBuffer.capacity)
         var jb = PTTJitterBuffer()
-        for seq: UInt64 in 0..<10 {                     // 10 pushes into a cap of 8
+        for seq: UInt64 in 0..<(cap + 2) {              // cap + 2 pushes
             jb.push(seq: seq, pcm: frame(seq))
         }
         XCTAssertEqual(jb.count, PTTJitterBuffer.capacity)
-        // Oldest two (0, 1) were evicted; the freshest 8 (2...9) survive.
+        // Oldest two (0, 1) were evicted; the freshest `cap` (2...cap+1) survive.
         XCTAssertEqual(jb.minBufferedSeq, 2)
         XCTAssertEqual(jb.pop(expectedSeq: 0), .gap, "seq 0 was evicted — hole, later frames buffered")
         XCTAssertEqual(jb.pop(expectedSeq: 1), .gap)
-        for seq: UInt64 in 2..<10 {
+        for seq: UInt64 in 2..<(cap + 2) {
             XCTAssertEqual(jb.pop(expectedSeq: seq), .frame(frame(seq)))
         }
-        XCTAssertEqual(jb.pop(expectedSeq: 10), .empty)
+        XCTAssertEqual(jb.pop(expectedSeq: cap + 2), .empty)
     }
 
     // MARK: Flush — queued frames go, the drop-late gate stays

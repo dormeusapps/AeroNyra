@@ -38,10 +38,16 @@ struct PTTJitterBuffer {
     /// Prebuffer depth: hold playout until 3 frames (60 ms) are queued, or the
     /// player's own timeout fires. The buffer exposes readiness; it never waits.
     static let prebufferDepth = 3
-    /// Hard cap — matches the transport's per-peer audio ring
-    /// (`BLEMeshTransport.audioRingCapacity`, K = 8). Beyond it, drop-OLDEST:
-    /// late audio is worthless; the freshest frames win.
-    static let capacity = 8
+    /// Hard cap. 16 frames = 320 ms (was 8, 2026-09-12): the sender's input
+    /// tap delivers 100 ms bursts of 4–6 frames, and at a spurt start the
+    /// first clump plus the next burst stack to a measured peak of 9–10 —
+    /// every second the old cap was exceeded, drop-oldest evicted the very
+    /// frame about to play (field log: gapFill>0 ⇔ depthMax=8, no exception).
+    /// 16 clears that peak with headroom for one more stacked burst; it is
+    /// reached only in a real stall. NOT the transport ring's K (that one is
+    /// tuned against the reliable path and stays 8). Beyond it, drop-OLDEST
+    /// (the policy is its own change, 6c).
+    static let capacity = 16
 
     /// What the clock tick gets for the seq it expected.
     enum Pop: Equatable {
@@ -113,8 +119,14 @@ final class PTTPlayer: @unchecked Sendable {
     /// If the prebuffer never fills (a 1–2 frame spurt, or heavy loss), start
     /// anyway after this many ticks so short clips aren't swallowed.
     private static let prebufferTimeoutTicks = 6        // 120 ms
-    /// Consecutive silence-fills that end the talk-spurt.
-    private static let maxConsecutiveSilence = 3
+    /// Consecutive silence-fills that end the talk-spurt. 8 ticks = 160 ms
+    /// (was 3 = 60 ms, 2026-09-12): bursts arrive every 100 ms with up to
+    /// 120 ms between them (field log), so a 60 ms tolerance ended the spurt
+    /// on an ordinary late burst — node stop, flush, re-prebuffer, 120–180 ms
+    /// of dead air per event, 2–4 times per 10 s hold: the "jumpy". 160 ms is
+    /// the design gap (120 + one tick of margin) plus one tick, so only a
+    /// release or a dead link ends a spurt; the close signal ends it sooner.
+    private static let maxConsecutiveSilence = 8
     private static let frameSeconds = 0.020
 
     /// THE confinement queue. All mutable state below, every AVAudioEngine /
