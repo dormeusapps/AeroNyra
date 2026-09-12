@@ -355,6 +355,24 @@ struct StreamView: View {
                   case .closed(.interrupted) = engine.state else { return }
             openWalkieLink()
         }
+        // MODE FOLLOWS REACHABILITY (loop 5): with the cover up, a peer who
+        // drops out of BLE range with no link to anyone gets the IP link now
+        // (through the same decision); a peer who comes INTO range while a
+        // link to them is still reaching/connecting has that attempt closed —
+        // `.closed(.localClosed)` is not user-visible, so the label reads
+        // "walkie" and the next hold goes BLE-live. An OPEN link is left
+        // alone: it works, and ending it mid-conversation would be worse.
+        .onChange(of: tier) { _, newTier in
+            guard showWalkie, let engine = pttLinkEngine else { return }
+            if newTier == .near {
+                if case .opening(_, let p, _, _) = engine.state, p == peer.publicKeyData {
+                    engine.close()
+                    engine.reset()
+                }
+            } else if engine.state.peerKey == nil {
+                openWalkieLink()
+            }
+        }
         .sheet(isPresented: $showVerify) {
             SASVerifySheet(peerName: peerName,
                            rawKey: peer.publicKeyData,
@@ -713,12 +731,25 @@ struct StreamView: View {
     private func openWalkieLink() {
         guard let engine = pttLinkEngine else { return }
         let key = peer.publicKeyData
-        if let current = engine.state.peerKey {
-            if current == key { return }                   // adopt
+        // Mode selection (loop 5): BLE when near, the IP link otherwise — the
+        // pure decision holds the rule; this switch only performs it.
+        switch WalkieOpenDecision.decide(near: tier == .near,
+                                         linkPeer: engine.state.peerKey, peer: key) {
+        case .adopt:
+            return
+        case .stayOnBLE:
+            engine.reset()                                 // a stale "ended" must not show under BLE
+        case .closeOtherThenStayOnBLE:
             engine.close()                                 // someone else's: ours wins
+            engine.reset()
+        case .open:
+            engine.reset()                                 // .closed → .idle (else no-op)
+            Task { await engine.open(to: key) }
+        case .closeOtherThenOpen:
+            engine.close()                                 // someone else's: ours wins
+            engine.reset()
+            Task { await engine.open(to: key) }
         }
-        engine.reset()                                     // .closed → .idle (else no-op)
-        Task { await engine.open(to: key) }
     }
 
     @MainActor
@@ -2189,6 +2220,33 @@ enum WalkieLinkStatus: Equatable {
         case .live, .notes:          return .transmitting
         case .ended:                 return holdIsLinkHold ? .nothingSent : .transmitting
         }
+    }
+}
+
+// MARK: - Walkie open decision (mode selection: BLE when near, the IP link otherwise)
+/// What the cover does on appear / deep link / return from background, given
+/// BLE reachability and the link engine's current peer. Pure, pinned
+/// hardware-free (WalkieOpenDecisionTests). THE RULE (Rubins, 2026-09-12): a
+/// peer reachable over BLE right now — `StreamView.tier == .near`, the same
+/// identity-resolved reachability the chat header paints — NEVER gets an IP
+/// link attempt; the hold goes BLE-live at once, the walkie that shipped
+/// before this branch. A link the peer already opened toward us is adopted
+/// regardless of transport (it works). Until 2026-09-12 this condition was
+/// simply absent: `openWalkieLink` opened a link unconditionally, and a near
+/// peer sat through "reaching… / connecting…" with every hold swallowed.
+enum WalkieOpenDecision: Equatable {
+    case adopt                       // a link to THIS peer exists (any role): keep it
+    case stayOnBLE                   // near, no link: the shipped BLE-live path, open nothing
+    case open                        // not near, no link: open the IP link
+    case closeOtherThenStayOnBLE     // someone else's link is up; near: close it, open nothing
+    case closeOtherThenOpen          // someone else's link is up; not near: close it, open ours
+
+    static func decide(near: Bool, linkPeer: Data?, peer: Data) -> WalkieOpenDecision {
+        if let linkPeer {
+            if linkPeer == peer { return .adopt }
+            return near ? .closeOtherThenStayOnBLE : .closeOtherThenOpen
+        }
+        return near ? .stayOnBLE : .open
     }
 }
 
