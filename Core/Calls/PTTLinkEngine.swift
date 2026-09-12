@@ -50,6 +50,21 @@ public final class PTTLinkEngine {
     /// Mirror of `PTTLinkController.isTransmitting`.
     public private(set) var isTransmitting = false
 
+    /// The peer's voice on the open link, on the sphere's 0…1 meter scale
+    /// (`PTTCaptureDSP.meterLevel` — the same dB mapping the mic meter uses,
+    /// so both voices move the globe alike). 0 unless a walkie cover has the
+    /// meter running AND the link is `.open` (globe pulse, loop 2).
+    public private(set) var remoteLevel: Double = 0
+
+    /// The cover's intent (`setRemoteLevelMeter`); the loop itself only ticks
+    /// while the link is open — see `syncMeter`.
+    private var meterWanted = false
+    private var meterTask: Task<Void, Never>?
+    /// 20 Hz: RTP packets arrive every 20 ms and the sphere eases between
+    /// samples, so faster buys nothing. Deliberately unpinned (timer loop,
+    /// same ruling as the open timeout).
+    private static let meterInterval: Duration = .milliseconds(50)
+
     public let controller: PTTLinkController
 
     private var lifecycleObservers: [NSObjectProtocol] = []
@@ -80,6 +95,7 @@ public final class PTTLinkEngine {
             guard let self else { return }
             self.state = newState
             self.syncSessionHold(for: newState)
+            self.syncMeter()
         }
         controller.onTransmitChange = { [weak self] transmitting in
             self?.isTransmitting = transmitting
@@ -106,6 +122,59 @@ public final class PTTLinkEngine {
             guard let old = heldLinkID else { return }
             heldLinkID = nil
             PTTSessionOwner.shared?.release(externalID: old)
+        }
+    }
+
+    // MARK: - Remote level meter (globe pulse, loop 2)
+
+    /// The walkie cover's intent: run the meter while the cover is up. The
+    /// loop runs only while ALSO `.open` — nothing ticks while reaching,
+    /// connecting, ended, or with no cover (a responder-role link behind its
+    /// banner meters nothing). Idempotent.
+    public func setRemoteLevelMeter(wanted: Bool) {
+        meterWanted = wanted
+        syncMeter()
+    }
+
+    /// The one place the loop starts or stops. Called from the intent and
+    /// from every state change, so the loop self-stops the moment the link
+    /// leaves `.open` and restarts if a later attempt opens under the same
+    /// cover. Every start/stop is logged so a missing pulse in the field is
+    /// diagnosable: no "meter started" line = the cover never asked or the
+    /// link never opened; "level unavailable" = the read returns nil.
+    private func syncMeter() {
+        let shouldRun = meterWanted && controller.isOpen
+        if shouldRun {
+            guard meterTask == nil else { return }
+            RedactLog.event("ptt-link meter: started", "state \(PTTLinkController.describe(state))")
+            meterTask = Task { [weak self] in
+                var reportedUnavailable = false
+                var reportedAvailable = false
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: Self.meterInterval)
+                    guard let self, !Task.isCancelled else { return }
+                    let raw = self.controller.remoteAudioLevel
+                    // Log each outcome ONCE per run, so the field log says
+                    // whether the level source exists at all.
+                    if raw == nil, !reportedUnavailable, self.controller.isOpen {
+                        reportedUnavailable = true
+                        RedactLog.event("ptt-link meter: level unavailable (audioLevel nil — header extension not negotiated, or no packet played yet)", "")
+                    } else if raw != nil, !reportedAvailable {
+                        reportedAvailable = true
+                        RedactLog.event("ptt-link meter: level available", "")
+                    }
+                    let mapped = Double(PTTCaptureDSP.meterLevel(rms: Float(raw ?? 0)))
+                    if mapped != self.remoteLevel { self.remoteLevel = mapped }
+                }
+            }
+        } else {
+            guard meterTask != nil || remoteLevel != 0 else { return }
+            if meterTask != nil {
+                RedactLog.event("ptt-link meter: stopped", "wanted \(meterWanted) state \(PTTLinkController.describe(state))")
+            }
+            meterTask?.cancel()
+            meterTask = nil
+            remoteLevel = 0
         }
     }
 

@@ -236,6 +236,7 @@ struct StreamView: View {
             // the cover — leaving a chat must NOT close a responder-role link
             // that lives app-wide behind its banner.
             if showWalkie {
+                pttLinkEngine?.setRemoteLevelMeter(wanted: false)
                 pttLinkEngine?.close()
                 UIApplication.shared.isIdleTimerDisabled = callEngine?.isCallInProgress ?? false
             }
@@ -257,6 +258,7 @@ struct StreamView: View {
                             capture: pttCapture,
                             autoPlay: pttAutoPlay,
                             link: walkieLinkStatus,
+                            linkEngine: pttLinkEngine,
                             onPressDown: { beginPTT() },
                             onPressUp: { endPTT() })
         }
@@ -284,6 +286,10 @@ struct StreamView: View {
         //    cover only ever releases what nobody else holds.
         .onChange(of: showWalkie) { _, shown in
             if !shown { teardownPTTIfHolding() }
+            // The remote-level meter (globe pulse, loop 2) follows the cover:
+            // wanted while up, off on dismiss. The engine only ticks it while
+            // the link is also open, so a failed reach meters nothing.
+            pttLinkEngine?.setRemoteLevelMeter(wanted: shown)
             if shown {
                 openWalkieLink()
             } else {
@@ -2152,17 +2158,19 @@ enum WalkieLinkStatus: Equatable {
 // MARK: - Walkie sphere level (the one signal the globe reacts to)
 /// Pure selector behind `WalkieGlobeView.liveLevel`, pinned hardware-free
 /// (WalkieSphereLevelTests). Order: my mic while holding on the NOTE path;
-/// the auto-playing inbound clip; else idle. Under a link (opening OR open)
-/// the capture engine never runs (see StreamView.beginPTT), so its `levels`
-/// history is STALE — the last sample of the previous note — and must not be
-/// read: a hold under a link froze the sphere at that sample. The link's own
-/// levels arrive in later steps.
+/// the auto-playing inbound clip; the peer's voice on a LIVE link
+/// (`PTTLinkEngine.remoteLevel`, already on the meter scale); else idle.
+/// Under a link (opening OR open) the capture engine never runs (see
+/// StreamView.beginPTT), so its `levels` history is STALE — the last sample
+/// of the previous note — and must not be read: a hold under a link froze
+/// the sphere at that sample. My own voice on the link arrives in loop 3.
 enum WalkieSphereLevel {
     static func select(holding: Bool, link: WalkieLinkStatus,
                        micLevel: CGFloat?, inboundBusy: Bool,
-                       inboundLevel: CGFloat) -> Double {
+                       inboundLevel: CGFloat, linkRemoteLevel: Double) -> Double {
         if holding, !link.isLink { return Double(micLevel ?? 0) }
         if inboundBusy { return Double(inboundLevel) }
+        if link == .live { return linkRemoteLevel }
         return 0
     }
 }
@@ -2195,6 +2203,10 @@ private struct WalkieGlobeView: View {
     /// idle — the WebRTC track is the mic), so it breathes calmly while
     /// transmitting.
     let link: WalkieLinkStatus
+    /// Live PTT-over-IP (globe pulse, loop 2): read for `remoteLevel` ONLY —
+    /// the peer's voice on the open link, sampled per frame like the two
+    /// meters above. Intents stay StreamView's (open/close/press/meter).
+    let linkEngine: PTTLinkEngine?
     /// Forwarded to StreamView's `beginPTT`/`endPTT`. This view never touches
     /// the recorder's lifecycle or the wire — it only reports press/release.
     let onPressDown: () -> Void
@@ -2218,7 +2230,8 @@ private struct WalkieGlobeView: View {
         WalkieSphereLevel.select(holding: holding, link: link,
                                  micLevel: capture.levels.last,
                                  inboundBusy: autoPlay.busyID != nil,
-                                 inboundLevel: autoPlay.inboundLevel)
+                                 inboundLevel: autoPlay.inboundLevel,
+                                 linkRemoteLevel: linkEngine?.remoteLevel ?? 0)
     }
 
     /// Mic permission denied — surfaced INSIDE the cover, since the StreamView
@@ -2302,7 +2315,10 @@ private struct WalkieGlobeView: View {
     /// functional reactions keep running (§3). `contentShape(Circle())` keeps the
     /// press target on the orb, clear of the header and the bottom hint.
     private var sphere: some View {
-        let paused = reduceMotion && !holding && autoPlay.busyID == nil
+        // Under reduce-motion the sphere pauses only when NOTHING functional
+        // is showing: not holding, no clip, and no live link (loop 2: the
+        // peer's voice is a functional reaction too, §3).
+        let paused = reduceMotion && !holding && autoPlay.busyID == nil && link != .live
         return TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: paused)) { tl in
             Canvas { ctx, size in
                 var c = ctx

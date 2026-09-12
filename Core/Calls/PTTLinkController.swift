@@ -83,6 +83,15 @@ public protocol PTTLinkMediaSession: CallMediaSession {
     /// Force the loudspeaker route. Sticks only on an ACTIVE audio session,
     /// i.e. after `start` (initiator) / `makeAnswer` (responder).
     func setSpeakerEnabled(_ enabled: Bool)
+    /// The peer's voice level, LINEAR 0…1, nil when unknown (before connect,
+    /// after close, or no level available). Defaulted to nil below so a
+    /// session that cannot meter fails closed; `WebRTCCallMedia`'s real read
+    /// is in `WebRTCCallMedia+PTTLink.swift`.
+    var remoteAudioLevel: Double? { get }
+}
+
+extension PTTLinkMediaSession {
+    public var remoteAudioLevel: Double? { nil }
 }
 
 extension WebRTCCallMedia: PTTLinkMediaSession {}
@@ -180,6 +189,11 @@ public final class PTTLinkController {
         if case .open = state { return true }
         return false
     }
+
+    /// The peer's voice level (linear 0…1) under the CURRENT open link; nil
+    /// in every other state, so a closing or superseded session can never
+    /// leak a level. Read by `PTTLinkEngine`'s meter (globe pulse, loop 2).
+    public var remoteAudioLevel: Double? { isOpen ? media?.remoteAudioLevel : nil }
 
     // MARK: Diagnostics helpers (labels carry NO identifier — RedactLog contract)
 

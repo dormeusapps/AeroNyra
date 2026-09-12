@@ -124,7 +124,10 @@ public final class WebRTCCallMedia: NSObject, CallMediaSession {
 
     // MARK: Internals
     private let config: CallICEConfig
-    private var pc: RTCPeerConnection?
+    /// `private(set)` (was `private`), 2026-09-12: the getter is read by the
+    /// link-only level extension (`WebRTCCallMedia+PTTLink.swift`) — nothing
+    /// on the call path reads it, and nothing outside this file sets it.
+    private(set) var pc: RTCPeerConnection?
     private var audioTrack: RTCAudioTrack?
     private var localVideoTrack: RTCVideoTrack?
     /// The video RTCRtpSender, retained (its add() return was previously
