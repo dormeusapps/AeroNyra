@@ -120,6 +120,10 @@ struct ContentView: View {
     /// return, `shared` would clear, and the four IC8 deactivation guards
     /// would silently read false forever.
     @State private var pttSessionOwner: PTTSessionOwner?
+    /// Globe pulse, loop 4: the BLE-live inbound meter (peer + level), built
+    /// beside the player and the owner, threaded into ReadyView like the
+    /// owner, injected into the environment like the link engine.
+    @State private var pttInboundMeter: PTTLiveInboundMeter?
 
     /// The persisted closed-contact allowlist store (STEP 7a). Loaded at launch to
     /// seed reconnect (warmInboundSessions + enableReconnect) and held so later
@@ -192,12 +196,14 @@ struct ContentView: View {
                 // coordinator + router are set together in makeSessionStack, so
                 // unwrapping both here is safe — whenever one is non-nil, so is
                 // the other.
-                if let coordinator, let router, let pairingService, let pttSessionOwner {
+                if let coordinator, let router, let pairingService, let pttSessionOwner,
+                   let pttInboundMeter {
                     ReadyView(container: container,
                               coordinator: coordinator,
                               router: router,
                               pairingService: pairingService,
                               pttSessionOwner: pttSessionOwner,
+                              pttInboundMeter: pttInboundMeter,
                               pendingInviteURL: $pendingInviteURL,
                               nostrIdentityChanged: $nostrIdentityChanged,
                               nostrTransport: nostrTransportRef)
@@ -669,6 +675,14 @@ struct ContentView: View {
         // (UIBackgroundModes untouched); a backgrounded listener hears
         // nothing, the documented v1 scope.
         let pttPlayer = PTTPlayer()
+        // Globe pulse, loop 4: the player's per-frame level → the meter, on
+        // the main actor. Weak: the meter's lifetime is the @State hold, never
+        // this closure's. Set BEFORE the player reaches the coordinator, so no
+        // frame is ever scheduled un-metered.
+        let meter = PTTLiveInboundMeter()
+        pttPlayer.onLevel = { [weak meter] level in
+            Task { @MainActor in meter?.report(level) }
+        }
         let owner = PTTSessionOwner()
         // IC8 — THIS assignment arms the four deactivation guards
         // (VoicePlayer / VoiceRecorder / StoryComposerView / StoryViewer):
@@ -684,6 +698,7 @@ struct ContentView: View {
         // the explicit "stop the note" pre-empt lands when a reachable seam
         // exists.
         pttSessionOwner = owner
+        pttInboundMeter = meter
 
         // STEP 7c-1/7c-2 — the enrollment seam: the single serializing owner of the
         // live ContactAllowlist AND the single-use invite ledger. Seeded with the
@@ -1044,6 +1059,10 @@ private struct ReadyView: View {
     /// `MessageInbox.onPTTSession` at it — the onCallSignal → CallEngine
     /// pattern, listener side.
     let pttSessionOwner: PTTSessionOwner
+    /// Globe pulse, loop 4: the BLE-live inbound meter, same hold/threading
+    /// story as the owner above; the session handler below feeds its peer
+    /// edges, the environment hands it to the walkie cover.
+    let pttInboundMeter: PTTLiveInboundMeter
 
     /// Root-captured invite URL (ContentView.onOpenURL). Consumed exactly once
     /// below, then cleared — AFTER redeem returns, never before: this is the
@@ -1115,6 +1134,7 @@ private struct ReadyView: View {
                     .environment(pairingService)
                     .environment(callEngine)
                     .environment(pttLinkEngine)
+                    .environment(pttInboundMeter)
                     .environment(navigationIntent)
                     .task { await inbox.run() }
                     .task { await inbox.runDeliveryUpdates(router.deliveryUpdates) }   // 7b.2a
@@ -1244,11 +1264,13 @@ private struct ReadyView: View {
                 // edges are called synchronously — no Task, no await. Weak:
                 // the owner's lifetime belongs to ContentView's @State hold,
                 // never to this closure.
-                built.onPTTSession = { [weak pttSessionOwner] opened, peerKey, pttID in
+                built.onPTTSession = { [weak pttSessionOwner, weak pttInboundMeter] opened, peerKey, pttID in
                     if opened {
                         pttSessionOwner?.opened(pttID: pttID, peerKey: peerKey)
+                        pttInboundMeter?.sessionOpened(peerKey: peerKey)     // loop 4
                     } else {
                         pttSessionOwner?.closed(pttID: pttID)
+                        pttInboundMeter?.sessionClosed(peerKey: peerKey)     // loop 4
                     }
                 }
                 // Ephemeral media reaper (SEC-6 / P3), boot pass: wipe inbound

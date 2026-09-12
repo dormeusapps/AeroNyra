@@ -40,6 +40,10 @@ struct StreamView: View {
     /// The walkie cover OWNS the link while it is up: opened on appear,
     /// adopted if already opening/open to this peer, closed on dismiss.
     @Environment(PTTLinkEngine.self) private var pttLinkEngine: PTTLinkEngine?
+    /// Globe pulse, loop 4: the BLE-live inbound meter (which peer's live
+    /// session is open toward me + their level). Read by the cover for THIS
+    /// peer only; nil in previews (the sphere's live-inbound branch is off).
+    @Environment(PTTLiveInboundMeter.self) private var pttInboundMeter: PTTLiveInboundMeter?
     /// Step 5 deep link: a walkie request for THIS peer raises the cover on
     /// arrival (and on a repeat tap while already here). The cover then
     /// adopts the link already open to this peer — no request, no reconnect.
@@ -261,6 +265,8 @@ struct StreamView: View {
                             linkEngine: pttLinkEngine,
                             near: tier == .near,
                             holdIsLinkHold: linkHolding,
+                            liveInbound: pttInboundMeter,
+                            peerKey: peer.publicKeyData,
                             onPressDown: { beginPTT() },
                             onPressUp: { endPTT() })
         }
@@ -2256,19 +2262,22 @@ enum WalkieOpenDecision: Equatable {
 /// link (`PTTLinkEngine.localLevel` — MINE WINS, Rubins 2026-09-12: the
 /// point of the outbound pulse is knowing my mic is live while I hold); my
 /// mic while holding on the NOTE path; the auto-playing inbound clip; the
-/// peer's voice on a live link (`remoteLevel`); else idle. Both link levels
-/// are already on the meter scale. Under a link (opening OR open) the
-/// capture engine never runs (see StreamView.beginPTT), so its `levels`
-/// history is STALE — the last sample of the previous note — and must not
-/// be read: a hold under a link froze the sphere at that sample.
+/// peer's voice on a BLE-live session from THIS peer (`liveInboundLevel`,
+/// nil when no such session — loop 4); the peer's voice on a live link
+/// (`remoteLevel`); else idle. All three link/session levels are already on
+/// the meter scale. Under a link (opening OR open) the capture engine never
+/// runs (see StreamView.beginPTT), so its `levels` history is STALE — the
+/// last sample of the previous note — and must not be read: a hold under a
+/// link froze the sphere at that sample.
 enum WalkieSphereLevel {
     static func select(holding: Bool, link: WalkieLinkStatus,
                        micLevel: CGFloat?, inboundBusy: Bool,
                        inboundLevel: CGFloat, linkRemoteLevel: Double,
-                       linkLocalLevel: Double) -> Double {
+                       linkLocalLevel: Double, liveInboundLevel: Double?) -> Double {
         if holding, link == .live { return linkLocalLevel }
         if holding, !link.isLink { return Double(micLevel ?? 0) }
         if inboundBusy { return Double(inboundLevel) }
+        if let liveInboundLevel { return liveInboundLevel }
         if link == .live { return linkRemoteLevel }
         return 0
     }
@@ -2313,6 +2322,12 @@ private struct WalkieGlobeView: View {
     /// (began during opening, refused when the link died) — the ONE hold
     /// whose hint must read "nothing sent". See `WalkieLinkStatus.hint`.
     let holdIsLinkHold: Bool
+    /// Globe pulse, loop 4: the BLE-live inbound meter, read per frame for
+    /// `peerKey` only (`level(for:)` is nil unless THIS peer's session is
+    /// open), so the same sphere reacts to their Bluetooth voice as it does
+    /// to their voice over IP. nil in previews.
+    let liveInbound: PTTLiveInboundMeter?
+    let peerKey: Data
     /// Forwarded to StreamView's `beginPTT`/`endPTT`. This view never touches
     /// the recorder's lifecycle or the wire — it only reports press/release.
     let onPressDown: () -> Void
@@ -2338,8 +2353,13 @@ private struct WalkieGlobeView: View {
                                  inboundBusy: autoPlay.busyID != nil,
                                  inboundLevel: autoPlay.inboundLevel,
                                  linkRemoteLevel: linkEngine?.remoteLevel ?? 0,
-                                 linkLocalLevel: linkEngine?.localLevel ?? 0)
+                                 linkLocalLevel: linkEngine?.localLevel ?? 0,
+                                 liveInboundLevel: liveInbound?.level(for: peerKey))
     }
+
+    /// A BLE-live session from THIS peer is open (loop 4) — a functional
+    /// reaction, so the reduce-motion pause stays off while it lasts.
+    private var liveInboundOpen: Bool { liveInbound?.activePeer == peerKey }
 
     /// Mic permission denied — surfaced INSIDE the cover, since the StreamView
     /// alert hides behind it. Flips true after a hold hits a denied capture.
@@ -2426,9 +2446,11 @@ private struct WalkieGlobeView: View {
     /// press target on the orb, clear of the header and the bottom hint.
     private var sphere: some View {
         // Under reduce-motion the sphere pauses only when NOTHING functional
-        // is showing: not holding, no clip, and no live link (loop 2: the
-        // peer's voice is a functional reaction too, §3).
-        let paused = reduceMotion && !holding && autoPlay.busyID == nil && link != .live
+        // is showing: not holding, no clip, no live link (loop 2), and no
+        // BLE-live session from this peer (loop 4) — the peer's voice is a
+        // functional reaction too, §3.
+        let paused = reduceMotion && !holding && autoPlay.busyID == nil
+            && link != .live && !liveInboundOpen
         return TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: paused)) { tl in
             Canvas { ctx, size in
                 var c = ctx

@@ -9,7 +9,8 @@
 //  runs under a link, so that meter is the stale tail of the previous voice
 //  note and the sphere froze on it. Everything else pins today's order: my
 //  own voice while holding on a LIVE link (loop 3, mine wins), else my mic
-//  on the note path, else the auto-playing inbound clip, else (loop 2) the
+//  on the note path, else the auto-playing inbound clip, else (loop 4) the
+//  peer's voice on a BLE-live session from this peer, else (loop 2) the
 //  peer's voice on a LIVE link, else idle.
 //
 
@@ -23,28 +24,28 @@ final class WalkieSphereLevelTests: XCTestCase {
     func testHoldOnNotePathReadsMic() {
         let level = WalkieSphereLevel.select(holding: true, link: .notes,
                                              micLevel: 0.7, inboundBusy: false,
-                                             inboundLevel: 0, linkRemoteLevel: 0, linkLocalLevel: 0)
+                                             inboundLevel: 0, linkRemoteLevel: 0, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.7, accuracy: 0.0001)
     }
 
     func testHoldOnNotePathWithNoMeterYetReadsZero() {
         let level = WalkieSphereLevel.select(holding: true, link: .notes,
                                              micLevel: nil, inboundBusy: false,
-                                             inboundLevel: 0, linkRemoteLevel: 0, linkLocalLevel: 0)
+                                             inboundLevel: 0, linkRemoteLevel: 0, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0)
     }
 
     func testHoldOnNotePathBeatsInbound() {
         let level = WalkieSphereLevel.select(holding: true, link: .notes,
                                              micLevel: 0.3, inboundBusy: true,
-                                             inboundLevel: 0.9, linkRemoteLevel: 0, linkLocalLevel: 0)
+                                             inboundLevel: 0.9, linkRemoteLevel: 0, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.3, accuracy: 0.0001, "my mic wins while I hold")
     }
 
     func testEndedReadsAsNotePath() {
         let level = WalkieSphereLevel.select(holding: true, link: .ended(.unreachable),
                                              micLevel: 0.5, inboundBusy: false,
-                                             inboundLevel: 0, linkRemoteLevel: 0, linkLocalLevel: 0)
+                                             inboundLevel: 0, linkRemoteLevel: 0, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.5, accuracy: 0.0001, ".ended is the note path again")
     }
 
@@ -53,7 +54,7 @@ final class WalkieSphereLevelTests: XCTestCase {
     func testInboundClipDrivesTheSphereWhenNotHolding() {
         let level = WalkieSphereLevel.select(holding: false, link: .notes,
                                              micLevel: 0.8, inboundBusy: true,
-                                             inboundLevel: 0.4, linkRemoteLevel: 0, linkLocalLevel: 0)
+                                             inboundLevel: 0.4, linkRemoteLevel: 0, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.4, accuracy: 0.0001)
     }
 
@@ -61,7 +62,7 @@ final class WalkieSphereLevelTests: XCTestCase {
         // Scenario 4: a note auto-plays under a live link; the sphere reacts to it.
         let level = WalkieSphereLevel.select(holding: false, link: .live,
                                              micLevel: 0.8, inboundBusy: true,
-                                             inboundLevel: 0.4, linkRemoteLevel: 0, linkLocalLevel: 0)
+                                             inboundLevel: 0.4, linkRemoteLevel: 0, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.4, accuracy: 0.0001)
     }
 
@@ -70,7 +71,7 @@ final class WalkieSphereLevelTests: XCTestCase {
     func testIdleIsZero() {
         let level = WalkieSphereLevel.select(holding: false, link: .notes,
                                              micLevel: 0.9, inboundBusy: false,
-                                             inboundLevel: 0.9, linkRemoteLevel: 0, linkLocalLevel: 0)
+                                             inboundLevel: 0.9, linkRemoteLevel: 0, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0, "a stale meter must not leak while idle")
     }
 
@@ -80,7 +81,7 @@ final class WalkieSphereLevelTests: XCTestCase {
         for link in [WalkieLinkStatus.reaching, .connecting, .live] {
             let level = WalkieSphereLevel.select(holding: true, link: link,
                                                  micLevel: 0.95, inboundBusy: false,
-                                                 inboundLevel: 0, linkRemoteLevel: 0, linkLocalLevel: 0)
+                                                 inboundLevel: 0, linkRemoteLevel: 0, linkLocalLevel: 0, liveInboundLevel: nil)
             XCTAssertEqual(level, 0, "\(link): the capture engine is not running, its meter is stale")
         }
     }
@@ -91,7 +92,7 @@ final class WalkieSphereLevelTests: XCTestCase {
         for link in [WalkieLinkStatus.reaching, .connecting] {
             let level = WalkieSphereLevel.select(holding: true, link: link,
                                                  micLevel: 0.95, inboundBusy: true,
-                                                 inboundLevel: 0.2, linkRemoteLevel: 0, linkLocalLevel: 0)
+                                                 inboundLevel: 0.2, linkRemoteLevel: 0, linkLocalLevel: 0, liveInboundLevel: nil)
             XCTAssertEqual(level, 0.2, accuracy: 0.0001, "\(link): stale mic skipped; the clip still shows")
         }
     }
@@ -102,7 +103,7 @@ final class WalkieSphereLevelTests: XCTestCase {
         // hold beats a clip. Was a loop-1 pin of the interim state.
         let level = WalkieSphereLevel.select(holding: true, link: .live,
                                              micLevel: 0.95, inboundBusy: true,
-                                             inboundLevel: 0.2, linkRemoteLevel: 0, linkLocalLevel: 0.5)
+                                             inboundLevel: 0.2, linkRemoteLevel: 0, linkLocalLevel: 0.5, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.5, accuracy: 0.0001, "holding on live: mine, not the clip")
     }
 
@@ -111,7 +112,7 @@ final class WalkieSphereLevelTests: XCTestCase {
     func testLiveLinkShowsThePeersVoice() {
         let level = WalkieSphereLevel.select(holding: false, link: .live,
                                              micLevel: nil, inboundBusy: false,
-                                             inboundLevel: 0, linkRemoteLevel: 0.6, linkLocalLevel: 0)
+                                             inboundLevel: 0, linkRemoteLevel: 0.6, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.6, accuracy: 0.0001)
     }
 
@@ -121,7 +122,7 @@ final class WalkieSphereLevelTests: XCTestCase {
         // the peer's level either (that is loop 3's precedence ruling).
         let level = WalkieSphereLevel.select(holding: true, link: .live,
                                              micLevel: 0.95, inboundBusy: false,
-                                             inboundLevel: 0, linkRemoteLevel: 0.6, linkLocalLevel: 0)
+                                             inboundLevel: 0, linkRemoteLevel: 0.6, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0, "stale mic skipped; mine wins over theirs while holding")
     }
 
@@ -129,7 +130,7 @@ final class WalkieSphereLevelTests: XCTestCase {
         for link in [WalkieLinkStatus.notes, .reaching, .connecting, .ended(.remoteEnded)] {
             let level = WalkieSphereLevel.select(holding: false, link: link,
                                                  micLevel: nil, inboundBusy: false,
-                                                 inboundLevel: 0, linkRemoteLevel: 0.6, linkLocalLevel: 0)
+                                                 inboundLevel: 0, linkRemoteLevel: 0.6, linkLocalLevel: 0, liveInboundLevel: nil)
             XCTAssertEqual(level, 0, "\(link): a leftover remote level must not move the sphere")
         }
     }
@@ -138,7 +139,7 @@ final class WalkieSphereLevelTests: XCTestCase {
         // Scenario 4 under a live link: the clip is the louder claim on the sphere.
         let level = WalkieSphereLevel.select(holding: false, link: .live,
                                              micLevel: nil, inboundBusy: true,
-                                             inboundLevel: 0.3, linkRemoteLevel: 0.6, linkLocalLevel: 0)
+                                             inboundLevel: 0.3, linkRemoteLevel: 0.6, linkLocalLevel: 0, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.3, accuracy: 0.0001)
     }
 
@@ -148,7 +149,7 @@ final class WalkieSphereLevelTests: XCTestCase {
         let level = WalkieSphereLevel.select(holding: true, link: .live,
                                              micLevel: 0.95, inboundBusy: false,
                                              inboundLevel: 0, linkRemoteLevel: 0,
-                                             linkLocalLevel: 0.5)
+                                             linkLocalLevel: 0.5, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.5, accuracy: 0.0001, "the link's local level, not the stale capture meter")
     }
 
@@ -159,7 +160,7 @@ final class WalkieSphereLevelTests: XCTestCase {
         let level = WalkieSphereLevel.select(holding: true, link: .live,
                                              micLevel: nil, inboundBusy: false,
                                              inboundLevel: 0, linkRemoteLevel: 0.9,
-                                             linkLocalLevel: 0.2)
+                                             linkLocalLevel: 0.2, liveInboundLevel: nil)
         XCTAssertEqual(level, 0.2, accuracy: 0.0001)
     }
 
@@ -168,21 +169,62 @@ final class WalkieSphereLevelTests: XCTestCase {
         let released = WalkieSphereLevel.select(holding: false, link: .live,
                                                 micLevel: nil, inboundBusy: false,
                                                 inboundLevel: 0, linkRemoteLevel: 0.4,
-                                                linkLocalLevel: 0.8)
+                                                linkLocalLevel: 0.8, liveInboundLevel: nil)
         XCTAssertEqual(released, 0.4, accuracy: 0.0001, "released: theirs shows")
         // Holding but not live (reaching / connecting) → 0: no link levels yet.
         for link in [WalkieLinkStatus.reaching, .connecting] {
             let level = WalkieSphereLevel.select(holding: true, link: link,
                                                  micLevel: nil, inboundBusy: false,
                                                  inboundLevel: 0, linkRemoteLevel: 0.4,
-                                                 linkLocalLevel: 0.8)
+                                                 linkLocalLevel: 0.8, liveInboundLevel: nil)
             XCTAssertEqual(level, 0, "\(link): nothing transmits before open")
         }
         // Holding on the note path → the capture meter, never a link level.
         let notes = WalkieSphereLevel.select(holding: true, link: .notes,
                                              micLevel: 0.3, inboundBusy: false,
                                              inboundLevel: 0, linkRemoteLevel: 0.4,
-                                             linkLocalLevel: 0.8)
+                                             linkLocalLevel: 0.8, liveInboundLevel: nil)
         XCTAssertEqual(notes, 0.3, accuracy: 0.0001, "note path: the capture meter")
+    }
+
+    // MARK: Loop 4: the peer's voice on a BLE-live session (no link)
+
+    func testLiveInboundSessionShowsThePeersVoice() {
+        let level = WalkieSphereLevel.select(holding: false, link: .notes,
+                                             micLevel: nil, inboundBusy: false,
+                                             inboundLevel: 0, linkRemoteLevel: 0,
+                                             linkLocalLevel: 0, liveInboundLevel: 0.55)
+        XCTAssertEqual(level, 0.55, accuracy: 0.0001)
+    }
+
+    func testHoldOnTheNotePathBeatsALiveInboundSession() {
+        // Half-duplex feel: while I hold, my mic (the capture meter) wins —
+        // the same rule as a hold over an auto-playing clip.
+        let level = WalkieSphereLevel.select(holding: true, link: .notes,
+                                             micLevel: 0.3, inboundBusy: false,
+                                             inboundLevel: 0, linkRemoteLevel: 0,
+                                             linkLocalLevel: 0, liveInboundLevel: 0.9)
+        XCTAssertEqual(level, 0.3, accuracy: 0.0001)
+    }
+
+    func testAClipBeatsALiveInboundSessionWhichBeatsTheLinkLevel() {
+        let clip = WalkieSphereLevel.select(holding: false, link: .notes,
+                                            micLevel: nil, inboundBusy: true,
+                                            inboundLevel: 0.2, linkRemoteLevel: 0,
+                                            linkLocalLevel: 0, liveInboundLevel: 0.9)
+        XCTAssertEqual(clip, 0.2, accuracy: 0.0001, "the clip is the louder claim")
+        // A BLE-live session while an IP link is ALSO live: the player is
+        // audibly playing the session, so it wins over the link's remote read.
+        let both = WalkieSphereLevel.select(holding: false, link: .live,
+                                            micLevel: nil, inboundBusy: false,
+                                            inboundLevel: 0, linkRemoteLevel: 0.7,
+                                            linkLocalLevel: 0, liveInboundLevel: 0.4)
+        XCTAssertEqual(both, 0.4, accuracy: 0.0001)
+        // No session (nil) → the link's remote level as before.
+        let linkOnly = WalkieSphereLevel.select(holding: false, link: .live,
+                                                micLevel: nil, inboundBusy: false,
+                                                inboundLevel: 0, linkRemoteLevel: 0.7,
+                                                linkLocalLevel: 0, liveInboundLevel: nil)
+        XCTAssertEqual(linkOnly, 0.7, accuracy: 0.0001)
     }
 }

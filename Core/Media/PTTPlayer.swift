@@ -162,6 +162,14 @@ final class PTTPlayer: @unchecked Sendable {
     /// Observer tokens — touched from init/deinit ONLY, never from `queue`.
     private var observers: [NSObjectProtocol] = []
 
+    /// Playout meter (globe pulse, loop 4): the level of each 20 ms frame as
+    /// it is scheduled, on the sphere's 0…1 scale (`PTTCaptureDSP.meterLevel`,
+    /// the same dB mapping every other meter uses). Silence fill and spurt end
+    /// report 0. Called ON THE CONFINEMENT QUEUE — the subscriber hops; this
+    /// class never does. Set once at the composition root before any frame
+    /// flows; nil = no meter (today's behavior exactly).
+    var onLevel: ((CGFloat) -> Void)?
+
     init() {
         installEngineObservers()
     }
@@ -323,6 +331,7 @@ final class PTTPlayer: @unchecked Sendable {
             if keepBuffer { buffers[link]?.flush() } else { buffers.removeValue(forKey: link) }
         }
         activeLink = nil                                 // IC4 claim released
+        onLevel?(0)                                      // meter: the spurt is over
     }
 
     // MARK: Engine graph (queue-confined; IC5 — graph only, never the session)
@@ -406,12 +415,24 @@ final class PTTPlayer: @unchecked Sendable {
         buf.frameLength = AVAudioFrameCount(OpusVoiceCodec.samplesPerFrame)
         if let pcm {
             let n = min(pcm.count, OpusVoiceCodec.samplesPerFrame)
-            for i in 0..<n { ch[0][i] = Float(pcm[i]) / 32767 }
+            var acc: Float = 0
+            for i in 0..<n {
+                let sample = Float(pcm[i]) / 32767
+                ch[0][i] = sample
+                acc += sample * sample
+            }
             if n < OpusVoiceCodec.samplesPerFrame {
                 for i in n..<OpusVoiceCodec.samplesPerFrame { ch[0][i] = 0 }
             }
+            // Meter (loop 4): RMS over the frame just written — no allocation,
+            // no second pass over the samples — then the shared dB mapping.
+            if let onLevel {
+                let rms = n > 0 ? (acc / Float(n)).squareRoot() : 0
+                onLevel(PTTCaptureDSP.meterLevel(rms: rms))
+            }
         } else {
             for i in 0..<OpusVoiceCodec.samplesPerFrame { ch[0][i] = 0 }
+            onLevel?(0)                                  // gap / underrun fill
         }
         guard engine.isRunning else { return }
         node.scheduleBuffer(buf, completionHandler: nil)
