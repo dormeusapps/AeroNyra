@@ -603,20 +603,43 @@ private struct AccentPickerSheet: View {
 struct SettingsGroup<Content: View>: View {
     var header: String?
     var footer: String?
+    /// Decorative section glyph (SF Symbol). See Stillwater's ONE EXCEPTION.
+    var icon: String?
+    /// One `Stillwater.SectionHue` token. Never biolume, never a status red.
+    var iconTint: Color?
     @ViewBuilder let content: Content
 
-    init(header: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content) {
+    init(header: String? = nil,
+         footer: String? = nil,
+         icon: String? = nil,
+         iconTint: Color? = nil,
+         @ViewBuilder content: () -> Content) {
         self.header = header
         self.footer = footer
+        self.icon = icon
+        self.iconTint = iconTint
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let header {
-                Text(header)
-                    .stillwaterMono(9, trackingEm: 0.3, color: Stillwater.Palette.mistDim)
-                    .padding(.horizontal, 20)
+            if header != nil || icon != nil {
+                HStack(spacing: 6) {
+                    if let icon {
+                        // Fallback is mistDim, never biolume: an icon can't
+                        // pick up the accent by omission. Hidden from
+                        // VoiceOver because it carries no meaning.
+                        Image(systemName: icon)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(iconTint ?? Stillwater.Palette.mistDim)
+                            .accessibilityHidden(true)
+                    }
+                    if let header {
+                        Text(header)
+                            .stillwaterMono(9, trackingEm: 0.3, color: Stillwater.Palette.mistDim)
+                    }
+                }
+                .padding(.horizontal, 20)
             }
 
             VStack(spacing: 0) {

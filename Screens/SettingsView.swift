@@ -143,7 +143,12 @@ struct SettingsView: View {
                 .stillwaterSerif(22, color: Stillwater.Palette.foam)
                 .lineLimit(1)
 
-            SettingsGroup(footer: "Your name and photo live only on this device and are never sent to anyone — just how the app greets you.") {
+            SettingsGroup(
+                header: "You",
+                footer: "Your name and photo live only on this device and are never sent to anyone — just how the app greets you.",
+                icon: "person.crop.circle.fill",
+                iconTint: Stillwater.SectionHue.you
+            ) {
                 SettingsRow {
                     HStack(spacing: 12) {
                         Text("Your name").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
@@ -219,7 +224,9 @@ struct SettingsView: View {
     private var identitySection: some View {
         SettingsGroup(
             header: "Your identity",
-            footer: "Your public key — the only 'account' you have. Share your code to let someone add you; there is no username and no server."
+            footer: "Your public key — the only 'account' you have. Share your code to let someone add you; there is no username and no server.",
+            icon: "key.fill",
+            iconTint: Stillwater.SectionHue.identity
         ) {
             SettingsRow {
                 Text(formattedFingerprint)
@@ -267,7 +274,9 @@ struct SettingsView: View {
     private var appearanceSection: some View {
         SettingsGroup(
             header: "Appearance",
-            footer: "The single light the whole app breathes with. Brightness still shows who's near — only the hue changes."
+            footer: "The single light the whole app breathes with. Brightness still shows who's near — only the hue changes.",
+            icon: "paintpalette.fill",
+            iconTint: Stillwater.SectionHue.appearance
         ) {
             SettingsRow {
                 // 8 swatches: tightened from 34/14 so the row fits the 375pt
@@ -296,7 +305,9 @@ struct SettingsView: View {
     private var filterSection: some View {
         SettingsGroup(
             header: "Content filter",
-            footer: "Checked on this device only, after messages arrive — nothing is transmitted. Hidden messages can always be revealed with a tap. Add your own words, separated by commas."
+            footer: "Checked on this device only, after messages arrive — nothing is transmitted. Hidden messages can always be revealed with a tap. Add your own words, separated by commas.",
+            icon: "eye.slash.fill",
+            iconTint: Stillwater.SectionHue.filter
         ) {
             SettingsRow {
                 Toggle(isOn: $contentFilterEnabled) {
@@ -356,7 +367,9 @@ struct SettingsView: View {
     private var blockedSection: some View {
         SettingsGroup(
             header: "Contacts",
-            footer: "Blocked contacts can't reach you or re-pair. Their conversations are preserved here, unread by the water."
+            footer: "Blocked contacts can't reach you or re-pair. Their conversations are preserved here, unread by the water.",
+            icon: "person.2.fill",
+            iconTint: Stillwater.SectionHue.contacts
         ) {
             Button { showBlocked = true } label: {
                 SettingsRow {
@@ -382,7 +395,9 @@ struct SettingsView: View {
     private var supportSection: some View {
         SettingsGroup(
             header: "Support",
-            footer: "Reports go to the developer by email and are answered within 24 hours. The app adds only your app version and a timestamp — never message content or keys."
+            footer: "Reports go to the developer by email and are answered within 24 hours. The app adds only your app version and a timestamp — never message content or keys.",
+            icon: "lifepreserver.fill",
+            iconTint: Stillwater.SectionHue.support
         ) {
             Button { reportProblem() } label: {
                 SettingsRow {
@@ -412,7 +427,11 @@ struct SettingsView: View {
 
     // MARK: - About
     private var aboutSection: some View {
-        SettingsGroup(header: "About") {
+        SettingsGroup(
+            header: "About",
+            icon: "info.circle.fill",
+            iconTint: Stillwater.SectionHue.about
+        ) {
             SettingsRow {
                 HStack(spacing: 12) {
                     Text("Version").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
