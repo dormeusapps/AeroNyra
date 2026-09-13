@@ -19,16 +19,6 @@
 //  never a second hue. A human wrote it -> serif (Newsreader). The mesh said it ->
 //  mono whisper (Spline Sans Mono, uppercase, tracked, small). See `Presence`.
 //
-//  THE ONE EXCEPTION (ruled 2026-09-12, narrow, on record): Settings section
-//  icons carry a second hue. It is DECORATIVE ONLY — a fixed tint on a fixed
-//  glyph beside a group header. It never encodes state, never changes with
-//  presence, reachability, or delivery, and never appears on hairlines,
-//  borders, dividers, toggles, fills, text, or any surface that carries
-//  signal. Sections that carry safety or security weight (Walkie, Danger,
-//  Block, Report, Verification) deliberately have NO icon: the absence of
-//  colour is what marks them as serious. Tokens live in `SectionHue` below.
-//  Do not widen this exception without a new ruling.
-//
 //  Fonts are registered in Info.plist (UIAppFonts) + Copy Bundle Resources. The
 //  PostScript names carry a deliberate quirk baked in below so no caller repeats
 //  it: Newsreader has NO hyphen after the family ("Newsreader14pt-Regular"),
@@ -113,27 +103,6 @@ enum Stillwater {
             }
             return defaultHex
         }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // MARK: SectionHue — decorative only (see THE ONE EXCEPTION above)
-    // ─────────────────────────────────────────────────────────────
-    //
-    // Same discipline as the accent presets: channel floor 0x7F, ceiling 0xF3,
-    // so every tone reads on abyss and shallow (≥ 5:1 on abyss; periwinkle is
-    // the floor case at 5.9). Named by SECTION, not by colour, so nothing can
-    // borrow one as a state colour by accident. Never a red: red is reserved
-    // for erase and block. Accepted and on record: peach sits 13° from the
-    // coral and amber presets, periwinkle 18° from violet — a user on one of
-    // those accents sees one near-accent icon. Cosmetic, not structural.
-    enum SectionHue {
-        static let you        = Palette.hex(0xF3B57F)   // peach      ~28°
-        static let identity   = Palette.hex(0x7FAFF3)   // sky        ~215°
-        static let appearance = Palette.hex(0xE57FF3)   // orchid     ~293°
-        static let filter     = Palette.hex(0x7FF37F)   // green       120°
-        static let contacts   = Palette.hex(0x7F7FF3)   // periwinkle  240°
-        static let support    = Palette.hex(0xF1F37F)   // yellow     ~61°
-        static let about      = Palette.hex(0xF37FCC)   // pink       ~320°
     }
 
     // ─────────────────────────────────────────────────────────────
