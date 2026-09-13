@@ -270,9 +270,13 @@ struct SettingsView: View {
             footer: "The single light the whole app breathes with. Brightness still shows who's near — only the hue changes."
         ) {
             SettingsRow {
-                // 8 swatches: tightened from 34/14 so the row fits the 375pt
-                // phone floor without wrapping (8×30 + 7×8 = 296 ≤ 311 avail).
-                HStack(spacing: 8) {
+                // Eight FIXED columns (8×30 + 7×8 = 296 ≤ 311 avail at the
+                // 375pt floor). Fixed, not adaptive: adaptive fits ten per row
+                // on a wide phone and scrambles the two-band reading — the
+                // pastel eight on row one, the vivid seven left-aligned on
+                // row two.
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(30), spacing: 8), count: 8),
+                          alignment: .leading, spacing: 8) {
                     ForEach(Stillwater.Accent.presets, id: \.hex) { preset in
                         Button { accentHex = Int(preset.hex) } label: {
                             Circle()
@@ -286,7 +290,6 @@ struct SettingsView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    Spacer(minLength: 0)
                 }
             }
         }

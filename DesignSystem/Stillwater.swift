@@ -94,6 +94,18 @@ enum Stillwater {
             ("coral",  0xF39C7F),   // hue 15°, warm, between rose and amber — min7F/maxF3, same L/S
             ("amber",  0xF3CE7F),
             ("lime",   0xB6F37F),
+            // Vivid band (2026-09-13): saturation released from the 0x7F floor
+            // where luminance allows. Every entry clears the 0.40 floor the
+            // 9 % hairlines, the 30 % relay tier, and onAccent ink depend on.
+            // electric shares cyan's hue and mintStrike teal's — same light,
+            // more of it. pearl is pure white: hairlines go neutral, not tinted.
+            ("electric",   0x00FFFF),   // L 0.787
+            ("ice",        0x7FE9FF),   // L 0.700
+            ("mintStrike", 0x00FF9C),   // L 0.739
+            ("lilac",      0xC89CFF),   // L 0.433
+            ("hotPink",    0xFF85C2),   // L 0.419
+            ("bone",       0xF5F0E6),   // L 0.874
+            ("pearl",      0xFFFFFF),   // L 1.000
         ]
 
         /// The chosen accent hex (defaults to the canonical teal).
