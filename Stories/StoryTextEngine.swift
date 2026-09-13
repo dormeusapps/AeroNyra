@@ -47,6 +47,8 @@ import SwiftUI   // h2: UIColor(_ color: Color) bridging for the palette
 /// enum id (never a raw color on the wire — flatten bakes it).
 enum StoryTextColor: CaseIterable {
     case white, black, foam, abyss, biolume, cyan, aqua, violet, rose, coral, amber, lime
+    // The vivid accent band (2026-09-13). Same name-lookup as the pastel hues.
+    case electric, ice, mintStrike, lilac, hotPink, bone, pearl
 
     var uiColor: UIColor {
         switch self {
@@ -62,6 +64,13 @@ enum StoryTextColor: CaseIterable {
         case .coral:   return Self.accent("coral")
         case .amber:   return Self.accent("amber")
         case .lime:    return Self.accent("lime")
+        case .electric:   return Self.accent("electric")
+        case .ice:        return Self.accent("ice")
+        case .mintStrike: return Self.accent("mintStrike")
+        case .lilac:      return Self.accent("lilac")
+        case .hotPink:    return Self.accent("hotPink")
+        case .bone:       return Self.accent("bone")
+        case .pearl:      return Self.accent("pearl")
         }
     }
 
