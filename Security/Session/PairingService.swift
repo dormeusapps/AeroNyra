@@ -43,6 +43,20 @@ final class PairingService {
     /// adjacent errors rather than silently no-op. Production always passes it.
     @ObservationIgnored private let blockedStore: BlockedContactsStore?
 
+    /// v59 Stage 4: registers the ONE-SHOT invite-echo tag on the Nostr
+    /// transport for the minter's npub, keyed by the invite id, so the sealed
+    /// echo — the one message routed before the minter is enrolled or learned
+    /// on this side — has a `p` value that is not the npub. Called immediately
+    /// before `coordinator.redeemInvite` routes the echo; the transport's
+    /// serial queue orders the registration ahead of the publish. Wired by the
+    /// composition root; nil (no registration, the echo is refused as
+    /// untaggable) until then.
+    @ObservationIgnored var registerInviteEchoTag: ((_ minterNostrPubkey: Data, _ inviteID: Data) -> Void)?
+
+    /// v59 Stage 4: the matching clearance, deferred in `redeemInvite` so the
+    /// registration never outlives the call (see the defer's comment there).
+    @ObservationIgnored var unregisterInviteEchoTag: ((_ minterNostrPubkey: Data) -> Void)?
+
     /// The live denylist — OBSERVABLE (deliberately not ignored) so HomeView's
     /// roster filter and the Blocked Contacts list repaint the moment a
     /// block/unblock lands. This @MainActor service is the single serializing
@@ -347,6 +361,22 @@ final class PairingService {
                               hint: String(peer.userIDHex.prefix(6)).uppercased())
         }
 
+        // v59: the echo rides the invite-echo tag, registered BEFORE the route
+        // below so the transport resolves it on the echo's publish. SCOPED TO
+        // THIS CALL: the defer clears it on every exit — a BLE-routed echo (the
+        // Nostr resolver never ran), a coordinator throw before routing, or a
+        // publish that failed after consuming it (then a no-op). A retry is a
+        // fresh redeem, which re-registers here. No TTL; the scope is the
+        // lifetime, so the first real message after pairing can never inherit
+        // the echo tag.
+        if let minterNpub = payload.nostrPublicKey {
+            registerInviteEchoTag?(minterNpub, invite.id)
+        }
+        defer {
+            if let minterNpub = payload.nostrPublicKey {
+                unregisterInviteEchoTag?(minterNpub)
+            }
+        }
         // Establish from their bundle + echo back (Nostr-capable for a far peer).
         _ = try await coordinator.redeemInvite(bundle: payload.bundle,
                                                inviteID: invite.id,
