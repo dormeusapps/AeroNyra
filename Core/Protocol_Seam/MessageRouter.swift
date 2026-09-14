@@ -275,6 +275,13 @@ public actor MessageRouter {
                            // wrap waits at the relay until the peer next connects.
                            // Distinct from .sent (a BLE radio handoff that DOES arm
                            // a short stuck-send timer); .cast is never armed.
+        } catch NostrTransportError.untaggableRecipient {
+            // v59 Stage 4: the recipient has no inbox tag. A state defect, not
+            // weather — TERMINAL, never queued for Tier 3 (a retry cannot
+            // succeed until the table gains the row), and logged so it is
+            // distinguishable from a relay outage in the field.
+            RedactLog.event("router: Nostr publish REFUSED — recipient has no inbox tag; terminal .notDelivered", "")
+            return .notDelivered
         } catch {
             return .waitingForRange
         }

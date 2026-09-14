@@ -49,6 +49,19 @@ final class MessageRouterNostrFallbackTests: XCTestCase {
         XCTAssertEqual(nostr.publishedTo, [recipient])
     }
 
+    /// v59 Stage 4: an untaggable recipient is a state defect, not weather —
+    /// TERMINAL `.notDelivered`, never queued for Tier 3, and distinct from a
+    /// generic publish failure (which still queues).
+    func testUntaggableRecipientIsTerminalNotDelivered() async {
+        let nostr = RecordingAddressedTransport(failure: .untaggableRecipient)
+        let router = MessageRouter(transports: [FailingBLETransport(), nostr])
+
+        let state = await router.send(anyEnvelope(), tracked: false, nostrRecipient: recipient)
+
+        XCTAssertEqual(state, .notDelivered)         // attempted, refused → terminal
+        XCTAssertEqual(nostr.publishedTo, [recipient])
+    }
+
     func testNoFallbackWhenNoAddressedTransportWired() async {
         // BLE-only router: nothing to fall back to.
         let router = MessageRouter(transports: [FailingBLETransport()])
@@ -87,12 +100,16 @@ private final class RecordingAddressedTransport: MeshTransport, AddressedTranspo
     let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
     private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
 
-    private let shouldFail: Bool
+    private let failure: NostrTransportError?
     private let recipients = OSAllocatedUnfairLock(initialState: [Data]())
     var publishedTo: [Data] { recipients.withLock { $0 } }
 
-    init(shouldFail: Bool = false) {
-        self.shouldFail = shouldFail
+    convenience init(shouldFail: Bool = false) {
+        self.init(failure: shouldFail ? .publishFailed : nil)
+    }
+
+    init(failure: NostrTransportError?) {
+        self.failure = failure
         var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
@@ -105,6 +122,6 @@ private final class RecordingAddressedTransport: MeshTransport, AddressedTranspo
 
     func publish(_ envelope: Envelope, to recipient: Data) async throws {
         recipients.withLock { $0.append(recipient) }
-        if shouldFail { throw NostrTransportError.publishFailed }
+        if let failure { throw failure }
     }
 }
