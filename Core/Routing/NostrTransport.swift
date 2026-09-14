@@ -17,7 +17,9 @@
 //      to satisfy the stream's shape; nothing forwards them onward.
 //
 //  *** ADDRESSED, NOT BROADCAST. *** A Nostr gift wrap is built FOR a specific
-//  recipient pubkey (NIP-59: tagged `["p", peerHex]`, encrypted to the peer).
+//  recipient pubkey (NIP-59: encrypted to the peer; since v59 Stage 4 tagged
+//  `["p", inboxTag]` — the pair-secret directional tag from the contact tag
+//  table, never the npub — see the "Tag resolution" section below).
 //  The protocol's recipient-blind `send(_:)` therefore cannot build one and
 //  THROWS — the router calls the addressed `publish(_:to:)` instead, because the
 //  router is the layer that actually knows the conversation's recipient. This is
@@ -59,6 +61,11 @@ public enum NostrTransportError: Error, Equatable {
     case notConnected
     /// Wrapping the envelope or serializing the event frame failed.
     case publishFailed
+    /// v59 Stage 4: the recipient npub has no inbox tag — no row in the contact
+    /// tag table and no pending invite-echo registration. A state defect (npub
+    /// known, join missing), NOT a network condition: the router treats it as
+    /// terminal `.notDelivered`, never `.waitingForRange`.
+    case untaggableRecipient
 }
 
 // MARK: - NostrTransport
@@ -81,6 +88,9 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     private let relayURLs: [URL]
     private let ourSecretKey: Data        // signs wraps; opens inbound (NIP-44)
     private let ourPubkeyHex: String      // for the #p subscription filter
+    /// Injected clock (Unix seconds) for the tag epoch. Never the wall clock
+    /// directly, so tests pin the epoch.
+    private let now: @Sendable () -> UInt64
 
     // MARK: Queue-confined connection state
     private let queue = DispatchQueue(label: "com.aeronyra.nostr.transport")
@@ -88,6 +98,18 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// ONLY on `queue`.
     private var conns: [RelayConn] = []
     private var started = false
+
+    // MARK: Tag resolution state (v59 Stage 4) — queue-confined
+    /// The contact tag table, replaced WHOLE by the composition root's owner
+    /// (`NostrInboxTagTableOwner`) on every membership / npub change. nil until
+    /// the first `setTagTable`; the root seeds it BEFORE `start()`.
+    private var tagTable: NostrInboxTagTable?
+    /// ONE-SHOT invite-echo tags keyed by the minter's npub: registered by
+    /// `PairingService.redeemInvite` right before the coordinator routes the
+    /// echo, consumed by the first publish to that npub. The echo is the one
+    /// message sent before the table can hold the recipient (see
+    /// `NostrInviteEchoTag`).
+    private var inviteEchoTags: [Data: Data] = [:]
 
     /// ISSUE-5 backlog-replay guard: OUTER 1059 event ids already processed, so a
     /// relay replay (or the same wrap fanned in from several relays) is skipped
@@ -147,6 +169,66 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// root; hops onto `queue` so the property stays queue-confined.
     public func setPublishFailureHandler(_ handler: @escaping @Sendable (MessageID) -> Void) {
         queue.async { [weak self] in self?.onPublishFailed = handler }
+    }
+
+    // MARK: - Tag resolution (v59 Stage 4)
+
+    /// Replace the contact tag table WHOLE. Called by the composition root's
+    /// owner on every rebuild (boot seed BEFORE `start()`, then enroll /
+    /// revoke / learned-npub). Hops onto `queue` so the property stays
+    /// queue-confined; FIFO on the same queue as `start()` and every publish
+    /// read, so a table set before `start()` is visible to the first socket.
+    public func setTagTable(_ table: NostrInboxTagTable) {
+        queue.async { [weak self] in self?.tagTable = table }
+    }
+
+    /// Register a ONE-SHOT invite-echo tag for the publish to `recipient`
+    /// (the minter's npub). Consumed by the next publish to that npub, which
+    /// is the sealed echo — `PairingService.redeemInvite` registers this
+    /// immediately before the coordinator routes it, and the serial queue
+    /// orders the registration ahead of the publish's read. Overwrites an
+    /// unconsumed registration for the same npub (a re-redeem).
+    public func registerInviteEchoTag(forRecipient recipient: Data, inviteID: Data) {
+        queue.async { [weak self] in self?.inviteEchoTags[recipient] = inviteID }
+    }
+
+    /// Clear an invite-echo registration that was never consumed. The
+    /// registration is SCOPED TO THE REDEEM CALL: `PairingService.redeemInvite`
+    /// defers this right after registering, so an echo that went over BLE
+    /// (the router tries the radio first — the Nostr resolver never ran) or a
+    /// coordinator throw before routing cannot leave a live one-shot for the
+    /// first real message to consume. An echo that DID resolve over Nostr has
+    /// already removed its entry, so this is then a no-op. FIFO on `queue`
+    /// after the echo's own `queue.sync` read, so it cannot run ahead of a
+    /// legitimate consumption. No TTL: the call scope is the lifetime.
+    public func unregisterInviteEchoTag(forRecipient recipient: Data) {
+        queue.async { [weak self] in self?.inviteEchoTags.removeValue(forKey: recipient) }
+    }
+
+    /// Resolve the `p` value for a publish to `recipient` at the CURRENT epoch,
+    /// consuming a one-shot echo registration if one is pending, else the
+    /// table's pair-secret tag. nil = untaggable (no registration, no row).
+    ///
+    /// SYNC READ, NOT ON THE QUEUE. `queue.sync` snapshots the value so the
+    /// wrap's crypto (two NIP-44 encrypts, two schnorr signs) stays OFF the
+    /// serial queue that also runs every relay's inbound verify-and-unwrap.
+    /// The caller — the router actor, via `publish` — blocks a cooperative-pool
+    /// thread for at most one queue turn: one inbound verify + unwrap, ~1 ms.
+    /// That is the accepted cost; do not widen what runs inside `queue.sync`
+    /// here without knowing it. `dispatchPrecondition` turns the invariant
+    /// "never entered from the queue" from a convention into a debug crash,
+    /// since `queue.sync` from the queue is a deadlock, not a test failure.
+    private func resolveRecipientTag(for recipient: Data) -> (tagHex: String?, rows: Int) {
+        dispatchPrecondition(condition: .notOnQueue(queue))
+        return queue.sync {
+            let epoch = NostrInboxTag.epoch(at: now())
+            if let inviteID = inviteEchoTags.removeValue(forKey: recipient) {
+                return (NostrInviteEchoTag.tag(inviteID: inviteID, epoch: epoch).hex,
+                        tagTable?.rows.count ?? 0)
+            }
+            return (tagTable?.publishTag(to: recipient, epoch: epoch)?.hex,
+                    tagTable?.rows.count ?? 0)
+        }
     }
 
     /// How long after a publish we wait for relay OKs before summarizing. OKs
@@ -278,16 +360,20 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     ///     single-relay callers and tests need not supply it.
     ///   - persistLedger: sealed-store save hook, called with a value snapshot off
     ///     `queue`. nil (default) = in-memory only.
+    ///   - now: Unix-seconds clock for the inbox-tag epoch (v59). Defaults to the
+    ///     wall clock; tests inject a fixed instant.
     public init(relayURLs: [URL],
                 ourSecretKey: Data,
                 ourPublicKey: Data,
                 initialLedger: ProcessedEventLedger = ProcessedEventLedger(),
-                persistLedger: (@Sendable (ProcessedEventLedger) -> Void)? = nil) {
+                persistLedger: (@Sendable (ProcessedEventLedger) -> Void)? = nil,
+                now: @escaping @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) }) {
         self.relayURLs = relayURLs
         self.ourSecretKey = ourSecretKey
         self.ourPubkeyHex = ourPublicKey.map { String(format: "%02x", $0) }.joined()
         self.processedLedger = initialLedger
         self.persistLedger = persistLedger
+        self.now = now
 
         var cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
         self.incoming = AsyncStream<(link: UUID, envelope: Envelope)> { cont = $0 }
@@ -373,12 +459,26 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// relay's send is best-effort with error logging (mirroring the subscription
     /// send) — the relay's async `OK` is the acceptance signal, and the app-level
     /// ACK (plus the router's stuck-send timeout) is the delivery guarantee.
+    ///
+    /// v59 Stage 4: the `p` value is RESOLVED FIRST, before any relay check —
+    /// a recipient with no inbox tag throws `.untaggableRecipient`, a distinct,
+    /// logged refusal the router treats as terminal. `peerPubkey` stays the
+    /// addressing key for callers (C1) and the NIP-44 encryption key inside the
+    /// wrap; it is never serialized.
     public func publish(_ envelope: Envelope, to peerPubkey: Data) async throws {
+        let resolved = resolveRecipientTag(for: peerPubkey)
+        guard let recipientTagHex = resolved.tagHex else {
+            // No npub bytes in the log — the count says whether the table was
+            // wired at all (0 = boot-window or never set) vs. missing one row.
+            log.error("nostr: publish REFUSED — recipient has no inbox tag (table rows=\(resolved.rows))")
+            throw NostrTransportError.untaggableRecipient
+        }
         let event: NostrEvent
         do {
             event = try NostrGiftWrap.wrap(envelope: envelope,
                                            senderSecret: ourSecretKey,
-                                           peerPublicKey: peerPubkey)
+                                           peerPublicKey: peerPubkey,
+                                           recipientTagHex: recipientTagHex)
         } catch {
             throw NostrTransportError.publishFailed
         }

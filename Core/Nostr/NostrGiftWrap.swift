@@ -14,7 +14,13 @@
 //             can open it.
 //    wrap   — kind 1059 event, content = NIP-44(EPHEMERAL -> peer) over the seal
 //             JSON, SIGNED BY A FRESH EPHEMERAL KEY, created_at randomized,
-//             tagged ["p", peer]. The outer event carries NO link to our npub.
+//             tagged ["p", recipientTag]. The outer event carries NO link to
+//             our npub — and, since v59 Stage 4, NO link to the peer's either:
+//             the `p` value is the caller-supplied inbox tag (pair-secret
+//             directional tag from NostrInboxTagTable, or the one-shot
+//             invite-echo tag), never the recipient npub. The recipient npub
+//             is used ONLY as the NIP-44 encryption key and is never
+//             serialized. Unwrap does not read the p-tag at all.
 //
 //  Unwrap reverses it and re-binds authenticity: the seal must be signed by the
 //  same pubkey that authored the rumor, or the sender is not trusted. The
@@ -52,19 +58,22 @@ enum NostrGiftWrap {
 
     // MARK: - Wrap
 
-    /// Build the outer gift-wrap event for `envelope`, addressed to
-    /// `peerPublicKey` (32-byte x-only), signed by a fresh ephemeral key. Ready
-    /// to publish to a relay. Our real key never appears in the outer event.
+    /// Build the outer gift-wrap event for `envelope`, ENCRYPTED to
+    /// `peerPublicKey` (32-byte x-only) and ADDRESSED on the wire by
+    /// `recipientTagHex` — the 64-char lowercase hex inbox tag the relay will
+    /// index under `p`. Signed by a fresh ephemeral key. Ready to publish. Our
+    /// real key never appears in the outer event, and neither does the peer's:
+    /// the caller MUST NOT pass the npub hex as the tag (v59 Stage 4).
     static func wrap(envelope: Envelope,
                      senderSecret: Data,
                      peerPublicKey: Data,
+                     recipientTagHex: String,
                      now: Int64 = Int64(Date().timeIntervalSince1970)) throws -> NostrEvent {
 
         guard let senderPub = Secp256k1.xOnlyPublicKey(fromSecretKey: senderSecret) else {
             throw NostrGiftWrapError.curveFailed
         }
         let senderPubHex = hex(senderPub)
-        let peerPubHex = hex(peerPublicKey)
 
         // 1) Rumor — unsigned, content = base64(Envelope.wireData()). Its
         //    created_at is hidden (encrypted), so it can be the real time.
@@ -107,7 +116,7 @@ enum NostrGiftWrap {
         let wrapContent = try NIP44.encrypt(plaintext: sealJSON, conversationKey: wrapKey)
         guard let giftWrap = NostrEvent.signed(kind: wrapKind,
                                                content: wrapContent,
-                                               tags: [["p", peerPubHex]],
+                                               tags: [["p", recipientTagHex]],
                                                createdAt: NostrEvent.randomizedTimestamp(now: now),
                                                secretKey: ephemeralSecret) else {
             throw NostrGiftWrapError.curveFailed

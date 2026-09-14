@@ -141,6 +141,11 @@ struct ContentView: View {
     /// scene-active hook can ask it to rebuild stale sockets. Set in
     /// `bootstrap()` alongside the router; nil when no Nostr identity exists.
     @State private var nostrTransportRef: NostrTransport?
+    /// v59 Stage 4: the contact tag table's owner — builds the table from the
+    /// enrolled set × Peer-row npubs and pushes it to the transport. Built in
+    /// `makeSessionStack` and seeded BEFORE `mesh.start()` (no boot window);
+    /// ReadyView wires the inbox's learned-npub hook to it.
+    @State private var tagTableOwnerRef: NostrInboxTagTableOwner?
 
     /// A2 (NOSTR_KEY_PROPAGATION): set by `bootstrap()` when the pubkey
     /// `loadOrCreate` returned differs from the last one this install recorded
@@ -206,7 +211,8 @@ struct ContentView: View {
                               pttInboundMeter: pttInboundMeter,
                               pendingInviteURL: $pendingInviteURL,
                               nostrIdentityChanged: $nostrIdentityChanged,
-                              nostrTransport: nostrTransportRef)
+                              nostrTransport: nostrTransportRef,
+                              tagTableOwner: tagTableOwnerRef)
                         // The erase action is injected HERE, not on the outer
                         // body, because only `.ready` has the assembled store in
                         // scope. SettingsView (reachable only from within
@@ -373,7 +379,8 @@ struct ContentView: View {
                 let container = try makeModelContainer()
                 try makeSessionStack(identity: identity,
                                      identityStore: store,
-                                     enclaveWrapper: wrapper)
+                                     enclaveWrapper: wrapper,
+                                     container: container)
                 return container
             })
 
@@ -466,7 +473,8 @@ struct ContentView: View {
     /// identity item and the shared Enclave key. No trigger is wired — 7d.
     private func makeSessionStack(identity: IdentityKeypair,
                                   identityStore: IdentityStore,
-                                  enclaveWrapper: SecureEnclaveWrapper?) throws {
+                                  enclaveWrapper: SecureEnclaveWrapper?,
+                                  container: ModelContainer) throws {
         let dek = try SessionStoreKey.loadOrCreate(service: sessionKeyService)
         let directory = try PersistentBeaconStore.defaultDirectory()
         let secure = try SignalSessionStore(appIdentity: identity,
@@ -707,10 +715,14 @@ struct ContentView: View {
         // same coordinator so a new enroll reconnects immediately via
         // `addReconnectContact`. `coord` conforms to `ReconnectEnrolling`. No caller
         // yet — the pairing UI (7d) and echo transport (7c-2 step 5) drive it.
+        // v59 Stage 4: the enrollment sink is the tag-table adapter, which
+        // forwards every call to the coordinator FIRST (unchanged behavior) and
+        // then schedules a table rebuild for membership changes.
+        let tagAdapter = NostrInboxTagEnrollmentAdapter(coordinator: coord)
         let enroll = EnrollmentService(
             store: contactStore,
             pendingStore: pendingInvitesStore,
-            coordinator: coord,
+            coordinator: tagAdapter,
             initialAllowlist: loadedAllowlist,
             initialPending: loadedPending)
         enrollmentService = enroll
@@ -724,6 +736,34 @@ struct ContentView: View {
                                                 ourNostrPublicKey: ourNostrPubkey,
                                                 blockedStore: blockedStore,
                                                 initialBlocked: loadedBlocked)
+
+        // v59 Stage 4 — the contact tag table's owner. Membership = the ENROLLED
+        // set (block revokes, unblock re-enrolls); the join = each Peer row's
+        // npub, read directly off the main context here (the inbox is the
+        // WRITER of that column and fires `onContactNostrIdentityChanged`, wired
+        // in ReadyView, on every change). Seeded synchronously below BEFORE
+        // `mesh.start()`, so no publish can precede a table.
+        let mainContext = container.mainContext
+        let tagTransport = nostrTransport   // let-bound: closures below must not capture the var
+        let tagOwner = NostrInboxTagTableOwner(
+            ourAgreementPrivate: identity.agreement,
+            ourIdentity: secure.rawPublicKey(of: secure.localIdentity),
+            identities: { enroll.pairedIdentities },
+            nostrPubkey: { raw in
+                let descriptor = FetchDescriptor<Peer>(predicate: #Predicate { $0.publicKeyData == raw })
+                return (try? mainContext.fetch(descriptor))?.first?.nostrPubkey
+            },
+            sink: { table in tagTransport?.setTagTable(table) })
+        tagAdapter.attach(tagOwner)
+        tagTableOwnerRef = tagOwner
+        // The invite echo is the one message routed before the recipient is in
+        // the table; PairingService registers its one-shot tag on the transport.
+        pairingService?.registerInviteEchoTag = { minterNpub, inviteID in
+            tagTransport?.registerInviteEchoTag(forRecipient: minterNpub, inviteID: inviteID)
+        }
+        pairingService?.unregisterInviteEchoTag = { minterNpub in
+            tagTransport?.unregisterInviteEchoTag(forRecipient: minterNpub)
+        }
         
         // STEP 7b-3 — assemble the crypto-erase now that every secret-bearing
         // component exists. Service ids are the SAME `private var` constants used
@@ -784,6 +824,11 @@ struct ContentView: View {
             // blocked identity can slip through the boot window.
             await coord.setBlockedIdentities(Set(loadedBlocked.map(\.rawKey)))
             
+            // v59 Stage 4 — seed the tag table BEFORE the first socket opens.
+            // setTagTable and start() share the transport's serial queue, so
+            // the table is visible to the first publish. Closes the boot
+            // window; nothing can be refused as untaggable for lack of a table.
+            _ = await MainActor.run { tagOwner.rebuild() }
             do {
                 try await mesh.start()   // starts BOTH transports: BLE radio + Nostr relay
             } catch {
@@ -1079,6 +1124,9 @@ private struct ReadyView: View {
     /// the scene-active handler below can rebuild stale relay sockets after a
     /// suspension. nil when no Nostr identity exists — the handler no-ops.
     let nostrTransport: NostrTransport?
+    /// v59 Stage 4: the tag-table owner, so the inbox's learned-npub hook can
+    /// schedule a rebuild. nil when no Nostr identity exists.
+    let tagTableOwner: NostrInboxTagTableOwner?
 
     @State private var inbox: MessageInbox?
     /// FaceTime v1 (P3): app-wide call layer — a ring must reach the user on
@@ -1196,6 +1244,12 @@ private struct ReadyView: View {
                                          isVerified: { pairingService.isVerified($0) },
                                          notifier: notifier)   // N2 — banner at the persist seams
                 inbox = built
+                // v59 Stage 4: a learned or rotated contact npub changes the
+                // publish side's join — rebuild the tag table (coalesced,
+                // order-independent; see NostrInboxTagTableOwner).
+                built.onContactNostrIdentityChanged = { [weak tagTableOwner] in
+                    tagTableOwner?.scheduleRebuild()
+                }
                 // A1 (NOSTR_KEY_PROPAGATION): npub resolver for the
                 // coordinator's announce/ack relay routing. The SwiftData row
                 // read stays HERE, on the main actor, in the inbox — the

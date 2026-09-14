@@ -89,6 +89,13 @@ final class MessageInbox {
     /// pttID is a non-secret session id — never key material.
     var onPTTSession: ((_ opened: Bool, _ peerKey: Data, _ pttID: Data) -> Void)?
 
+    /// v59 Stage 4: fired after a contact's npub is learned or ROTATES
+    /// (`handleLearnedNostrIdentity` wrote the row). The composition root
+    /// points it at the tag-table owner's `scheduleRebuild`, so the publish
+    /// side's npub → tag join catches up in the same session. Set by the
+    /// composition root; nil until wired.
+    var onContactNostrIdentityChanged: (() -> Void)?
+
     /// Consume coordinator events for the app's lifetime, writing SwiftData on
     /// the main actor. Started once from the composition root (a `.task`).
     /// `events` is unbounded-buffered, so anything emitted before this starts
@@ -209,6 +216,7 @@ final class MessageInbox {
         peer.nostrPubkey = nostrPubkey
         peer.lastSeen = .now
         save()
+        onContactNostrIdentityChanged?()   // v59: the tag table's join changed
     }
 
     /// Consume the router's `deliveryUpdates` for the app's lifetime, applying
