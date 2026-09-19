@@ -831,8 +831,18 @@ final class MessageInbox {
     }
 
     /// A2 (NOSTR_KEY_PROPAGATION): the LOCAL Nostr identity changed since the
-    /// last launch (post-wipe regeneration) — push the new npub to EVERY contact
-    /// over the relay-capable announce, so a stale key heals WITHOUT BLE range.
+    /// last launch — push the new npub to EVERY contact over the relay-capable
+    /// announce, so a stale key heals WITHOUT BLE range.
+    /// RULING 2026-09-19 — DEAD IN EVERY REACHABLE STATE; labelled, not fixed, not
+    /// deleted (removal queued post-release). The premise — the nsec rotating while the
+    /// libsignal identity survives — is not reachable on disk: both are ThisDeviceOnly
+    /// Keychain items, every wipe path removes both, and the boot-failed door runs the
+    /// full erase. The one real trigger (a restore to a DIFFERENT device, then
+    /// re-onboarding: UserDefaults and Peer rows come back, both keys are new) fires this
+    /// with no session to seal over, and the pair tags differ anyway, so no announce can
+    /// land. Design position: an identity change requires re-pairing, BY DESIGN —
+    /// automatically accepting a contact's new key is a trust decision that belongs to
+    /// the user, not the app.
     /// Clears the coordinator's once-per-peer guard first, then re-announces per
     /// contact with that contact's current npub (nil npub still tries BLE).
     /// SEND-ONLY: the receiver-side write guard (openInbound →

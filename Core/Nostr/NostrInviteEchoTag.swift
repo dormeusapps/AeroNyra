@@ -29,8 +29,12 @@
 //
 //  WHAT A RELAY LEARNS: an opaque, epoch-scoped tag that is a real-tag
 //  computation (indistinguishable from any other `p` value), published once,
-//  subscribed to by one connection for at most the invite TTL plus skew. It
-//  binds to nothing durable: the invite id is single-use and burned on echo.
+//  subscribed to by one connection while the invite is live — and, AS BUILT,
+//  until the next plan refresh after expiry (typically the next epoch
+//  rollover), not merely TTL plus skew: nothing arms a timer at expiry, so the
+//  three-value subscription lingers (measured 2026-09-19; timer queued —
+//  THREAT_MODEL §9.3). It binds to nothing durable: the invite id is
+//  single-use and burned on echo.
 //  Anyone holding the invite link can compute the tag — the same party can
 //  redeem the invite outright, so no new capability is granted (CONTACT_MODEL
 //  §14.3: the envelope is unauthenticated by design; SAS is the MITM defense).

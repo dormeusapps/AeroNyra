@@ -20,9 +20,11 @@
 //      window {e-1, e, e+1}. Their OWN subscription, not folded into a page:
 //      folding would move values inside a page mid-epoch (mint / expiry), and
 //      3-per-invite does not fit the 32-per-slot shape. A relay therefore sees
-//      a short-lived second subscription while an invite is pending — an
-//      "invite in flight" tell for at most TTL + skew, bound to nothing durable.
-//      Expired registrations are pruned here on every plan.
+//      a second subscription while an invite is pending — an "invite in flight"
+//      tell, bound to nothing durable. Expired registrations are pruned here on
+//      every plan, and ONLY on a plan: no plan is triggered by the expiry
+//      itself, so as built the tell outlives TTL + skew until the next refresh
+//      (measured 2026-09-19; expiry timer queued — THREAT_MODEL §9.3).
 //
 //  ROLLOVER: `secondsUntilNextEpoch` gives the transport its timer; on fire it
 //  re-plans and re-REQs on the SAME subscription ids (NIP-01 filter replacement).

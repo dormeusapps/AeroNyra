@@ -4,13 +4,14 @@
 //
 //  v59 connection-leak fix · Stage 1 · the inbox-tag primitive.
 //
-//  The `p` tag on every published gift wrap and on the REQ filter today carries
-//  an npub in the clear, and both ride the same WebSocket task, so a relay
-//  operator reads the sender↔recipient graph off one connection. This primitive
-//  produces the value that will replace it: a per-direction, epoch-scoped tag
-//  keyed on the pair secret `S_AB`, so the relay sees an opaque identifier that
-//  only the two paired devices can compute. Stage 1 is THIS FILE and its XCTest.
-//  Nothing here touches the transport, the wrap, or any wire format.
+//  Before v59 Stage 5 (2026-09-19) the `p` tag on every published gift wrap and
+//  on the REQ filter carried an npub in the clear, and both rode the same
+//  WebSocket task, so a relay operator could read the sender↔recipient graph
+//  off one connection. This primitive produces the value that replaced it: a
+//  per-direction, epoch-scoped tag keyed on the pair secret `S_AB`, so the relay
+//  sees an opaque identifier that only the two paired devices can compute. On
+//  the wire since Stage 5; what a relay still learns is THREAT_MODEL §3.2–§3.3.
+//  Stage 1 was THIS FILE and its XCTest; the transport and wrap followed.
 //
 //  FRAMING (LOCKED for v1 — docs/NOSTR_INBOX_TAG_KAT.md §1):
 //

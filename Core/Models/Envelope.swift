@@ -7,6 +7,10 @@
 //  HANDOFF §4.1: "Noise + Double Ratchet produce a transport-AGNOSTIC
 //  encrypted Envelope. Any future transport just carries the same ciphertext
 //  — so a future internet relay/server still sees NOTHING but opaque bytes."
+//  SCOPE (2026-09-19): that is true of THIS type. The Nostr transport wraps it
+//  in an ADDRESSED event whose `p` tag is a pair-secret rotating tag, so a relay
+//  can route it to one subscription and pseudonymously attribute it to a
+//  connection — see THREAT_MODEL §3 for what a relay learns at that layer.
 //
 //  This type lives in Core and knows nothing about BLE, the internet, or the
 //  crypto that produced its `ciphertext`. It is the contract between the
@@ -79,16 +83,21 @@ public enum PayloadBucket {
 /// least a relay needs to forward, dedup, and bound hop count. Everything that
 /// could identify sender, recipient, or content lives inside `ciphertext`,
 /// which is AEAD-sealed and includes the sealed-sender header (HANDOFF §3.6).
-/// A relay — or a future internet pipe — sees only these three small fields
-/// plus opaque bytes, and can neither read, attribute, nor forge the message.
+/// A BLE relaying peer sees only these three small fields plus opaque bytes,
+/// and can neither read, attribute, nor forge the message. (A Nostr relay sees
+/// this envelope only inside a gift wrap that carries a recipient tag — the
+/// transport layer, not this type, decides what is attributable there.)
 ///
 /// Note on routing: there is intentionally **no destination field**. The mesh
 /// uses flooding with a hop limit; only the holder of the right session keys
 /// can open an envelope addressed to them. Omitting a destination is what lets
-/// relays stay dumb and unable to target or attribute traffic. If a future
+/// mesh relays stay dumb and unable to target or attribute traffic. If a
 /// routing optimization ever needs a recipient hint, it must be an unlinkable
 /// rotating tag — never an identity — and that decision belongs in Security,
-/// not here.
+/// not here. As of v59 Stage 5 the Nostr transport honours exactly that: its
+/// recipient hint is the epoch-scoped pair-secret inbox tag
+/// (`Core/Nostr/NostrInboxTag.swift`); before Stage 5 it was the npub, which
+/// this note forbade.
 public struct Envelope: Equatable, Hashable, Sendable {
 
     /// Current wire-format version. Bump on any breaking layout change.

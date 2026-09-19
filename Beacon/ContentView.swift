@@ -148,10 +148,19 @@ struct ContentView: View {
     @State private var tagTableOwnerRef: NostrInboxTagTableOwner?
 
     /// A2 (NOSTR_KEY_PROPAGATION): set by `bootstrap()` when the pubkey
-    /// `loadOrCreate` returned differs from the last one this install recorded
-    /// (post-wipe regeneration, or a restore that lost the Keychain item while
-    /// rows survived). The boot task below consumes it exactly once, driving a
-    /// relay re-announce of the new npub to every contact.
+    /// `loadOrCreate` returned differs from the last one this install recorded.
+    /// The boot task below consumes it exactly once, driving a relay re-announce
+    /// of the new npub to every contact.
+    /// RULING 2026-09-19 — DEAD IN EVERY REACHABLE STATE; labelled, not fixed, not
+    /// deleted (removal queued post-release). The premise — the nsec rotating while the
+    /// libsignal identity survives — is not reachable on disk: both are ThisDeviceOnly
+    /// Keychain items, every wipe path removes both, and the boot-failed door runs the
+    /// full erase. The one real trigger (a restore to a DIFFERENT device, then
+    /// re-onboarding: UserDefaults and Peer rows come back, both keys are new) fires this
+    /// with no session to seal over, and the pair tags differ anyway, so no announce can
+    /// land. Design position: an identity change requires re-pairing, BY DESIGN —
+    /// automatically accepting a contact's new key is a trust decision that belongs to
+    /// the user, not the app.
     @State private var nostrIdentityChanged = false
     
     /// The assembled crypto-erase (STEP 7b-3). Constructed in `makeSessionStack`
@@ -603,8 +612,11 @@ struct ContentView: View {
             ourNostrPubkey = nostr.publicKeyBytes
             // A2 (NOSTR_KEY_PROPAGATION): local-identity-change signal. Fires
             // ONLY on a real change — a stored previous key that differs from
-            // the one loadOrCreate returned (Keychain item lost on a restore,
-            // or the boot-failed door sweep, with contacts surviving). A first
+            // the one loadOrCreate returned. (The parenthetical this comment
+            // used to carry — "Keychain item lost on a restore, or the
+            // boot-failed door sweep, with contacts surviving" — described a
+            // state the stores cannot produce; see the ruling on the
+            // `nostrIdentityChanged` declaration.) A first
             // create (stored == nil: fresh install, or the launch after a FULL
             // crypto-erase, which clears this breadcrumb via DeviceResidueWipe)
             // must NOT fire: there are no sessions to announce over, and the
@@ -1027,7 +1039,9 @@ struct ContentView: View {
     /// The Nostr relays PILLAR 2 connects to (Phase 8d). Multi-relay for
     /// availability: each relay is an independent websocket, publish fans out to
     /// all, and inbound from all is merged (the router dedups by envelope id), so
-    /// one relay having a bad day (e.g. a 503) can't kill the internet pillar.
+    /// one relay going away can't kill the internet pillar. Two relays as of
+    /// 2026-09-19 — the "503" this comment used to cite was relay.damus.io's
+    /// auth-required refusal, misread as an outage; it never served the inbox.
     /// Widely-used, independently-operated public relays that serve an
     /// unauthenticated kind-1059 subscription (measured; see the note in the
     /// list). Both devices sharing the
@@ -1144,6 +1158,8 @@ private struct ReadyView: View {
     /// A2 (NOSTR_KEY_PROPAGATION): set by ContentView.bootstrap() when the
     /// local Nostr identity changed since the last launch. Consumed exactly
     /// once by the boot task below (cleared before the re-announce fires).
+    /// RULING 2026-09-19: dead in every reachable state — see the ruling on
+    /// the declaration in ContentView and on the boot-task branch below.
     @Binding var nostrIdentityChanged: Bool
 
     /// FIX 2 (cellular inbound liveness): the Nostr transport, threaded in so
@@ -1381,7 +1397,9 @@ private struct ReadyView: View {
                 // A2 (NOSTR_KEY_PROPAGATION): the local Nostr identity changed
                 // since the last launch — push the new npub to every contact
                 // over the relay, so the stale-key field bug heals WITHOUT BLE
-                // range. Hoisted to its OWN task so the boot tail never carries
+                // range. RULING 2026-09-19 — DEAD IN EVERY REACHABLE STATE; labelled, not fixed, not
+                // deleted (removal queued post-release). The premise — the nsec rotating while the libsignal identity survives — is not reachable on disk: both are ThisDeviceOnly Keychain items, every wipe path removes both, and the boot-failed door runs the full erase. The one real trigger (a restore to a DIFFERENT device, then re-onboarding: UserDefaults and Peer rows come back, both keys are new) fires this with no session to seal over, and the pair tags differ anyway, so no announce can land. Design position: an identity change requires re-pairing, BY DESIGN — automatically accepting a contact's new key is a trust decision that belongs to the user, not the app.
+                // Hoisted to its OWN task so the boot tail never carries
                 // the grace delay (the pairing-regression fix): the sleep gives
                 // the relay websockets (kicked off asynchronously by
                 // mesh.start()) time to connect. A miss is not lost — the

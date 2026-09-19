@@ -411,11 +411,22 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         self.nostrKeyLookup = lookup
     }
 
-    /// A2 (NOSTR_KEY_PROPAGATION): the LOCAL Nostr identity changed (post-wipe
-    /// regeneration, detected at launch by the composition root). Drop the
-    /// once-per-peer announce bookkeeping so every contact can be told the new
-    /// key this session; the caller follows up with `reannounceNostrIdentity`
-    /// per contact.
+    /// A2 (NOSTR_KEY_PROPAGATION): the LOCAL Nostr identity changed (detected at
+    /// launch by the composition root). Drop the once-per-peer announce
+    /// bookkeeping so every contact can be told the new key this session; the
+    /// caller follows up with `reannounceNostrIdentity` per contact.
+    /// RULING 2026-09-19 — DEAD IN EVERY REACHABLE STATE; labelled, not fixed, not
+    /// deleted (removal queued post-release). The premise — the nsec rotating while the
+    /// libsignal identity survives — is not reachable on disk: both are ThisDeviceOnly
+    /// Keychain items, every wipe path removes both, and the boot-failed door runs the
+    /// full erase. The one real trigger (a restore to a DIFFERENT device, then
+    /// re-onboarding: UserDefaults and Peer rows come back, both keys are new) fires this
+    /// with no session to seal over, and the pair tags differ anyway, so no announce can
+    /// land. Design position: an identity change requires re-pairing, BY DESIGN —
+    /// automatically accepting a contact's new key is a trust decision that belongs to
+    /// the user, not the app.
+    /// Every `reannounceNostrIdentity` in that state ends in the announce's
+    /// catch (`store.session(with:)` throws: no session survives the trigger).
     func clearNostrAnnounceState() {
         announcedNostrTo.removeAll()
     }

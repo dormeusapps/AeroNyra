@@ -6,8 +6,11 @@
 //
 //  The Stage 2 table's subscribe set is `rows × window` tags, so its size on the
 //  REQ is the contact count in the clear. This file pads it to a FIXED slot
-//  count per page so a relay cannot read the count off the filter. Still off
-//  the socket: no transport, no wrap, no wire change.
+//  count per page so a relay cannot read the count off the FILTER. It can still
+//  read the ACTIVE count off the traffic — decoy slots never receive an event,
+//  so the slots that do are the real, active contacts (THREAT_MODEL §3.2 item
+//  2). The padding hides the roster, not the activity. Still off the socket:
+//  no transport, no wrap, no wire change.
 //
 //  TWO WAYS THIS DOES NOTHING, both designed out (KAT §6):
 //
@@ -61,8 +64,9 @@
 //  BEYOND ONE PAGE — BUCKET PADDING, NEVER BARE. Real contacts past S do not
 //  drop the padding (that would reveal the exact count, a silent privacy cliff
 //  for having many contacts) and do not crash. The slot count rounds UP to a
-//  whole number of pages, every page fully padded, so a relay learns the count
-//  only to page granularity: "≤60", "61–120", …. `pages` says how many. A second
+//  whole number of pages, every page fully padded, so a relay learns the roster
+//  size only to page granularity: "≤60", "61–120", … (the active-sender count is
+//  a separate leak, above). `pages` says how many. A second
 //  filter object in the same REQ does NOT help on nos.lol — the frame cap is
 //  per message, not per filter — so carrying page 2 means a second REQ
 //  (subscriptions are capped at 20 per connection on nos.lol and primal) or, on

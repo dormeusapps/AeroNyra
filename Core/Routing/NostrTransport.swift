@@ -22,10 +22,14 @@
 //  minted is live, one REQ of invite-echo tags. Subscription ids are random
 //  per socket, stable for the socket's life, so an epoch rollover or a
 //  membership change re-REQs on the SAME id (NIP-01 filter replacement) and a
-//  subscription that leaves the plan is CLOSEd. A REQ is re-sent only when its
-//  frame bytes changed, so a table rebuild that did not move the subscribe set
-//  (a learned npub) sends nothing. The rollover timer is armed from the
-//  injected clock to the next epoch boundary.
+//  subscription that leaves the plan is CLOSEd (as built, the CLOSE path has
+//  never executed: nothing leaves the plan until the invite-echo expiry timer
+//  lands — THREAT_MODEL §9.3). A REQ is re-sent only when its frame bytes
+//  changed, so a table rebuild that did not move the subscribe set (a learned
+//  npub) sends nothing — true since the frame bytes became deterministic
+//  (`NostrSubscriptionFrameDeterminismTests`); before that it held by chance.
+//  The rollover timer is armed from the injected clock to the next epoch
+//  boundary.
 //
 //  *** ADDRESSED, NOT BROADCAST. *** A Nostr gift wrap is built FOR a specific
 //  recipient pubkey (NIP-59: encrypted to the peer; since v59 Stage 4 tagged
@@ -39,9 +43,16 @@
 //  through the addressed face.
 //
 //  *** MULTI-RELAY (availability). *** The transport holds a SET of relays, each
-//  its own websocket with its own receive loop and independent reconnect/backoff.
-//  A single relay having a bad day (e.g. a 503, as damus did) must NOT kill the
-//  internet pillar — that is the whole point of a relay-backed transport.
+//  its own websocket with its own receive loop and independent reconnect/backoff,
+//  so one relay going away must NOT kill the internet pillar. The set is TWO
+//  (relay.primal.net, nos.lol) as of 2026-09-19. relay.damus.io was in the list
+//  from 2026-07-04 and never served this app's inbox: it CLOSEs every kind-1059
+//  subscription with "ERROR: auth-required" — what this comment used to call
+//  "a 503, as damus did" was that refusal, misread as an outage for eleven
+//  weeks. NIP-42 AUTH is not a remedy and is forbidden (it would bind our real
+//  npub to the connection — THREAT_MODEL §3.1); a relay that refuses a tag
+//  filter is dropped, and no relay enters the list without a single-device
+//  capture showing it serves an unauthenticated kind-1059 subscription.
 //    • `publish` FANS OUT to every currently-connected relay; it succeeds if the
 //      wrap was handed to AT LEAST ONE live relay, and throws `.notConnected`
 //      only when EVERY relay is down. Real acceptance is each relay's async `OK`;
