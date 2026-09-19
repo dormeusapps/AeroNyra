@@ -34,13 +34,13 @@ struct OnboardingView: View {
     private let panels: [Panel] = [
         Panel(eyebrow: "AERONYRA",
               title: "A quiet water for the people who matter.",
-              body: "No account. No servers. No one in the middle. Nearby, your words travel phone-to-phone over Bluetooth; farther, through a relay — always sealed end-to-end."),
+              body: "No account. No servers of ours. Nearby, your words travel phone-to-phone over Bluetooth; farther, they pass through public relays that carry them sealed and cannot read them."),
         Panel(eyebrow: "CLOSED BY DESIGN",
               title: "No strangers reach you.",
               body: "You add someone by trading a code in person, or a one-time invite you send yourself. Never a phone number, never a lookup — no one can message you just for having the app."),
         Panel(eyebrow: "THE TRADE",
               title: "Your identity lives only here.",
-              body: "No server holds your messages, so nothing syncs and nothing restores: lose this phone and this identity — and its history — are gone, and your contacts simply re-pair. Voice notes fade once heard; photos and videos, after a day. And anyone can still photograph their own screen — no app can stop that."),
+              body: "No server can read your messages, so nothing syncs and nothing restores: lose this phone and this identity — and its history — are gone, and your contacts simply re-pair. Voice notes fade once heard; photos and videos after a day; stories after eight hours, for both of you. And anyone can still photograph their own screen — no app can stop that."),
     ]
 
     /// Total steps = the intro panels plus the final "begin" panel.

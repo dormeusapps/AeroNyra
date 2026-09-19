@@ -57,7 +57,7 @@ enum EULA {
         ),
         Section(
             heading: "How AeroNyra works.",
-            body: "AeroNyra is end-to-end encrypted and has no servers. Messages are exchanged directly between devices. The developer cannot read your messages, cannot see who you communicate with, and does not collect your data. There are no accounts."
+            body: "AeroNyra is end-to-end encrypted and has no servers of its own. Nearby, messages pass directly between devices over Bluetooth; farther away, they pass sealed through public relays that cannot read them. The developer runs no relay, cannot read your messages, cannot see who you communicate with, and does not collect your data. There are no accounts."
         ),
         Section(
             heading: "You control who can reach you.",
@@ -65,7 +65,7 @@ enum EULA {
         ),
         Section(
             heading: "Blocking and reporting.",
-            body: "You can block any contact at any time. Blocking immediately removes their conversation from your chat list and permanently prevents further contact. Your message history with them is preserved and remains readable in Settings, so you keep any record you may need. You can report a contact or a message to the developer at support@dormeusapps.com. Reports are reviewed and responded to within 24 hours. Because AeroNyra is encrypted and serverless, the developer cannot see message content or identify users — you may include any information you choose in your report. Where a report indicates illegal activity, you should contact law enforcement, and the developer will assist to the extent technically possible."
+            body: "You can block any contact at any time. Blocking immediately removes their conversation from your chat list and permanently prevents further contact. Your message history with them is preserved and remains readable in Settings, so you keep any record you may need. You can report a contact or a message to the developer at support@dormeusapps.com. Reports are reviewed and responded to within 24 hours. Because AeroNyra is encrypted and the developer runs no server, the developer cannot see message content or identify users — you may include any information you choose in your report. Where a report indicates illegal activity, you should contact law enforcement, and the developer will assist to the extent technically possible."
         ),
         Section(
             heading: "Content filtering.",

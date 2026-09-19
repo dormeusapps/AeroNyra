@@ -60,16 +60,19 @@ struct PairingView: View {
                 qrBlock
                     .padding(.top, 30)
 
+                reassurance
+                    .padding(.top, 12)
+
                 orDivider
                     .padding(.top, 24)
 
                 inviteBlock
                     .padding(.top, 16)
 
-                Spacer(minLength: 18)
+                inviteCaution
+                    .padding(.top, 12)
 
-                reassurance
-                    .padding(.top, 16)
+                Spacer(minLength: 18)
             }
             .padding(.horizontal, 30)
             .padding(.top, 20)
@@ -263,10 +266,25 @@ struct PairingView: View {
             )
     }
 
+    /// Under the QR block only: true and complete there — the scan never
+    /// leaves the two screens.
     private var reassurance: some View {
         VStack(spacing: 3) {
             Text("no server ever sees this")
             Text("the key is born and dies on these two phones")
+        }
+        .stillwaterMono(8, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
+        .multilineTextAlignment(.center)
+        .lineSpacing(4)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Under the invite block only: the link travels whatever app carries it,
+    /// and whoever holds it can redeem it — say that, not "safe in transit".
+    private var inviteCaution: some View {
+        VStack(spacing: 3) {
+            Text("this link is what lets someone pair with you")
+            Text("send it somewhere you trust")
         }
         .stillwaterMono(8, trackingEm: 0.2, color: Stillwater.Palette.mistDimmest)
         .multilineTextAlignment(.center)

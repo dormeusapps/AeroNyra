@@ -793,7 +793,7 @@
 				INFOPLIST_FILE = Beacon/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = AeroNyra;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and relay your messages directly between phones. No servers, no internet.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and carry your messages directly between phones, with no server and no internet needed nearby.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "AeroNyra uses the camera to scan a contact's pairing code, for video calls, and to capture photos and videos for stories.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AeroNyra uses the microphone for voice notes, calls, and audio when capturing videos for stories.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -858,7 +858,7 @@
 				INFOPLIST_FILE = Beacon/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = AeroNyra;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.social-networking";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and relay your messages directly between phones. No servers, no internet.";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "AeroNyra uses Bluetooth to discover nearby devices and carry your messages directly between phones, with no server and no internet needed nearby.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "AeroNyra uses the camera to scan a contact's pairing code, for video calls, and to capture photos and videos for stories.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "AeroNyra uses the microphone for voice notes, calls, and audio when capturing videos for stories.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

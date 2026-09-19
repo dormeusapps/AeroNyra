@@ -333,7 +333,7 @@ struct SettingsView: View {
     private var walkieSection: some View {
         SettingsGroup(
             header: "Walkie",
-            footer: "When on, a verified contact can open a live walkie with you. Your mic hardware turns on when they do, and nothing sends unless you hold. When off, requests are declined before your mic is touched."
+            footer: "When on, a verified contact can open a live walkie with you over the internet. Your mic hardware turns on when they do, and nothing sends unless you hold. When off, internet requests are declined before your mic is touched. A verified contact within Bluetooth range can still open one nearby."
         ) {
             SettingsRow {
                 Toggle(isOn: $allowInboundWalkie) {
