@@ -1011,9 +1011,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             // restart, rate limit) is transient → rebuild socket + REQ through
             // the normal backoff. A CLOSED for a sub id that isn't ours is
             // logged and ignored, as before.
-            let permanentPrefixes = ["auth-required:", "restricted:", "blocked:",
-                                     "invalid:", "unsupported:"]
-            if conn.activeSubIDs.contains(sub), permanentPrefixes.contains(where: { msg.hasPrefix($0) }) {
+            if conn.activeSubIDs.contains(sub), Self.isPermanentRefusal(msg) {
                 log.error("nostr: subscription REFUSED \(sub, privacy: .public) \(msg, privacy: .public) @ \(host, privacy: .public) — permanent, not retrying")
                 captureEventLocked("IN \(host) CLOSED \(sub) refused-permanent \(msg)")
             } else if conn.activeSubIDs.contains(sub), started {
@@ -1254,6 +1252,28 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// Parse a relay frame into a `RelayMessage`. Returns nil only for input that
     /// isn't a JSON array with a leading string tag; recognized-but-malformed
     /// frames map to `.unknown` so the receive loop never wedges on junk.
+    /// NIP-01 machine-readable CLOSED prefixes that retrying cannot cure.
+    static let permanentRefusalPrefixes = ["auth-required:", "restricted:", "blocked:",
+                                           "invalid:", "unsupported:"]
+
+    /// Whether a relay's CLOSED message is a permanent refusal (no retry).
+    /// Field-found 2026-09-19 on relay.damus.io: the relay prefaces the
+    /// standard prefix with `ERROR: ` — "ERROR: auth-required: requested
+    /// filter requires authentication" — which a bare `hasPrefix` missed, so
+    /// the refusal was classed transient and one socket reconnected 133 times
+    /// in ten minutes. Strip one optional leading `error:` (any case) and
+    /// surrounding whitespace, then match the prefix case-insensitively.
+    /// NIP-42 AUTH is NEVER the answer to this refusal: authenticating binds
+    /// our real npub to the connection, the exact binding the inbox tag exists
+    /// to remove (SESSION_HANDOFF §6).
+    static func isPermanentRefusal(_ message: String) -> Bool {
+        var m = message.trimmingCharacters(in: .whitespaces).lowercased()
+        if m.hasPrefix("error:") {
+            m = String(m.dropFirst("error:".count)).trimmingCharacters(in: .whitespaces)
+        }
+        return permanentRefusalPrefixes.contains { m.hasPrefix($0) }
+    }
+
     /// Which inbound frames prove the relay is SERVING us and therefore reset
     /// the reconnect backoff. Field-found 2026-09-19: the reset used to fire on
     /// EVERY received frame, so a relay answering each REQ with a transient
