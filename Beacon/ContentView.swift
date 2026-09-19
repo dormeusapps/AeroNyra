@@ -1028,14 +1028,22 @@ struct ContentView: View {
     /// availability: each relay is an independent websocket, publish fans out to
     /// all, and inbound from all is merged (the router dedups by envelope id), so
     /// one relay having a bad day (e.g. a 503) can't kill the internet pillar.
-    /// Widely-used, independently-operated public relays. Both devices sharing the
+    /// Widely-used, independently-operated public relays that serve an
+    /// unauthenticated kind-1059 subscription (measured; see the note in the
+    /// list). Both devices sharing the
     /// same list is what makes their subscriptions overlap. A future settings
     /// screen swaps this array — the transport already takes a list.
     private var nostrRelayURLs: [String] {
         [
             "wss://relay.primal.net",
             "wss://nos.lol",
-            "wss://relay.damus.io",
+            // relay.damus.io REMOVED 2026-09-19: it CLOSEs every kind-1059 REQ with
+            // "ERROR: auth-required" (policy on the kind, not the filter — a bare
+            // {"kinds":[1059]} is refused too). NIP-42 AUTH is not an option: it
+            // would bind our real npub to the connection, the exact binding the
+            // inbox tag exists to remove. It never once served this app's inbox.
+            // No replacement without a single-device Test A first
+            // (SESSION_HANDOFF_v61 §5.7, §6).
         ]
     }
     
