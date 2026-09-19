@@ -25,11 +25,12 @@ final class NostrTransportFramingTests: XCTestCase {
         return NostrEvent(jsonData: Data(json.utf8))!
     }
 
-    // MARK: - REQ subscription
+    // MARK: - REQ subscription (v59 Stage 5: inbox tags, never the npub)
 
-    func testSubscriptionFrameShape() throws {
-        let data = NostrTransport.subscriptionFrame(subscriptionID: "sub1",
-                                                    recipientPubkeyHex: pubHex)
+    func testSubscriptionFrameShapeCarriesTagsNotTheNpub() throws {
+        let tags = ["b1c25406911c8c4c9f9b0b9c154018f81f2022ca5371eac1fb03b78849c49ba0",
+                    "e2040b8422ba4aa5e05e44d9bad5d1e5c8182a1101c612c6bf75e023cec8882a"]
+        let data = NostrTransport.subscriptionFrame(subscriptionID: "sub1", tags: tags)
         let top = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [Any])
 
         XCTAssertEqual(top[0] as? String, "REQ")
@@ -37,7 +38,44 @@ final class NostrTransportFramingTests: XCTestCase {
 
         let filter = try XCTUnwrap(top[2] as? [String: Any])
         XCTAssertEqual(filter["kinds"] as? [Int], [NostrGiftWrap.wrapKind])  // 1059 only
-        XCTAssertEqual(filter["#p"] as? [String], [pubHex])                  // tagged to us
+        XCTAssertEqual(filter["#p"] as? [String], tags)                      // the planned tags, verbatim order
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains(pubHex),
+                       "an npub must never appear in a subscription frame")
+    }
+
+    func testCloseFrameShape() throws {
+        let data = NostrTransport.closeFrame(subscriptionID: "sub1")
+        let top = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [Any])
+        XCTAssertEqual(top.count, 2)
+        XCTAssertEqual(top[0] as? String, "CLOSE")
+        XCTAssertEqual(top[1] as? String, "sub1")
+    }
+
+    /// Queue item 2: the subscription id names nothing. 16 lowercase hex, no
+    /// `aeronyra-` prefix, fresh per call.
+    func testSubscriptionIDIsRandomAndUnbranded() {
+        let ids = (0..<50).map { _ in NostrTransport.randomSubscriptionID() }
+        XCTAssertEqual(Set(ids).count, 50)
+        for id in ids {
+            XCTAssertEqual(id.count, 16)
+            XCTAssertTrue(id.allSatisfy { "0123456789abcdef".contains($0) })
+            XCTAssertFalse(id.lowercased().contains("aeronyra"))
+        }
+    }
+
+    /// The real bytes of a full contact page on the wire: 1,920 values through
+    /// the production frame builder with a production-shaped id, against the
+    /// smallest configured relay frame (nos.lol, 131,072). The other two
+    /// relays allow 1,000,000.
+    func testFullPageSubscriptionFrameFitsTheSmallestRelayFrame() throws {
+        var rng = SystemRandomNumberGenerator()
+        let tags = (0..<1_920).map { _ in
+            (0..<32).map { _ in String(format: "%02x", UInt8.random(in: UInt8.min...UInt8.max, using: &rng)) }.joined()
+        }.sorted()
+        let data = NostrTransport.subscriptionFrame(subscriptionID: NostrTransport.randomSubscriptionID(), tags: tags)
+        XCTAssertLessThanOrEqual(data.count, 131_072, "nos.lol maxWebsocketPayloadSize")
+        XCTAssertGreaterThan(data.count, 128_000, "sanity: ~67 bytes per value")
+        XCTAssertLessThanOrEqual(tags.count, 2_047, "strfry per-filter value cap")
     }
 
     // MARK: - EVENT publish

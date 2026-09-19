@@ -16,6 +16,7 @@
 
 import XCTest
 import os
+import CryptoKit
 @testable import Beacon
 
 final class NostrRelayRoundTripTests: XCTestCase {
@@ -29,6 +30,15 @@ final class NostrRelayRoundTripTests: XCTestCase {
         let pub = try XCTUnwrap(Secp256k1.xOnlyPublicKey(fromSecretKey: secret))
         let url = try XCTUnwrap(URL(string: "wss://relay.damus.io"))
         let transport = NostrTransport(relayURL: url, ourSecretKey: secret, ourPublicKey: pub)
+        // v59: the REQ carries inbox tags, not the npub, and publish resolves a
+        // tag from the table. For a SELF round trip the publish label (our
+        // identity) must equal the subscribe label (the row's identity), so
+        // the table uses one identity for both; the decoy secret pads the page.
+        let identity = Data(repeating: 0xBB, count: 32)
+        let pairSecret = Data((0...31).map { UInt8($0) })
+        transport.setDecoySecret(NostrInboxDecoy.secret(fromAgreementPrivate: Curve25519.KeyAgreement.PrivateKey()))
+        transport.setTagTable(NostrInboxTagTable(ourIdentity: identity,
+                                                 rows: [.init(identity: identity, secret: pairSecret, nostrPubkey: pub)]))
 
         // The opaque payload we want to see survive the trip. Tagged unique so a
         // stray event from another run can't accidentally satisfy us.

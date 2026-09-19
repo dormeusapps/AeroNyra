@@ -16,6 +16,17 @@
 //    • inbound envelopes carry a synthetic source link (`nostrSourceLink`) only
 //      to satisfy the stream's shape; nothing forwards them onward.
 //
+//  *** THE SUBSCRIPTION (v59 Stage 5) *** carries NO npub. Each socket holds
+//  one REQ per contact PAGE (the padded, epoch-windowed tag set from
+//  `NostrSubscriptionPlan`, 1,920 values a page) plus, while an invite we
+//  minted is live, one REQ of invite-echo tags. Subscription ids are random
+//  per socket, stable for the socket's life, so an epoch rollover or a
+//  membership change re-REQs on the SAME id (NIP-01 filter replacement) and a
+//  subscription that leaves the plan is CLOSEd. A REQ is re-sent only when its
+//  frame bytes changed, so a table rebuild that did not move the subscribe set
+//  (a learned npub) sends nothing. The rollover timer is armed from the
+//  injected clock to the next epoch boundary.
+//
 //  *** ADDRESSED, NOT BROADCAST. *** A Nostr gift wrap is built FOR a specific
 //  recipient pubkey (NIP-59: encrypted to the peer; since v59 Stage 4 tagged
 //  `["p", inboxTag]` — the pair-secret directional tag from the contact tag
@@ -87,7 +98,6 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     // MARK: Injected identity + relays
     private let relayURLs: [URL]
     private let ourSecretKey: Data        // signs wraps; opens inbound (NIP-44)
-    private let ourPubkeyHex: String      // for the #p subscription filter
     /// Injected clock (Unix seconds) for the tag epoch. Never the wall clock
     /// directly, so tests pin the epoch.
     private let now: @Sendable () -> UInt64
@@ -110,6 +120,40 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// message sent before the table can hold the recipient (see
     /// `NostrInviteEchoTag`).
     private var inviteEchoTags: [Data: Data] = [:]
+    /// The device-local decoy secret (`NostrInboxDecoy.secret(fromAgreementPrivate:)`),
+    /// set by the composition root BEFORE `start()`. nil = no padded pages can be
+    /// planned; the transport then subscribes to nothing and logs it loudly —
+    /// it never falls back to a bare set.
+    private var decoySecret: Data?
+    /// Minted invites we are still listening for (minter side), invite id →
+    /// expiresAt (Unix ms). Registered at mint and seeded from the persisted
+    /// ledger at boot; pruned by expiry at every plan.
+    private var inviteEchoes: [Data: Int64] = [:]
+    /// Bumped on every `start`/`stop` so a rollover timer armed under an older
+    /// life of the transport does nothing.
+    private var rolloverGeneration = 0
+    /// The plan the last (re)subscription was computed from, for logging.
+    private var lastPlan: NostrSubscriptionPlan?
+    #if DEBUG
+    /// Stage 5 GATE HOOK, debug builds only: every outbound frame text
+    /// (REQ / CLOSE / EVENT), before it hits the socket. The two-phone gate
+    /// captures these and greps for the npub. Never compiled into Release.
+    private var onOutboundFrame: (@Sendable (_ host: String, _ text: String) -> Void)?
+    /// Stage 5 GATE HOOK, debug builds only (added 2026-09-19 because `log collect`
+    /// is unavailable on this Mac): one line per relay event — socket connect /
+    /// open / close (with code) / reconnect / send-failure, and inbound EOSE, OK,
+    /// NOTICE, CLOSED — each naming its host. Mirrors the `.public` log lines
+    /// exactly; adds no information. Never compiled into Release.
+    private var onRelayEvent: (@Sendable (String) -> Void)?
+    #endif
+
+    /// DEBUG-only relay-event capture; the autoclosure means Release builds
+    /// never even format the string. Queue-confined like every caller.
+    private func captureEventLocked(_ line: @autoclosure () -> String) {
+        #if DEBUG
+        onRelayEvent?(line())
+        #endif
+    }
 
     /// ISSUE-5 backlog-replay guard: OUTER 1059 event ids already processed, so a
     /// relay replay (or the same wrap fanned in from several relays) is skipped
@@ -179,8 +223,68 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// queue-confined; FIFO on the same queue as `start()` and every publish
     /// read, so a table set before `start()` is visible to the first socket.
     public func setTagTable(_ table: NostrInboxTagTable) {
-        queue.async { [weak self] in self?.tagTable = table }
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.tagTable = table
+            // v59 Stage 5: the subscribe side may have moved (a contact enrolled
+            // or revoked). Re-plan NOW — a newly paired contact must be able to
+            // reach us this epoch, not at the next rollover. If only the join
+            // changed (a learned npub), the page bytes are identical and nothing
+            // is sent. Cost, recorded: a mid-epoch membership change moves
+            // exactly one slot's 32 values, which a relay can bucket as one
+            // real contact's window.
+            self.refreshSubscriptionsLocked(reason: "table")
+        }
     }
+
+    /// v59 Stage 5: the decoy secret the padded pages are built from. Set by
+    /// the composition root BEFORE `start()`; without it no page is planned.
+    public func setDecoySecret(_ secret: Data) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.decoySecret = secret
+            self.refreshSubscriptionsLocked(reason: "decoy secret")
+        }
+    }
+
+    /// v59 Stage 5, MINTER side: listen for the echo of an invite we minted, on
+    /// its invite-echo tags, until `expiresAtMillis` plus skew. Called at mint
+    /// and seeded from the persisted pending-invite ledger at boot. The
+    /// subscription is pruned by expiry at every plan; nothing has to unregister.
+    public func addInviteEchoSubscription(inviteID: Data, expiresAtMillis: Int64) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.inviteEchoes[inviteID] = expiresAtMillis
+            self.refreshSubscriptionsLocked(reason: "invite minted")
+        }
+    }
+
+    #if DEBUG
+    /// Stage 5 GATE HOOK (debug only): observe every outbound frame's text.
+    public func setOutboundFrameObserver(_ observer: @escaping @Sendable (_ host: String, _ text: String) -> Void) {
+        queue.async { [weak self] in self?.onOutboundFrame = observer }
+    }
+    /// Stage 5 GATE HOOK (debug only): observe every relay event line (§ onRelayEvent).
+    public func setRelayEventObserver(_ observer: @escaping @Sendable (String) -> Void) {
+        queue.async { [weak self] in self?.onRelayEvent = observer }
+    }
+    #endif
+
+    #if DEBUG
+    /// TEST SEAM (internal, DEBUG ONLY — absent from the Release product): run
+    /// the REAL inbound frame handler on the queue for `data`, as if a relay
+    /// had sent it, and return once handled. Lets a test assert that the
+    /// handler ignores the `p` tag entirely — the KAT §5 decode-independence
+    /// property, on the actual receive path rather than only on
+    /// `NostrGiftWrap.unwrap`. The Test action builds Debug, so tests see it.
+    func injectInboundFrameForTesting(_ data: Data) {
+        dispatchPrecondition(condition: .notOnQueue(queue))
+        queue.sync {
+            let conn = RelayConn(url: URL(string: "wss://test.invalid")!)
+            self.handleFrameLocked(data, from: conn)
+        }
+    }
+    #endif
 
     /// Register a ONE-SHOT invite-echo tag for the publish to `recipient`
     /// (the minter's npub). Consumed by the next publish to that npub, which
@@ -257,7 +361,17 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// the transport: every field is read/written ONLY on `queue`.
     private final class RelayConn: @unchecked Sendable {
         let url: URL
-        let subID: String
+        /// v59 Stage 5: one random subscription id per contact PAGE, grown as
+        /// pages are needed and STABLE for this connection's life, so a
+        /// rollover or membership change replaces the filter on the same id.
+        var pageSubIDs: [String] = []
+        /// The invite-echo subscription's id, likewise stable per connection.
+        let echoSubID: String
+        /// subscription id → the exact REQ text last sent on THIS socket, so a
+        /// re-plan sends only frames whose bytes changed. Cleared per connect.
+        var lastSentFrames: [String: String] = [:]
+        /// Ids currently held open on this socket (for CLOSE and for CLOSED).
+        var activeSubIDs: Set<String> = []
         var session: URLSession?
         var task: URLSessionWebSocketTask?
         var reconnectAttempts = 0
@@ -280,7 +394,14 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         var reqRetries = 0
         init(url: URL) {
             self.url = url
-            self.subID = "aeronyra-\(UUID().uuidString.prefix(8))"
+            self.echoSubID = NostrTransport.randomSubscriptionID()
+        }
+
+        /// The id for contact page `index`, minting a fresh random id the first
+        /// time a page is needed.
+        func subID(forPage index: Int) -> String {
+            while pageSubIDs.count <= index { pageSubIDs.append(NostrTransport.randomSubscriptionID()) }
+            return pageSubIDs[index]
         }
     }
 
@@ -370,7 +491,10 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                 now: @escaping @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) }) {
         self.relayURLs = relayURLs
         self.ourSecretKey = ourSecretKey
-        self.ourPubkeyHex = ourPublicKey.map { String(format: "%02x", $0) }.joined()
+        // `ourPublicKey` is retained in the signature for API stability; since
+        // v59 Stage 5 the subscription no longer carries it and nothing here
+        // reads it.
+        _ = ourPublicKey
         self.processedLedger = initialLedger
         self.persistLedger = persistLedger
         self.now = now
@@ -394,6 +518,9 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             self.started = true
             self.conns = self.relayURLs.map { RelayConn(url: $0) }
             for conn in self.conns { self.connectLocked(conn) }
+            // v59 Stage 5: epoch rollover re-REQ, armed from the injected clock.
+            self.rolloverGeneration += 1
+            self.scheduleRolloverLocked(generation: self.rolloverGeneration)
             // FIX 2: path-change trigger. Started on `queue`, so the handler is
             // already inside the confinement — no extra hop.
             let monitor = NWPathMonitor()
@@ -409,6 +536,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         queue.async { [weak self] in
             guard let self else { return }
             self.started = false
+            self.rolloverGeneration += 1                   // kill the pending rollover
             self.pathMonitor?.cancel()
             self.pathMonitor = nil
             self.lastPathSignature = nil
@@ -500,7 +628,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                     return
                 }
                 for conn in live {
-                    conn.task?.send(.string(text)) { [weak self] error in
+                    self.transmitLocked(conn, text: text) { [weak self] error in
                         if let error {
                             // FIX 2 instrumentation: domain+code (non-secret;
                             // localizedDescription redacts to <private>).
@@ -539,31 +667,140 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         conn.task = task
         task.resume()
         log.info("nostr: connecting → \(conn.url.absoluteString, privacy: .public) gen=\(generation)")
-        sendSubscriptionLocked(conn)
+        captureEventLocked("SOCKET \(conn.url.host ?? "relay") connecting gen=\(generation)")
+        // A fresh socket knows nothing: every planned subscription is new.
+        conn.lastSentFrames = [:]
+        conn.activeSubIDs = []
+        sendSubscriptionsLocked(conn)
         receiveNext(conn, generation: generation)
         schedulePingLocked(conn, generation: generation)
     }
 
-    private func sendSubscriptionLocked(_ conn: RelayConn) {
+    // MARK: - The ONE outbound text choke point
+
+    /// EVERY text frame this transport writes to a socket — REQ, CLOSE, EVENT
+    /// and the F1 re-publish — goes through here and nowhere else. The DEBUG
+    /// gate observer is invoked here and only here, so a capture attached to it
+    /// sees every byte the app hands to the WebSocket layer. Pings are control
+    /// frames with no payload (`sendPing`) and are not text sends. Queue-
+    /// confined like every caller.
+    private func transmitLocked(_ conn: RelayConn, text: String,
+                                completion: @escaping @Sendable (Error?) -> Void) {
+        #if DEBUG
+        onOutboundFrame?(conn.url.host ?? "relay", text)
+        #endif
+        conn.task?.send(.string(text), completionHandler: completion)
+    }
+
+    // MARK: - Subscriptions (v59 Stage 5: plan-driven, no npub)
+
+    /// The current plan from the queue-confined inputs and the injected clock.
+    private func currentPlanLocked() -> NostrSubscriptionPlan {
+        let echoes = inviteEchoes.map { NostrSubscriptionPlan.InviteEcho(inviteID: $0.key, expiresAtMillis: $0.value) }
+        let plan = NostrSubscriptionPlan.make(table: tagTable, decoySecret: decoySecret,
+                                              inviteEchoes: echoes, nowSeconds: now())
+        // Prune expired registrations so they do not accumulate for the life
+        // of the process.
+        let live = Set(NostrSubscriptionPlan.liveEchoes(echoes, nowSeconds: now()).map(\.inviteID))
+        inviteEchoes = inviteEchoes.filter { live.contains($0.key) }
+        return plan
+    }
+
+    /// The frames one socket should hold open under `plan`: (subscription id,
+    /// REQ text). Page ids are stable per connection; the echo id likewise.
+    private func plannedFramesLocked(for conn: RelayConn,
+                                     plan: NostrSubscriptionPlan) -> [(subID: String, text: String)] {
+        var frames: [(String, String)] = []
+        for (index, page) in plan.pages.enumerated() {
+            let id = conn.subID(forPage: index)
+            if let text = String(data: Self.subscriptionFrame(subscriptionID: id, tags: page), encoding: .utf8) {
+                frames.append((id, text))
+            }
+        }
+        if !plan.inviteEchoTags.isEmpty,
+           let text = String(data: Self.subscriptionFrame(subscriptionID: conn.echoSubID,
+                                                          tags: plan.inviteEchoTags), encoding: .utf8) {
+            frames.append((conn.echoSubID, text))
+        }
+        return frames
+    }
+
+    /// (Re)send this socket's subscriptions: every planned REQ whose bytes
+    /// differ from what this socket last sent, and a CLOSE for every id it
+    /// holds that the plan no longer contains. On a fresh socket everything is
+    /// new. A plan with no pages is logged loudly and sends nothing for pages —
+    /// never a bare set.
+    private func sendSubscriptionsLocked(_ conn: RelayConn) {
+        let plan = currentPlanLocked()
+        lastPlan = plan
+        if plan.pages.isEmpty {
+            log.error("nostr: NO subscription pages planned (table=\(self.tagTable != nil) decoySecret=\(self.decoySecret != nil)) @ \(conn.url.host ?? "relay", privacy: .public) — inbound will be dark until both are set")
+        }
+        let planned = plannedFramesLocked(for: conn, plan: plan)
+        let plannedIDs = Set(planned.map(\.subID))
+        for id in conn.activeSubIDs.subtracting(plannedIDs) {
+            if let text = String(data: Self.closeFrame(subscriptionID: id), encoding: .utf8) {
+                sendFrameLocked(conn, text: text, subID: id, isREQ: false)
+            }
+            conn.activeSubIDs.remove(id)
+            conn.lastSentFrames[id] = nil
+        }
+        for (id, text) in planned where conn.lastSentFrames[id] != text {
+            sendFrameLocked(conn, text: text, subID: id, isREQ: true)
+            conn.lastSentFrames[id] = text
+            conn.activeSubIDs.insert(id)
+        }
+        log.info("nostr: subscriptions @ \(conn.url.host ?? "relay", privacy: .public): pages=\(plan.pages.count) echoTags=\(plan.inviteEchoTags.count) active=\(conn.activeSubIDs.count)")
+    }
+
+    /// Re-plan and re-send on every live socket. Called on table / decoy /
+    /// invite changes and on epoch rollover. Frames whose bytes did not change
+    /// are not re-sent.
+    private func refreshSubscriptionsLocked(reason: String) {
+        guard started else { return }
+        for conn in conns where conn.task != nil {
+            sendSubscriptionsLocked(conn)
+        }
+        log.info("nostr: subscriptions refreshed (\(reason, privacy: .public))")
+    }
+
+    /// Arm the epoch-rollover re-REQ from the injected clock. Fires a few
+    /// seconds past the boundary so the new epoch is unambiguous, re-plans on
+    /// the same subscription ids, and re-arms. Generation-guarded so a timer
+    /// armed under a previous start/stop life is inert.
+    private static let rolloverGraceSeconds: Double = 3
+    private func scheduleRolloverLocked(generation: Int) {
+        let delay = Double(NostrSubscriptionPlan.secondsUntilNextEpoch(nowSeconds: now())) + Self.rolloverGraceSeconds
+        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.started, self.rolloverGeneration == generation else { return }
+            self.refreshSubscriptionsLocked(reason: "epoch rollover")
+            self.scheduleRolloverLocked(generation: generation)
+        }
+    }
+
+    /// Send one REQ or CLOSE frame on `conn`. A REQ that fails to send is
+    /// retried (bounded per socket, FIX 2) by re-running the full subscription
+    /// send, which re-sends only what still differs; a CLOSE is best-effort.
+    private func sendFrameLocked(_ conn: RelayConn, text: String, subID: String, isREQ: Bool) {
         let generation = conn.generation
-        let frame = Self.subscriptionFrame(subscriptionID: conn.subID,
-                                            recipientPubkeyHex: ourPubkeyHex)
-        guard let text = String(data: frame, encoding: .utf8) else { return }
-        conn.task?.send(.string(text)) { [weak self] error in
+        transmitLocked(conn, text: text) { [weak self] error in
             guard let self, let error else { return }
             let ns = error as NSError
             self.queue.async {
                 guard self.started, conn.generation == generation else { return }
-                self.log.error("nostr: REQ to \(conn.url.host ?? "relay", privacy: .public) failed: domain=\(ns.domain, privacy: .public) code=\(ns.code) attempt=\(conn.reqRetries + 1)")
+                self.log.error("nostr: \(isREQ ? "REQ" : "CLOSE", privacy: .public) to \(conn.url.host ?? "relay", privacy: .public) failed: domain=\(ns.domain, privacy: .public) code=\(ns.code) attempt=\(conn.reqRetries + 1)")
+                self.captureEventLocked("SOCKET \(conn.url.host ?? "relay") send-failed \(isREQ ? "REQ" : "CLOSE") \(subID) domain=\(ns.domain) code=\(ns.code) attempt=\(conn.reqRetries + 1)")
+                guard isREQ else { return }
                 // FIX 2: retry, don't abandon — a lost REQ is silent inbound
                 // death on an otherwise healthy socket. Bounded per socket; a
                 // truly dead socket is the watchdogs' job, and every reconnect
-                // path re-sends the REQ anyway.
+                // path re-sends the subscriptions anyway.
                 guard conn.reqRetries < Self.maxREQRetries else { return }
                 conn.reqRetries += 1
+                conn.lastSentFrames[subID] = nil          // force a re-send of THIS frame
                 self.queue.asyncAfter(deadline: .now() + Self.reqRetryDelay) { [weak self] in
                     guard let self, self.started, conn.generation == generation else { return }
-                    self.sendSubscriptionLocked(conn)
+                    self.sendSubscriptionsLocked(conn)
                 }
             }
         }
@@ -615,6 +852,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         let delay = min(Self.maxReconnectDelay,
                         Self.baseReconnectDelay * pow(2, Double(conn.reconnectAttempts - 1)))
         log.info("nostr: reconnect \(conn.url.host ?? "relay", privacy: .public) #\(conn.reconnectAttempts) in \(delay)s gen=\(generation)")
+        captureEventLocked("SOCKET \(conn.url.host ?? "relay") reconnect #\(conn.reconnectAttempts) in \(delay)s")
         queue.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.started, conn.generation == generation else { return }
             self.connectLocked(conn)
@@ -702,6 +940,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         queue.async { [weak self] in
             guard let self, conn.generation == generation else { return }
             self.log.info("nostr: socket OPEN @ \(conn.url.host ?? "relay", privacy: .public) gen=\(generation)")
+            self.captureEventLocked("SOCKET \(conn.url.host ?? "relay") open gen=\(generation)")
         }
     }
 
@@ -711,6 +950,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             guard let self, conn.generation == generation else { return }
             let reasonText = reason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             self.log.error("nostr: socket CLOSED @ \(conn.url.host ?? "relay", privacy: .public) code=\(code.rawValue) reason=\(reasonText, privacy: .public) — \(self.livenessSummaryLocked(conn), privacy: .public)")
+            self.captureEventLocked("SOCKET \(conn.url.host ?? "relay") closed code=\(code.rawValue) reason=\(reasonText) \(self.livenessSummaryLocked(conn))")
             if self.started { self.scheduleReconnectLocked(conn) }
         }
     }
@@ -751,11 +991,14 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             handleInboundEventLocked(event, from: conn)
         case .endOfStoredEvents(let sub):
             log.info("nostr: EOSE \(sub, privacy: .public) @ \(host, privacy: .public)")
+            captureEventLocked("IN \(host) EOSE \(sub)")
         case .ok(let id, let accepted, let msg):
             log.info("nostr: OK \(id, privacy: .public) accepted=\(accepted) \(msg, privacy: .public) @ \(host, privacy: .public)")
+            captureEventLocked("IN \(host) OK \(id) accepted=\(accepted) \(msg)")
             noteAcceptanceLocked(eventID: id, accepted: accepted)
         case .notice(let msg):
             log.info("nostr: NOTICE \(msg, privacy: .public) @ \(host, privacy: .public)")
+            captureEventLocked("IN \(host) NOTICE \(msg)")
         case .closed(let sub, let msg):
             // FIX 2: a relay killing OUR subscription used to be log-only —
             // publish kept working while inbound went permanently silent on
@@ -767,13 +1010,16 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             // logged and ignored, as before.
             let permanentPrefixes = ["auth-required:", "restricted:", "blocked:",
                                      "invalid:", "unsupported:"]
-            if sub == conn.subID, permanentPrefixes.contains(where: { msg.hasPrefix($0) }) {
+            if conn.activeSubIDs.contains(sub), permanentPrefixes.contains(where: { msg.hasPrefix($0) }) {
                 log.error("nostr: subscription REFUSED \(sub, privacy: .public) \(msg, privacy: .public) @ \(host, privacy: .public) — permanent, not retrying")
-            } else if sub == conn.subID, started {
+                captureEventLocked("IN \(host) CLOSED \(sub) refused-permanent \(msg)")
+            } else if conn.activeSubIDs.contains(sub), started {
                 log.error("nostr: subscription CLOSED \(sub, privacy: .public) \(msg, privacy: .public) @ \(host, privacy: .public) — transient, reconnect+resubscribe")
+                captureEventLocked("IN \(host) CLOSED \(sub) transient-reconnect \(msg)")
                 scheduleReconnectLocked(conn)
             } else {
                 log.info("nostr: CLOSED \(sub, privacy: .public) \(msg, privacy: .public) @ \(host, privacy: .public)")
+                captureEventLocked("IN \(host) CLOSED \(sub) foreign-ignored \(msg)")
             }
         case .unknown:
             break
@@ -909,7 +1155,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         guard started else { return }
         let live = conns.filter { $0.task != nil }
         for conn in live {
-            conn.task?.send(.string(pending.frame)) { [weak self] error in
+            transmitLocked(conn, text: pending.frame) { [weak self] error in
                 if let error {
                     let ns = error as NSError
                     self?.log.error("nostr: re-publish to \(conn.url.host ?? "relay", privacy: .public) failed: domain=\(ns.domain, privacy: .public) code=\(ns.code)")
@@ -958,15 +1204,30 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         case unknown
     }
 
-    /// Build a NIP-01 subscription: `["REQ", <subid>, {"kinds":[1059],"#p":[hex]}]`.
-    /// We only ever want gift wraps (kind 1059) tagged to us.
-    static func subscriptionFrame(subscriptionID: String, recipientPubkeyHex: String) -> Data {
+    /// Build a NIP-01 subscription: `["REQ", <subid>, {"kinds":[1059],"#p":[tags…]}]`.
+    /// v59 Stage 5: `tags` are inbox tags (contact page or invite-echo set),
+    /// 64-char lowercase hex, sorted by the planner. NEVER an npub.
+    static func subscriptionFrame(subscriptionID: String, tags: [String]) -> Data {
         let filter: [String: Any] = [
             "kinds": [NostrGiftWrap.wrapKind],
-            "#p": [recipientPubkeyHex]
+            "#p": tags
         ]
         let req: [Any] = ["REQ", subscriptionID, filter]
         return (try? JSONSerialization.data(withJSONObject: req)) ?? Data()
+    }
+
+    /// Build a NIP-01 `["CLOSE", <subid>]`.
+    static func closeFrame(subscriptionID: String) -> Data {
+        (try? JSONSerialization.data(withJSONObject: ["CLOSE", subscriptionID])) ?? Data()
+    }
+
+    /// A random subscription id: 16 lowercase hex characters, no prefix. Names
+    /// nothing (queue item 2 — the old `aeronyra-` prefix named the app on
+    /// every socket). Stable for a connection's life once minted, so NIP-01
+    /// filter replacement works.
+    static func randomSubscriptionID() -> String {
+        var rng = SystemRandomNumberGenerator()
+        return (0..<8).map { _ in String(format: "%02x", UInt8.random(in: UInt8.min...UInt8.max, using: &rng)) }.joined()
     }
 
     /// Build a NIP-01 publish: `["EVENT", <event-json-object>]`. Returns nil if
