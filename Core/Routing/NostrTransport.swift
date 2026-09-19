@@ -815,7 +815,9 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                 guard conn.generation == generation else { return }
                 switch result {
                 case .success(let message):
-                    conn.reconnectAttempts = 0
+                    // The reconnect-backoff reset moved to `handleFrameLocked`
+                    // (2026-09-19): only a frame that proves the relay is
+                    // SERVING us earns it — see `resetsReconnectBackoff`.
                     conn.lastInboundAt = Date()
                     let data: Data
                     switch message {
@@ -985,6 +987,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
 
     private func handleFrameLocked(_ data: Data, from conn: RelayConn) {
         guard let message = Self.parseRelayFrame(data) else { return }
+        if Self.resetsReconnectBackoff(message) { conn.reconnectAttempts = 0 }
         let host = conn.url.host ?? "relay"
         switch message {
         case .event(_, let event):
@@ -1251,6 +1254,19 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// Parse a relay frame into a `RelayMessage`. Returns nil only for input that
     /// isn't a JSON array with a leading string tag; recognized-but-malformed
     /// frames map to `.unknown` so the receive loop never wedges on junk.
+    /// Which inbound frames prove the relay is SERVING us and therefore reset
+    /// the reconnect backoff. Field-found 2026-09-19: the reset used to fire on
+    /// EVERY received frame, so a relay answering each REQ with a transient
+    /// CLOSED zeroed the counter every time and the capped exponential backoff
+    /// never grew past its base. A CLOSED or NOTICE is the relay talking, not
+    /// serving; only an EVENT, an EOSE or an OK earns the reset.
+    static func resetsReconnectBackoff(_ message: RelayMessage) -> Bool {
+        switch message {
+        case .event, .endOfStoredEvents, .ok: return true
+        case .notice, .closed, .unknown:      return false
+        }
+    }
+
     static func parseRelayFrame(_ data: Data) -> RelayMessage? {
         guard let top = (try? JSONSerialization.jsonObject(with: data)) as? [Any],
               let tag = top.first as? String else {
