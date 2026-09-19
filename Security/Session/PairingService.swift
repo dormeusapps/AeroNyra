@@ -57,6 +57,11 @@ final class PairingService {
     /// registration never outlives the call (see the defer's comment there).
     @ObservationIgnored var unregisterInviteEchoTag: ((_ minterNostrPubkey: Data) -> Void)?
 
+    /// v59 Stage 5, MINTER side: tells the Nostr transport to listen for the
+    /// redeemer's echo on this invite's echo tags until it expires. Called at
+    /// mint; the boot seed from the persisted ledger is the composition root's.
+    @ObservationIgnored var registerInviteEchoSubscription: ((_ inviteID: Data, _ expiresAtMillis: Int64) -> Void)?
+
     /// The live denylist — OBSERVABLE (deliberately not ignored) so HomeView's
     /// roster filter and the Blocked Contacts list repaint the moment a
     /// block/unblock lands. This @MainActor service is the single serializing
@@ -212,6 +217,9 @@ final class PairingService {
     func mintInviteString(ttlMillis: Int64 = Invite.defaultTTLMillis) async throws -> String {
         let payload = try makeOurPayload()
         let invite = try await enrollment.mintInvite(payload: payload, ttlMillis: ttlMillis)
+        // v59: start listening for the echo on the invite-echo tags NOW, before
+        // the string is even shared — a fast redeemer must find us subscribed.
+        registerInviteEchoSubscription?(invite.id, invite.expiresAt)
         return Self.encodeInvite(invite)
     }
 

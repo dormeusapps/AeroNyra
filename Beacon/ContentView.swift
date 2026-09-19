@@ -480,6 +480,7 @@ struct ContentView: View {
         let secure = try SignalSessionStore(appIdentity: identity,
                                             directory: directory, dek: dek)
         let coord = FirstContactCoordinator(store: secure, transport: transport)
+
         
         // STEP 7a — persisted closed-contact allowlist. Its own DEK (a distinct
         // Keychain service) seals a distinct file in the same store directory.
@@ -764,6 +765,23 @@ struct ContentView: View {
         pairingService?.unregisterInviteEchoTag = { minterNpub in
             tagTransport?.unregisterInviteEchoTag(forRecipient: minterNpub)
         }
+
+        // v59 Stage 5 — the subscribe side. The decoy secret is derived from
+        // the same identity key as the pair secrets (S_AB's lifetime, never the
+        // nsec) and set BEFORE `mesh.start()`, so the first REQ is already the
+        // padded, npub-free set. Minter-side invite-echo subscriptions: seed
+        // from the persisted ledger (an invite minted in a previous launch is
+        // still awaiting its echo), then register each new mint as it happens.
+        tagTransport?.setDecoySecret(NostrInboxDecoy.secret(fromAgreementPrivate: identity.agreement))
+        let bootMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        for (inviteID, expiresAt) in loadedPending.entries
+        where bootMillis <= expiresAt + Invite.defaultSkewMillis {
+            tagTransport?.addInviteEchoSubscription(inviteID: inviteID, expiresAtMillis: expiresAt)
+        }
+        pairingService?.registerInviteEchoSubscription = { inviteID, expiresAt in
+            tagTransport?.addInviteEchoSubscription(inviteID: inviteID, expiresAtMillis: expiresAt)
+        }
+
         
         // STEP 7b-3 — assemble the crypto-erase now that every secret-bearing
         // component exists. Service ids are the SAME `private var` constants used
