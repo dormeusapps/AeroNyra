@@ -1204,16 +1204,23 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         case unknown
     }
 
-    /// Build a NIP-01 subscription: `["REQ", <subid>, {"kinds":[1059],"#p":[tags…]}]`.
+    /// Build a NIP-01 subscription: `["REQ", <subid>, {"#p":[tags…],"kinds":[1059]}]`.
     /// v59 Stage 5: `tags` are inbox tags (contact page or invite-echo set),
     /// 64-char lowercase hex, sorted by the planner. NEVER an npub.
+    ///
+    /// BYTE-DETERMINISTIC (2026-09-19, Test D): `sendSubscriptionsLocked` re-sends
+    /// a REQ only when its bytes differ from the last sent, so the bytes for one
+    /// input must be one thing. Without `.sortedKeys` the filter's two keys came
+    /// out in either order and half of all refreshes re-sent 128,690 B per page
+    /// per relay with no set change. Relays accept either order; `#p` now
+    /// always precedes `kinds`. Pinned by `NostrSubscriptionFrameDeterminismTests`.
     static func subscriptionFrame(subscriptionID: String, tags: [String]) -> Data {
         let filter: [String: Any] = [
             "kinds": [NostrGiftWrap.wrapKind],
             "#p": tags
         ]
         let req: [Any] = ["REQ", subscriptionID, filter]
-        return (try? JSONSerialization.data(withJSONObject: req)) ?? Data()
+        return (try? JSONSerialization.data(withJSONObject: req, options: [.sortedKeys])) ?? Data()
     }
 
     /// Build a NIP-01 `["CLOSE", <subid>]`.
