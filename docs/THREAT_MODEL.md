@@ -1,7 +1,7 @@
 # AeroNyra — Sender-Identity Threat Model
 
 **Phase 9a-1 · Metadata hardening**
-**Written 2026-06-29 · Status section updated 2026-07-09**
+**Written 2026-06-29 · §2 and §3 rewritten 2026-09-19 (v59 connection-leak fix) · Status section updated 2026-09-19**
 
 Scope of this document: what an adversary can learn about **who sent a message**,
 across both transports, and which exposures Phase 9 will close, defer, or
@@ -45,46 +45,123 @@ field and no destination field**. Everything identifying lives inside
 |----|-----------|----------|--------------|
 | **A** | Passive RF sniffer (BLE) | In radio range; captures every frame | No |
 | **B** | Malicious relaying peer (BLE) | A mesh node that forwards traffic | No |
-| **C** | Relay operator / observer (Nostr) | Sees published events + our subscription | No |
+| **C** | Relay operator (Nostr) | Runs a relay we connect to: sees our subscription, every event we publish, our IP, and which of its connections each event is served to | No |
+| **C2** | Firehose observer (Nostr) | Anyone holding an unauthenticated kind-1059 subscription on a relay we use (relay.primal.net and nos.lol serve one): sees every event, its size and its arrival time; sees no subscriptions and no IPs | No |
 | **D** | Compromised recipient | The intended counterparty | Yes (by design) |
 
 Adversary **D** always learns the sender — that is what it means to receive a
 message — and is out of scope for sealed sender. **A** and **B** see identical
 wire bytes; **B** additionally learns the source *link* (split-horizon requires
 it) and participates actively, but holds no keys, so it cannot open an
-`Envelope`. **C** sees who receives and when, but not who sent (see §4).
+`Envelope`. **C** sees which of its connections receives each event and when, and
+holds both endpoints of every conversation edge as pseudonyms; it never sees an
+identity (§3). **C2** sees only the event stream, and can pair the two directions
+of a conversation from the delivery receipt's timing (§3). Neither can open an
+`Envelope`.
 
 ---
 
-## 3. Nostr leg — sender is sealed (no 9a action)
+## 3. Nostr leg — no identity on the wire; a pseudonymous connection graph remains
 
-Confirmed against `NostrGiftWrap.wrap` and `NostrEvent`:
+*Rewritten 2026-09-19. As written on 2026-06-29 this section was titled "sender is
+sealed" and rested on the event bytes alone. That was true of the bytes and false of
+the connection: until v59 Stage 5 the REQ named our npub in its `#p` filter and every
+EVENT named the recipient's npub in its `p` tag, on the same WebSocket, so a relay
+operator read the sender↔recipient graph off one connection with no cryptography
+broken. Closed by the v59 connection-leak fix, commits `62d6283` … `057c606`,
+2026-09-14 to 2026-09-19; framing and vectors in `NOSTR_INBOX_TAG_KAT.md`. What
+follows is the post-fix model, measured on two devices against both relays on
+2026-09-19.*
 
-- The outer gift wrap (kind 1059) is signed by a **fresh ephemeral key** minted
-  per envelope (`randomScalar()`), with `created_at` back-dated by a random
-  offset in `[0, 2 days]` (`randomizedTimestamp`, NIP-59), and tagged only
-  `["p", peerHex]`. The event's `pubkey` field is the ephemeral key, never our
-  npub.
-- Our **real** secp256k1 key signs only the *seal* (kind 13), which is NIP-44
-  encrypted inside the wrap. Our identity therefore appears only inside
-  ciphertext that only the recipient can open.
-- The rumor (kind 20059) carries our real pubkey but sits two encryption layers
-  deep.
+### 3.1 What is on the wire now
 
-Nothing in the call path above the wrap re-leaks the sender
-(`send` → `routeOut` → `router.send(nostrRecipient:)` → `publishViaNostr` →
-`addressed.publish` → `wrap`; the sender secret is consumed only inside the
-encrypted seal). **Adversary C learns recipient + timing + size, never sender.**
+- **Subscription.** One REQ per contact page, 1,920 values: 60 slots × 32 epochs
+  (30 back, the current one, 1 ahead; epoch = 86,400 s). A real slot holds
+  `tag(peer→us, e) = HMAC(S_AB, domain ‖ e ‖ label ‖ counter)`, curve-valid, keyed on
+  the pair secret only the two paired devices can derive; a decoy slot holds the same
+  construction under a device secret derived from our identity agreement key. Every
+  page is fully padded; never a bare set. Subscription ids are random 16-hex, one per
+  page per socket, stable for the socket's life; an epoch rollover replaces the filter
+  on the same id (60 values out, 60 in). While an invite we minted is live, one more
+  REQ carries the three invite-echo tags for that invite. **No npub appears in any
+  frame.**
+- **Publish.** A kind-1059 gift wrap signed by a fresh ephemeral key, `created_at`
+  back-dated by a random offset in `[0, 2 days]`, tagged `["p", tag(us→peer, e)]` —
+  the directional tag, never the npub. Our real key signs only the seal inside the
+  NIP-44 layer. The rumor carries our real pubkey two encryption layers deep.
+- **Relays.** Two: `relay.primal.net` and `nos.lol`, each its own socket, publish
+  fanned out to both, inbound merged and deduplicated. `relay.damus.io` was in the
+  default set from 2026-07-04 to 2026-09-19 and never served this app's inbox
+  subscription in that time: it answers every kind-1059 subscription, with or without
+  a `#p` filter, with `CLOSED "ERROR: auth-required"`. Every earlier statement of
+  three relays or multi-relay availability was false for those eleven weeks.
+- **No NIP-42 authentication, ever.** Authenticating binds our real npub to the
+  connection — the exact binding this section exists to remove. A relay that refuses
+  a tag filter is dropped, not authenticated to. No relay enters the default list
+  without a single-device capture showing it serves an unauthenticated kind-1059
+  subscription; NIP-11 does not disclose the policy.
 
-### Structural invariant (load-bearing)
+### 3.2 What adversary C (the operator) still learns — the residual set
 
-A `PreKeySignalMessage` — the one libsignal frame that embeds the sender's
-long-term identity key (see §4) — **can never traverse Nostr.** The Tier-2
-fallback requires `peer.nostrPubkey`, which is only learned by opening a sealed
-`.nostrIdentity` payload, which requires an established session in both
-directions. By the time Nostr is addressable, the handshake is well past the
-prekey stage. Therefore the identity-key exposure in §4 is **BLE-only**, and any
-fix targets BLE alone.
+1. **A pseudonymous per-relay connection graph.** The operator serves A's tagged event
+   to B's subscription and B's to A's, so it holds both endpoints of every
+   conversation edge as connection pseudonyms, with no clock needed. Identities are
+   never on the wire.
+2. **Active-sender count per epoch, and contact count to page granularity.** Decoy
+   slots never receive events, so the slots that do are the real, active contacts;
+   the page count bounds the contact count at 60 per page.
+3. **Receiver linkability across days.** Consecutive epoch windows share 31 of 32
+   epochs, so the same subscription is recognisable across rollovers; a mid-epoch
+   add, remove or block moves exactly one slot's 32 values.
+4. **IP address and online time per connection.** Unchanged by the fix. A VPN moves
+   the address and nothing else in this list.
+5. **Timing and size.** The relay's own receipt time is the real send time; the
+   back-date hides only the inner timestamp. Text events are about 2.6 KB; media
+   chunks up to about 56 KB, so media, and roughly how much, is distinguishable
+   from text.
+6. **An invite in flight.** The three-value echo subscription is visible while an
+   invite we minted is live — and, as built, until the next plan refresh after its
+   expiry (typically the next rollover), not merely TTL plus skew. Tracked (§9.3).
+7. **Backlog on reconnect.** The REQ carries no `since`, so every fresh socket
+   replays the relay's stored backlog for our tags, bounded by relay retention.
+
+### 3.3 What adversary C2 (the firehose observer) learns
+
+Everything in 3.2 items 2, 5 and 6 that can be read from events alone, plus:
+
+- **Both directions of a conversation, paired by timing.** On receipt of a text the
+  recipient's delivery receipt is published at once, so every event to `tag(A→B)` is
+  followed within about 0.5 s by exactly one same-sized event to `tag(B→A)`. Tag
+  unlinkability holds in the cryptography and fails in practice for this observer:
+  the pair, the message cadence, and a live "recipient's app is in the foreground"
+  signal are all readable from the stream. Mitigation queued, not built (§9.3).
+- **The first message of a session.** The npub announce fires once per launch per
+  peer alongside the first text or the first receipt, so a simultaneous pair of events
+  on one tag marks a session start.
+
+C2 holds no subscriptions and no IPs, so it cannot tie a tag to a connection.
+
+### 3.4 What neither C nor C2 learns
+
+Any npub. Any identity key. Content. The real `created_at`. Which page slot belongs
+to which contact, beyond activity. Whether two tags in one page belong to the same
+contact across the 32-epoch window (decoys and real slots are indistinguishable by
+construction).
+
+### Structural invariant (rewritten 2026-09-19)
+
+The original text here said a `PreKeySignalMessage` "can never traverse Nostr". It
+does: on the invite-echo path the redeemer's first sealed message — the prekey
+message that establishes the session — is routed over the relays when no BLE link
+exists (measured 2026-09-19: a 7,461-byte event, the only one of its size). What
+holds is narrower and sufficient: on Nostr that message exists only inside the
+NIP-44 gift wrap, encrypted to the minter's npub under an ephemeral key, so a relay
+sees ciphertext and cannot read the identity key or the `.preKey` type byte. The
+identity-key exposure in §4 therefore remains **BLE-only** — not because the prekey
+message stays off Nostr, but because Nostr carries it only sealed. The earlier claim
+that `peer.nostrPubkey` is learned only from a sealed `.nostrIdentity` payload is
+also retired: the invite payload carries the minter's npub and the V2 echo carries
+the redeemer's, which is what makes a pure-Nostr pairing possible at all.
 
 ---
 
@@ -179,9 +256,9 @@ documented fallback.
 
 | Exposure | Adversary | Disposition |
 |----------|-----------|-------------|
-| Nostr outer event reveals sender | C | **Closed** — ephemeral key + encrypted seal (§3) |
-| Nostr recipient `#p` tag reveals recipient | C | **Accepted/tracked** — inherent to NIP-59 addressed delivery; recipient-side, not 9a |
-| Our Nostr subscription binds npub ↔ IP ↔ online time | C | **Accepted/tracked** — recipient-side presence; revisit with multi-relay / Tor-style transport later |
+| Nostr outer event reveals sender | C | **Closed** — ephemeral key + encrypted seal (§3). *2026-09-19: this row was true of the bytes and wrong about the connection; see §9.4.* |
+| Nostr recipient `#p` tag reveals recipient | C | **Accepted/tracked** — inherent to NIP-59 addressed delivery. *2026-09-19: closed for identity by the v59 inbox tag; residual is connection-level (§3.2).* |
+| Our Nostr subscription binds npub ↔ IP ↔ online time | C | **Accepted/tracked** — recipient-side presence. *2026-09-19: no npub in any subscription; binds a padded tag set ↔ IP ↔ online time (§3.2).* |
 | BLE steady-state sender | A, B | **Closed** — sender = decrypting session (§4.1) |
 | BLE PreKeySignalMessage leaks identity key + `.preKey` tell | A, B | **9a-2** — move first contact off-RF (QR-preferred) |
 | BLE PrekeyBundle broadcasts identity key over RF | A, B | **9a-2** — same mitigation |
@@ -201,7 +278,7 @@ documented fallback.
 
 Recipient-side Nostr metadata (the `#p` tag and subscription linkability) is
 recorded in §7 as tracked, to be revisited alongside multi-relay work — it is
-not a Phase 9a item.
+not a Phase 9a item. *(Revisited and largely closed by v59, 2026-09-19 — §3, §9.3.)*
 
 ---
 
@@ -246,10 +323,45 @@ this row is called closed.** Do not assume.
 "AeroNyra"` still broadcasts. Not identity-bearing (identical for every install),
 but it fingerprints the app. Tracked, unfixed.
 
-**Nostr recipient-side metadata.** The `#p` tag and subscription linkability
-remain accepted/tracked, unchanged.
+**Nostr recipient-side metadata.** Closed for identity by v59 (§3.1); the
+connection-level residual set (§3.2) and the firehose residuals (§3.3) are the
+current open items, tracked in §9.3 and §9.4.
 
 ### 9.3 New exposures found since
+
+**2026-09-19 — the Nostr connection-level leak, and what its fix uncovered.**
+
+- *Connection binding (found 2026-09-13, closed 2026-09-19).* Until v59 Stage 5 the
+  subscription carried our npub and every publish carried the recipient's, on one
+  socket: a relay operator read the graph off the connection. §3 as originally
+  written missed it because it examined the event bytes only. Closed by the pair-secret
+  directional tag with decoy padding (§3.1, `NOSTR_INBOX_TAG_KAT.md`), commits
+  `62d6283` … `057c606`. Measured clean on both devices, both relays: zero npub bytes in
+  any frame across subscribe, publish, media, rollover, reconnect and a pure-Nostr
+  pairing.
+- *relay.damus.io never served the inbox.* From 2026-07-04 it answered every kind-1059
+  subscription with `CLOSED "ERROR: auth-required"`; the app has never authenticated.
+  Removed from the defaults. The refusal was misread as an outage ("a 503") for
+  eleven weeks, and every "three relays" statement in that period was false. Two
+  transport defects turned the refusal into a reconnect loop (133 connects in ten
+  minutes): the permanent-refusal match missed the `ERROR:` preface, and the reconnect
+  backoff reset on every received frame. Both fixed and pinned (`4d66081`, `1d3b23e`).
+  **NIP-42 is not a remedy and is forbidden** (§3.1).
+- *Receipt pairing for a firehose observer.* Open. The delivery receipt fires within
+  ~0.5 s of receipt, pairing `tag(A→B)` with `tag(B→A)` for anyone reading the event
+  stream (§3.3). Candidate mitigation: a randomised delay on the relay-path receipt.
+  Queued post-v59; not a wire-format change.
+- *The announce tell.* Open, accepted: a session-start marker once per launch per
+  peer (§3.3).
+- *The invite-echo subscription lingers.* Open: pruned only when a plan is recomputed,
+  so it outlives expiry until the next rollover. A one-shot expiry timer is queued.
+  Consequence: the transport's CLOSE frame has never executed in any test; the timer
+  will be its first exercise.
+- *REQ frame bytes were nondeterministic* (unsorted JSON keys), so "an unchanged plan
+  sends nothing" held only by chance and half of all refreshes re-sent 128 KB per page
+  per relay. Fixed and pinned (`3e686aa`).
+- *The prekey message does traverse Nostr* on the invite-echo path, sealed (§3,
+  structural invariant). No exposure; the old wording is retired.
 
 **iOS logs the full invite URL to the device console.** When an
 `aeronyra://invite/…` URL is opened, the OS URL router emits
@@ -315,9 +427,15 @@ rather than falling back to a relay.
 
 | Exposure | Adversary | Disposition |
 |----------|-----------|-------------|
-| Nostr outer event reveals sender | C | **Closed** (§3) |
-| Nostr `#p` tag reveals recipient | C | **Accepted/tracked** |
-| Nostr subscription binds npub ↔ IP ↔ online time | C | **Accepted/tracked** |
+| Nostr outer event reveals sender | C | **Closed** — ephemeral key + sealed seal (§3.1) |
+| Nostr connection binds sender ↔ recipient by npub | C | **Closed 2026-09-19** — v59 inbox tag + decoy padding (§3.1, §9.3) |
+| Nostr `#p` tag reveals recipient identity | C | **Closed 2026-09-19** — the tag is pair-secret, epoch-scoped (§3.1) |
+| Nostr subscription binds npub ↔ IP ↔ online time | C | **Closed for npub 2026-09-19**; tag set ↔ IP ↔ online time remains (§3.2) |
+| Pseudonymous per-relay connection graph, active-sender counts, cross-day window linkability, IP, timing, size | C | **Accepted/tracked** — the §3.2 residual set |
+| Delivery receipt pairs both directions by timing | C2 | **Open** — randomised relay-path receipt delay queued (§9.3) |
+| Announce marks a session start | C2 | **Accepted** (§3.3) |
+| Invite-echo subscription outlives expiry | C | **Open** — expiry timer queued; CLOSE path untested until then (§9.3) |
+| Relay count and availability claims | — | **Corrected 2026-09-19** — two relays; damus never served; NIP-42 forbidden (§3.1) |
 | BLE steady-state sender | A, B | **Closed** (§4.1) |
 | BLE PrekeyBundle broadcasts identity key | A, B | **Closed** — `ce57ae8` deleted `sendOurBundle` |
 | BLE PreKeySignalMessage leaks identity key + `.preKey` tell | A, B | **Open — verify against source** (§9.2) |

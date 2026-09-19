@@ -16,13 +16,15 @@ no padding, no wire change.
 
 ## 0. What this is for
 
-Today the `p` tag on every published event and on the REQ filter carries an npub in
-the clear, and both ride the same WebSocket task. A relay operator reads the
-sender↔recipient graph off one connection (v59 §2).
+Before v59 Stage 5 (landed 2026-09-19, commits `460e042` … `5d237ab`), the `p` tag on
+every published event and on the REQ filter carried an npub in the clear, and both
+rode the same WebSocket task: a relay operator could read the sender↔recipient graph
+off one connection (`THREAT_MODEL.md` §3, §9.3).
 
-This primitive replaces that value with a per-direction tag keyed on the pair secret
+This primitive replaced that value with a per-direction tag keyed on the pair secret
 `S_AB`, so the relay sees an opaque, epoch-scoped identifier instead of a durable,
-portable one.
+portable one. On the wire since Stage 5; what a relay still learns is `THREAT_MODEL.md`
+§3.2–§3.3.
 
 `S_AB` comes from `DiscoverySecret.derive` and is an **opaque input** here; its
 derivation is a separate primitive with its own KAT
@@ -207,7 +209,7 @@ Cross-checks the test also asserts:
 - **Decode independence:** changing the `p`-tag value does not affect unwrap — it
   checks kind, signatures and the two NIP-44 layers only
   (`NostrGiftWrap.swift:126-158`) and the inbound handler filters on kind alone
-  (`NostrTransport.swift:685`). Assert this so a later change cannot quietly make the
+  (`NostrTransport.swift:1032`, `handleInboundEventLocked`). Assert this so a later change cannot quietly make the
   tag load-bearing on receive.
 
 ---

@@ -343,10 +343,12 @@ Consequences, and why this is correct:
 
 ### 14.4 Known divergences from this doc
 
-- **§6 violated: `pairFromScanned` ignores `payload.nostrPublicKey`.** A
-  QR-paired contact has **no Nostr address and therefore no far path** — BLE
-  only. `redeemInvite` threads the key through correctly; the QR path does not.
-  This is a bug against §6, not a design choice.
+- **§6 violated: `pairFromScanned` ignores `payload.nostrPublicKey`.** *(Closed
+  2026-07-09, commit `9da4479`: the QR path now calls `learnNostrIdentity` with the
+  scanned npub, `PairingService.swift:305`; marked closed in this doc 2026-09-19.)*
+  Historical text: a QR-paired contact had **no Nostr address and therefore no far
+  path** — BLE only. `redeemInvite` threaded the key through correctly; the QR path
+  did not. This was a bug against §6, not a design choice.
 - **§2 aspiration unmet: the invite only reaches the decoder via `onOpenURL`.**
   There is no paste-to-redeem UI. Email and iMessage do not linkify the custom
   scheme, so an invite sent over those channels has **no path into the app** —
