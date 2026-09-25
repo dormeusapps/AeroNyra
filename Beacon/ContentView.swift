@@ -1491,8 +1491,14 @@ private struct ReadyView: View {
         redeemMessage = nil
         redeemFailed = nil
         do {
-            let result = try await pairingService.redeemInvite(url.absoluteString)
-            redeemMessage = "invite redeemed · \(result.hint) · now confirm the four words"
+            // Exhaustive, no `default`: each outcome names itself. Both are
+            // success-colour — `.alreadyPaired` is a no-op, not a failure.
+            switch try await pairingService.redeemInvite(url.absoluteString) {
+            case .redeemed(let result):
+                redeemMessage = "invite redeemed · \(result.hint) · now confirm the four words"
+            case .alreadyPaired(let hint):
+                redeemMessage = "already paired · \(hint) · nothing sent"
+            }
         } catch PairingService.PairError.expired {
             redeemFailed = "that invite has expired — ask for a fresh one"
             RedactLog.event("invite-redeem: FAILED expired", "")

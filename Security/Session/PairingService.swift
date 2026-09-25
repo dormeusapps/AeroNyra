@@ -244,6 +244,18 @@ final class PairingService {
         public let hint: String
     }
 
+    /// What an invite redeem did. RETURNED, not thrown: `.alreadyPaired` is
+    /// not a failure (a healthy pair re-opening its own link lands there), and
+    /// callers switch on this exhaustively — no `default` — so a new call site
+    /// cannot silently report one case as the other.
+    public enum RedeemOutcome: Sendable {
+        /// Session established, echo routed, minter enrolled unverified.
+        case redeemed(PairResult)
+        /// The minter was already enrolled: a NO-OP — nothing sent, nothing
+        /// written (the read-compare-decide guard in `redeemInvite`).
+        case alreadyPaired(hint: String)
+    }
+
     /// Pair from a scanned QR string. Decodes the peer's payload, ESTABLISHES a
     /// session via the coordinator (which applies the higher-key-initiates
     /// tie-break, so both scanners don't cross-init the ratchets), and ENROLLS the
@@ -317,8 +329,9 @@ final class PairingService {
     /// initiator burns the single-use id + enrolls us). Finally enrolls the
     /// initiator UNVERIFIED — the 4-word SAS confirm (PeerSettings) is the MITM
     /// defense; the TTL is only a blast-radius bound (per Invite.swift).
-    @discardableResult
-    func redeemInvite(_ string: String) async throws -> PairResult {
+    /// Returns `.alreadyPaired` when the minter is already enrolled (see the
+    /// read-compare-decide guard below): a no-op, reported distinctly.
+    func redeemInvite(_ string: String) async throws -> RedeemOutcome {
         // Human-transport tolerance lives HERE and only here — the binary
         // layer (Invite / PairingPayload init?(wire:)) stays byte-strict.
         let cleaned = Self.normalizeInviteTransportString(string)
@@ -364,9 +377,17 @@ final class PairingService {
         // note concedes there is no session-layer detection surface, and the
         // KEYCHANGE_7c3.md it defers to does not exist on disk. Nothing marks
         // "this looks like an existing contact under a new key."
+        //
+        // REPORTED, NOT SILENT: this branch used to return the same PairResult
+        // as a real redeem, so "invite redeemed" showed while nothing was sent
+        // — indistinguishable from success, and a minter who never completed
+        // stayed blank with no signal to either side. It now returns
+        // `.alreadyPaired`. The no-op is unchanged: we return BEFORE the
+        // echo-tag registration, the coordinator, and enroll below.
         if enrollment.contains(rawKey) {
-            return PairResult(rawKey: rawKey,
-                              hint: String(peer.userIDHex.prefix(6)).uppercased())
+            RedactLog.event("invite-redeem: already paired — no-op, nothing sent",
+                            "\(peer.userIDHex.prefix(16))…")
+            return .alreadyPaired(hint: String(peer.userIDHex.prefix(6)).uppercased())
         }
 
         // v59: the echo rides the invite-echo tag, registered BEFORE the route
@@ -392,7 +413,7 @@ final class PairingService {
         // Remote pairing → unverified until the SAS words are confirmed.
         try await enrollment.enroll(identity: rawKey, verified: false)
 
-        return PairResult(rawKey: rawKey, hint: String(peer.userIDHex.prefix(6)).uppercased())
+        return .redeemed(PairResult(rawKey: rawKey, hint: String(peer.userIDHex.prefix(6)).uppercased()))
     }
 
     // MARK: - base64url + scheme helpers
