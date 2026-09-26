@@ -28,11 +28,25 @@
 // starts from a fresh empty ledger, which is correct (a rotated Nostr identity
 // receives new gift wraps under new outer ids anyway).
 //
+// TOMBSTONE: once `wipe()` has run, THIS instance refuses every later `save()`
+// (throws `.wiped`). Erase can leave the old Nostr transport alive long enough
+// to flush a debounced or stop-time save; without the tombstone that write
+// recreates the file under the DEK the wipe just destroyed. The check-and-write
+// in `save()` and the flag-set in `wipe()` share one lock, so a save already in
+// flight finishes BEFORE the wipe deletes, and none lands after. Per instance,
+// not on disk: a new identity's stack builds a fresh store and saves normally.
+//
 
 import Foundation
 import CryptoKit
+import os
 
 public final class ProcessedEventLedgerStore: Wipeable, Sendable {
+
+    public enum StoreError: Error, Equatable {
+        /// `save()` after `wipe()` on this instance — refused, nothing written.
+        case wiped
+    }
 
     /// Default Keychain service id for this store's DEK. Distinct from the
     /// session / allowlist / invite DEK services, so the ledger key is an
@@ -49,6 +63,8 @@ public final class ProcessedEventLedgerStore: Wipeable, Sendable {
     private let fileURL: URL
     private let dek: SymmetricKey
     private let keychainService: String
+    /// True once `wipe()` has begun. Guards `save()`'s check-and-write.
+    private let wiped = OSAllocatedUnfairLock(initialState: false)
 
     /// - Parameters:
     ///   - directory: where the sealed file lives (created if absent). May be
@@ -86,11 +102,26 @@ public final class ProcessedEventLedgerStore: Wipeable, Sendable {
     /// blob. Called OFF the transport's serial queue (the transport dispatches
     /// persistence to a utility queue), so this file write never blocks inbound
     /// processing.
+    /// Throws `.wiped` (writing nothing) once `wipe()` has run on this instance.
     public func save(_ ledger: ProcessedEventLedger) throws {
         let plaintext = try JSONEncoder().encode(ledger)
         let sealed = try ChaChaPoly.seal(plaintext, using: dek, authenticating: Self.aad).combined
-        try sealed.write(to: fileURL,
-                         options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        let fileURL = self.fileURL
+        // The write happens UNDER the lock, so a concurrent wipe cannot delete
+        // between check and write — the only design with no window in which a
+        // file exists after wipe() returns. Holding an unfair lock across I/O is
+        // safe HERE because: wipe() is non-isolated async, so it runs on the
+        // cooperative pool, never the main actor (which only suspends on it);
+        // os_unfair_lock donates the waiter's priority to the owner; and
+        // contention happens at most once per erase (saves are debounced, so an
+        // uncontended save costs nothing extra). Worst case: one pool thread
+        // waits for one write — the ledger is ≤ 8,192 ids, ~550 KB sealed
+        // (duration unmeasured).
+        try wiped.withLock { isWiped in
+            guard !isWiped else { throw StoreError.wiped }
+            try sealed.write(to: fileURL,
+                             options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        }
     }
 
     // MARK: - Wipeable
@@ -98,6 +129,9 @@ public final class ProcessedEventLedgerStore: Wipeable, Sendable {
     /// Crypto-erase: remove the sealed file and destroy its DEK. Idempotent — a
     /// missing file and an already-absent key are both no-ops, per `Wipeable`.
     public func wipe() async throws {
+        // Tombstone FIRST, under the save lock: waits out an in-flight save,
+        // then no later save can write.
+        wiped.withLock { $0 = true }
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try FileManager.default.removeItem(at: fileURL)
         }
