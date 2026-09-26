@@ -148,12 +148,27 @@ to which contact, beyond activity. Whether two tags in one page belong to the sa
 contact across the 32-epoch window (decoys and real slots are indistinguishable by
 construction).
 
-### Structural invariant (rewritten 2026-09-19)
+### Structural invariant (rewritten 2026-09-19, amended 2026-09-26)
 
 The original text here said a `PreKeySignalMessage` "can never traverse Nostr". It
 does: on the invite-echo path the redeemer's first sealed message — the prekey
 message that establishes the session — is routed over the relays when no BLE link
-exists (measured 2026-09-19: a 7,461-byte event, the only one of its size). What
+exists (measured 2026-09-19: a 7,461-byte event, the only one of its size). Since
+Option A (`c1327b6`, `6f07ac5`) the redeemer sends the echo over BLE first and waits
+2 s for the minter's BLE ack. Three outcomes, each observed on hardware 2026-09-26:
+- **Handshake completes** (ack inside the wait): the echo never goes to a relay. R1,
+  3 of 3 runs — the redeemer logged the ack and no relay fallback.
+- **Handshake does not complete** (a minter without the ack, a stale BLE link, a
+  lost ack): after the wait the SAME sealed envelope is published to the relays,
+  once; the minter dedups it if the BLE copy also landed. R2, and the stale-link
+  repro (fallback at +2.05 s). The wait is 2 s in the foreground; if the redeemer
+  is backgrounded it can run longer (observed +30.7 to +69.3 s on a 30 s rig), and
+  if the invite has under 2 s left the echo goes to the relays without waiting.
+- **No BLE link at all**: the echo goes straight to the relays. R3.
+Whenever the echo does reach a relay, the operator sees the connections involved —
+the minter's echo subscription and the redeemer's publish — and one event of
+recognisable size passing between them: that a pairing happened between those two
+connections, not its content. What
 holds is narrower and sufficient: on Nostr that message exists only inside the
 NIP-44 gift wrap, encrypted to the minter's npub under an ephemeral key, so a relay
 sees ciphertext and cannot read the identity key or the `.preKey` type byte. The
