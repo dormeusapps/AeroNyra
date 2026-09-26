@@ -368,7 +368,7 @@ struct PairingView: View {
                 case .redeemed(let result):
                     pairMessage = "invite redeemed · \(result.hint) · now confirm the four words"
                 case .alreadyPaired(let hint):
-                    pairMessage = "already paired · \(hint) · nothing sent"
+                    pairMessage = "already paired · \(hint) · nothing sent · if they can't see you, make an invite for them"
                 }
             } catch PairingService.PairError.expired {
                 pairFailed = "that invite has expired — ask for a fresh one"

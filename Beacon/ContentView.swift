@@ -1497,7 +1497,7 @@ private struct ReadyView: View {
             case .redeemed(let result):
                 redeemMessage = "invite redeemed · \(result.hint) · now confirm the four words"
             case .alreadyPaired(let hint):
-                redeemMessage = "already paired · \(hint) · nothing sent"
+                redeemMessage = "already paired · \(hint) · nothing sent · if they can't see you, make an invite for them"
             }
         } catch PairingService.PairError.expired {
             redeemFailed = "that invite has expired — ask for a fresh one"
