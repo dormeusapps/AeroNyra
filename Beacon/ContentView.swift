@@ -82,6 +82,12 @@ struct ContentView: View {
         /// everything it needs to finish and route. Reachable only from
         /// `eraseEverything(store:)`.
         case wiping
+        /// Erase fix 4a: an erase has begun in this process, so no new stack
+        /// may be built here (StackRetirementLatch) — the user must relaunch.
+        /// Terminal and model-free. Reached from a completed erase, and from
+        /// `bootstrap()` whenever the latch is set (e.g. "Try again" on the
+        /// door after a failed erase). A relaunch starts at `.launching`.
+        case restartRequired
     }
 
     @State private var phase: Phase = .launching
@@ -246,6 +252,9 @@ struct ContentView: View {
                         wipingAppeared?()
                         wipingAppeared = nil
                     }
+
+            case .restartRequired:
+                restartRequiredScreen
             }
         }
         .preferredColorScheme(.dark)
@@ -309,6 +318,28 @@ struct ContentView: View {
         }
     }
 
+    /// Erase fix 4a: the terminal surface after an erase. Model-free like
+    /// `wipingScreen`, with no action — nothing in this process may build a
+    /// stack again. PLACEHOLDER COPY: neutral, and true on every path that
+    /// lands here (a completed erase, and the doors after a failed one). The
+    /// real copy — including the network instruction — is its own commit.
+    private var restartRequiredScreen: some View {
+        ZStack {
+            Color.bgApp.ignoresSafeArea()
+            VStack(spacing: 12) {
+                Text("Restart AeroNyra")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(Color.primary)
+                Text("Close AeroNyra and open it again to continue.")
+                    .font(.callout)
+                    .foregroundStyle(Color.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(32)
+            .frame(maxWidth: 360)
+        }
+    }
+
     // MARK: - Boot-failure door (Fix 1 / Fix 3)
 
     /// The safe landing when a boot cannot reach `.ready`. DELIBERATELY not
@@ -368,7 +399,19 @@ struct ContentView: View {
     /// Try to load an existing identity. If found, build the persistent
     /// ModelContainer + secure-session store + coordinator and enter .ready.
     /// If not, route to Onboarding.
+    ///
+    /// Erase fix 4a: the ONLY funnel to `makeSessionStack` (every call to a
+    /// stack constructor is inside it, and its sole caller is the BootRouter
+    /// closure below), so the retirement latch is checked HERE, first — before
+    /// the store, BootRouter, or any build. Once an erase has begun in this
+    /// process, no path (success route, either door's "Try again", anything
+    /// added later) can build a second stack on the shared BLE streams.
     private func bootstrap() {
+        guard StackRetirementLatch.shared.bootstrapDecision == .build else {
+            RedactLog.event("bootstrap: refused — an erase began in this process; relaunch required", "")
+            phase = .restartRequired
+            return
+        }
         let wrapper = try? SecureEnclaveWrapper(service: enclaveService)
         let store = IdentityStore(
             service: identityService,
@@ -887,12 +930,11 @@ struct ContentView: View {
         return await emergencyWipe.perform()
     }
 
-    /// Erase everything, then route back to a clean onboarding — there is no
-    /// identity left to operate with. Called by SettingsView's erase action (the
-    /// `\.eraseEverything` environment action injected on the body). Matches
-    /// `bootstrap()`'s store construction; the wiped identity means onboarding
-    /// regenerates a fresh one, and leaving `.ready` tears down the stale stack.
-    /// Erase everything and route to a clean onboarding. Called from BOTH the
+    /// Erase everything, then land on `.restartRequired` (erase fix 4a) — there
+    /// is no identity left to operate with, and this process is retired: no new
+    /// stack may be built on the shared BLE streams, so onboarding happens after
+    /// a relaunch. Called by SettingsView's erase action (the `\.eraseEverything`
+    /// environment action injected on the body). Called from BOTH the
     /// SettingsView panic-Erase (`.ready`, where `self.emergencyWipe` is
     /// assembled) and the `.bootFailed` door (where it is NIL — makeSessionStack
     /// never ran). `store` is the call site's IdentityStore, so this never
@@ -915,6 +957,11 @@ struct ContentView: View {
     /// preferences, kept apart.
     private func eraseEverything(store: IdentityStore) {
         Task { @MainActor in
+            // Erase fix 4a: retire this process FIRST. From here on
+            // `bootstrap()` refuses to build a stack, whatever route the erase
+            // ends on (success, or a door after a failure) — the user relaunches.
+            StackRetirementLatch.shared.retire()
+
             // Option A, Part 2: no pending invite-echo relay fallback may
             // publish once the wipe starts. Cancelled here, BEFORE the phase
             // flip; each finishes its bounded ack wait and publishes nothing.
@@ -980,27 +1027,24 @@ struct ContentView: View {
                 wipeErrors.append(error)
             }
 
-            // Enclave teardown. Build the wrapper ONCE and reuse it for the
-            // teardown AND the fresh onboarding store. Not gating (the identity
-            // is already gone; nothing can be stranded) but NOT silent —
-            // `try?` is the pattern we are removing. `.unavailable` (simulator /
-            // no Enclave) is an EXPECTED, logged no-op, not an error.
-            let wrapper: SecureEnclaveWrapper?
+            // Enclave teardown. Not gating (the identity is already gone;
+            // nothing can be stranded) but NOT silent — `try?` is the pattern
+            // we are removing. `.unavailable` (simulator / no Enclave) is an
+            // EXPECTED, logged no-op, not an error. (Before erase fix 4a the
+            // wrapper was also reused for a fresh onboarding store; erase no
+            // longer onboards in-process, so the teardown is all it's for.)
             do {
                 let built = try SecureEnclaveWrapper(service: enclaveService)
                 do { try built.deleteEnclaveKey() }
                 catch { RedactLog.event("erase: Enclave key teardown FAILED", "\(type(of: error))") }
-                wrapper = built
             } catch SecureEnclaveError.unavailable {
                 RedactLog.event("erase: Enclave unavailable — teardown skipped (expected on simulator)", "")
-                wrapper = nil
             } catch {
                 RedactLog.event("erase: Enclave wrapper construct FAILED", "\(type(of: error))")
-                wrapper = nil
             }
 
-            // VERIFY, then route. Onboarding only after the wipe is CONFIRMED
-            // complete: no collected step failure, and the three SwiftData store
+            // VERIFY, then route. The terminal screen only after the wipe is
+            // CONFIRMED complete: no collected step failure, and the three SwiftData store
             // files actually gone (a live container's late write can recreate a
             // sidecar after deletion — the residual risk SwiftDataStoreWipe's
             // header records; this check is what catches it). On a partial or
@@ -1018,9 +1062,12 @@ struct ContentView: View {
                 return
             }
 
-            phase = .onboarding(IdentityStore(service: identityService,
-                                              protection: .deviceUnlockOnly,
-                                              wrapper: wrapper))
+            // Erase fix 4a: a verified wipe ends on the terminal screen, NOT
+            // onboarding — this process is retired (the latch above) and must
+            // never build a second stack on the shared BLE streams. The user
+            // relaunches; a fresh process boots to onboarding normally.
+            RedactLog.event("erase: complete — relaunch required", "")
+            phase = .restartRequired
         }
     }
     
