@@ -11,7 +11,9 @@
 //
 //  The positive control runs the SAME harness with the minter NOT enrolled and
 //  requires exactly one BLE send, so the recorders are proven able to see a
-//  send and the R4 pin cannot pass vacuously.
+//  send and the R4 pin cannot pass vacuously. Since Option A Part 2 it also
+//  requires the no-ack relay fallback: the SAME envelope, published once,
+//  inside one echo-tag register/unregister bracket (wait injected at 50 ms).
 //
 //  Uses REAL stores over throwaway temp dirs, a REAL FirstContactCoordinator,
 //  and a REAL MessageRouter over two recording transports (BLE + addressed).
@@ -82,7 +84,8 @@ final class PairingServiceAlreadyPairedTests: XCTestCase {
         let pairing = PairingService(sessionStore: sessionStore,
                                      coordinator: coordinator,
                                      enrollment: enrollment,
-                                     ourNostrPublicKey: nil)
+                                     ourNostrPublicKey: nil,
+                                     inviteEchoAckTimeout: .milliseconds(50))
         let hooks = EchoTagHookRecorder()
         pairing.registerInviteEchoTag = { _, _ in hooks.noteRegistered() }
         pairing.unregisterInviteEchoTag = { _ in hooks.noteUnregistered() }
@@ -157,9 +160,15 @@ final class PairingServiceAlreadyPairedTests: XCTestCase {
         }
         XCTAssertEqual(result.rawKey, rawKey)
 
-        // The echo went out exactly once, on BLE (the recording BLE rail accepts).
+        // Option A, Part 2: the echo goes out exactly once on BLE. No minter is
+        // here to ack, so after the injected wait the SAME envelope falls back
+        // to the relay, inside one register → publish → unregister bracket.
         XCTAssertEqual(h.ble.sent.count, 1, "the recorder must see the real echo send")
-        XCTAssertTrue(h.nostr.publishedTo.isEmpty, "BLE accepted, so no relay fallback")
+        let delivery = await h.pairing.lastInviteEchoDelivery?.value
+        XCTAssertEqual(delivery, .relayFallbackSent)
+        XCTAssertEqual(h.nostr.published.map(\.recipient), [Data(repeating: 7, count: 32)])
+        XCTAssertEqual(h.nostr.published.first?.envelopeID, h.ble.sent.first?.id,
+                       "the fallback is the SAME envelope, so the minter dedups it")
         XCTAssertEqual(h.hooks.registered, 1)
         XCTAssertEqual(h.hooks.unregistered, 1)
 
@@ -201,13 +210,19 @@ private final class RecordingBLETransport: MeshTransport, @unchecked Sendable {
     func relay(_ envelope: Envelope, excludingLinks: Set<UUID>) async {}
 }
 
-/// An addressed (relay) transport that records every recipient it publishes to.
+/// An addressed (relay) transport that records every publish: recipient and
+/// the envelope id (so "same envelope as BLE" is checkable).
 private final class RecordingAddressedTransport: MeshTransport, AddressedTransport, @unchecked Sendable {
+    struct Published: Equatable, Sendable {
+        let recipient: Data
+        let envelopeID: MessageID
+    }
     let kind: TransportKind = .internet
     let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
     private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
-    private let recipients = OSAllocatedUnfairLock(initialState: [Data]())
-    var publishedTo: [Data] { recipients.withLock { $0 } }
+    private let log = OSAllocatedUnfairLock(initialState: [Published]())
+    var published: [Published] { log.withLock { $0 } }
+    var publishedTo: [Data] { published.map(\.recipient) }
 
     init() {
         var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
@@ -220,6 +235,6 @@ private final class RecordingAddressedTransport: MeshTransport, AddressedTranspo
     func send(_ envelope: Envelope) async throws { throw NostrTransportError.sendRequiresRecipient }
     func relay(_ envelope: Envelope, excludingLinks: Set<UUID>) async {}
     func publish(_ envelope: Envelope, to recipient: Data) async throws {
-        recipients.withLock { $0.append(recipient) }
+        log.withLock { $0.append(Published(recipient: recipient, envelopeID: envelope.id)) }
     }
 }

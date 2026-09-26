@@ -915,6 +915,11 @@ struct ContentView: View {
     /// preferences, kept apart.
     private func eraseEverything(store: IdentityStore) {
         Task { @MainActor in
+            // Option A, Part 2: no pending invite-echo relay fallback may
+            // publish once the wipe starts. Cancelled here, BEFORE the phase
+            // flip; each finishes its bounded ack wait and publishes nothing.
+            pairingService?.cancelInviteEchoDeliveries()
+
             // TEARDOWN FIRST (erase-crash fix). Deleting the store files under
             // a mounted ReadyView invalidated its live Peer/Conversation rows,
             // and the first mid-wipe re-render (DeviceResidueWipe's @AppStorage

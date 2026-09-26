@@ -605,20 +605,34 @@ actor FirstContactCoordinator: EnvelopeReceiver {
 
     // MARK: Remote invite redeem (STEP 7d-3)
 
-    /// Redeem a REMOTE invite: establish a session from the initiator's bundle and
-    /// seal the invite-echo back, so THEY burn the single-use id and enroll us.
+    /// What `sendInviteEcho` did with the echo: the sealed envelope (kept so a
+    /// relay copy is BYTE-IDENTICAL — the minter's router dedups on its id) and
+    /// the BLE outcome, which is only ever `.sent` or `.waitingForRange` (no
+    /// link); any other outcome throws.
+    struct InviteEchoSend: Sendable {
+        let envelope: Envelope
+        let bleState: MessageDeliveryState
+    }
+
+    /// Redeem a REMOTE invite, step 1 of 2 (Option A, Part 2): establish a
+    /// session from the initiator's bundle and seal the invite-echo back, so
+    /// THEY burn the single-use id and enroll us — sent over BLE ONLY here.
     ///
     /// Unlike `onBundle` there is NO higher-key tie-break — the initiator is
     /// remote/offline, so we are always the X3DH initiator, and the sealed echo
-    /// doubles as the first message that forms the initiator\'s responder session.
-    /// The echo carries `nostrRecipient` so it reaches a far initiator over Nostr
-    /// (BLE won\'t reach). The initiator\'s existing `.inviteEcho` receive path
-    /// (see `receive`) then consumes the id via `inviteRedeemer.redeemEcho` and
-    /// enrolls us. Emits `.established`; returns the peer\'s raw key so the caller
-    /// enrolls them UNVERIFIED (the 4-word SAS is the MITM defense, not this).
-    func redeemInvite(bundle: PrekeyBundle,
-                      inviteID: Data,
-                      nostrRecipient: Data?) async throws -> Data {
+    /// doubles as the first message that forms the initiator's responder session.
+    /// The relay leg is NOT taken here: `PairingService.redeemInvite` publishes
+    /// the same envelope over Nostr immediately when BLE had no link, or after
+    /// the ack wait when BLE sent but the minter did not ack. The initiator's
+    /// `.inviteEcho` receive path then consumes the id via
+    /// `inviteRedeemer.redeemEcho`, enrolls us, and acks over BLE.
+    ///
+    /// ACK REGISTERED BEFORE THE SEND: an in-room minter acks in ~350 ms
+    /// (measured), often before the caller has finished enrolling, so the
+    /// pending entry must exist before this actor can suspend — an ack that
+    /// arrives mid-send is recorded, and a later `awaitInviteEchoAck` returns
+    /// at once.
+    func sendInviteEcho(bundle: PrekeyBundle, inviteID: Data) async throws -> InviteEchoSend {
         let peer = try store.peerIdentity(from: bundle)
         let rawKey = store.rawPublicKey(of: peer)
 
@@ -644,10 +658,32 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             payload = MessagePayload.inviteEchoV1(inviteID: inviteID)
         }
         let sealed = try session.seal(payload.sealedPlaintext())
-        try await routeOut(Envelope(ciphertext: sealed),
-                           tracked: false,
-                           nostrRecipient: nostrRecipient)
+        let echo = Envelope(ciphertext: sealed)
+        guard let router else { throw TransportError.notStarted }
 
+        inviteEchoAcks[echo.id] = PendingInviteEchoAck(minter: rawKey)
+        // BLE ONLY: a nil recipient means the router's Tier-2 branch returns
+        // `.waitingForRange` before any addressed transport is touched.
+        let bleState = await router.send(echo, tracked: false, nostrRecipient: nil)
+        switch bleState {
+        case .sent:
+            break                                   // wait for the minter's ack
+        case .waitingForRange:
+            inviteEchoAcks[echo.id] = nil           // no link: the caller relays now
+        default:
+            inviteEchoAcks[echo.id] = nil
+            throw TransportError.sendFailed
+        }
+        return InviteEchoSend(envelope: echo, bleState: bleState)
+    }
+
+    /// Redeem step 2 of 2: the echo left on at least one rail — make the minter
+    /// a Peer/Conversation row and persist its npub, exactly as the one-step
+    /// redeem did after routing. Log text unchanged (Part 1's latency
+    /// measurement keys on it).
+    func finishInviteRedeem(bundle: PrekeyBundle, nostrRecipient: Data?) throws {
+        let peer = try store.peerIdentity(from: bundle)
+        let rawKey = store.rawPublicKey(of: peer)
         eventsContinuation.yield(.established(peerKey: rawKey))
         // Persist the MINTER's npub from the invite payload (threaded in as
         // `nostrRecipient`) so this peer is Nostr-addressable from the FIRST
@@ -658,7 +694,77 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 .learnedNostrIdentity(peerKey: rawKey, nostrPubkey: nostrRecipient))
         }
         RedactLog.event("first-contact: REDEEMED invite → echo sent", "to \(peer.userIDHex.prefix(16))…")
-        return rawKey
+    }
+
+    /// Publish an already-sealed invite echo over the relay — the SAME envelope
+    /// BLE carried, so the minter's router dedups a double arrival on its id.
+    /// The caller brackets this with the one-shot echo-tag registration.
+    func publishInviteEchoOverRelay(_ echo: Envelope, to minterNpub: Data) async -> MessageDeliveryState {
+        guard let router else { return .notDelivered }
+        return await router.publishOverNostr(echo, to: minterNpub)
+    }
+
+    // MARK: Invite-echo ack wait (Option A, Part 2 — REDEEMER side)
+
+    /// One echo sent over BLE whose minter ack we are waiting for. `minter` is
+    /// the raw identity from the invite's bundle; only an ack that OPENS under
+    /// that identity's session resolves the wait (forged-ack suppression).
+    private struct PendingInviteEchoAck {
+        let minter: Data
+        var acked = false
+        var waiter: CheckedContinuation<Bool, Never>?
+    }
+
+    /// Keyed by the echo's envelope id. In memory only: a kill mid-wait leaves
+    /// the redeemer enrolled with no fallback — today's pre-Part-2 state.
+    private var inviteEchoAcks: [MessageID: PendingInviteEchoAck] = [:]
+
+    /// Wait up to `timeout` for the minter's ack of `echoID`. Returns true at
+    /// once if it already arrived. Resumed exactly once: whichever of the ack
+    /// or the timer runs first removes the entry, the other finds nothing.
+    func awaitInviteEchoAck(_ echoID: MessageID, timeout: Duration) async -> Bool {
+        guard var entry = inviteEchoAcks[echoID] else { return false }
+        if entry.acked {
+            inviteEchoAcks[echoID] = nil
+            return true
+        }
+        let timer = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            await self?.expireInviteEchoAck(echoID)
+        }
+        let acked = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            entry.waiter = cont
+            inviteEchoAcks[echoID] = entry
+        }
+        timer.cancel()
+        return acked
+    }
+
+    /// Drop a pending entry the caller will not wait on (enroll threw, or no
+    /// fallback is possible). Resumes a waiter with false if one exists.
+    func forgetInviteEchoAck(_ echoID: MessageID) {
+        inviteEchoAcks.removeValue(forKey: echoID)?.waiter?.resume(returning: false)
+    }
+
+    private func expireInviteEchoAck(_ echoID: MessageID) {
+        inviteEchoAcks.removeValue(forKey: echoID)?.waiter?.resume(returning: false)
+    }
+
+    /// Called from the `.ack` arm for EVERY ack, before `confirmDelivery`.
+    /// Resolves only when both the echo id and the opened sender match.
+    private func resolveInviteEchoAck(_ wireID: MessageID, from sender: Data) {
+        guard var entry = inviteEchoAcks[wireID] else { return }
+        guard entry.minter == sender else {
+            RedactLog.event("invite-echo: ack ignored — wrong sender", "echo \(wireID)")
+            return
+        }
+        if let waiter = entry.waiter {
+            inviteEchoAcks[wireID] = nil
+            waiter.resume(returning: true)
+        } else {
+            entry.acked = true
+            inviteEchoAcks[wireID] = entry
+        }
     }
 
     /// QR npub parity (CONTACT_MODEL §6): persist a proximity-authenticated
@@ -1670,6 +1776,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     RedactLog.event("first-contact: malformed delivery ack", "from \(peer.userIDHex.prefix(16))…")
                     return
                 }
+                // Option A, Part 2: an ack for an invite echo we are waiting
+                // on (sender-checked). No early return — confirmDelivery
+                // below still runs for every ack, echo or text.
+                resolveInviteEchoAck(wireID, from: rawKey)
                 await router?.confirmDelivery(of: wireID, hops: Int(hops))
                 RedactLog.event("first-contact: ACK (\(hops) hop(s))", "\(wireID) from \(peer.userIDHex.prefix(16))…")
                 

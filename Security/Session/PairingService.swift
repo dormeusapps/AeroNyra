@@ -47,15 +47,39 @@ final class PairingService {
     /// transport for the minter's npub, keyed by the invite id, so the sealed
     /// echo — the one message routed before the minter is enrolled or learned
     /// on this side — has a `p` value that is not the npub. Called immediately
-    /// before `coordinator.redeemInvite` routes the echo; the transport's
-    /// serial queue orders the registration ahead of the publish. Wired by the
-    /// composition root; nil (no registration, the echo is refused as
-    /// untaggable) until then.
+    /// before each RELAY publish of the echo (`relayInviteEcho`);
+    /// the transport's serial queue orders the registration ahead of the
+    /// publish. Wired by the composition root; nil until then — and while nil
+    /// the post-wait fallback is skipped rather than published on a pair tag.
     @ObservationIgnored var registerInviteEchoTag: ((_ minterNostrPubkey: Data, _ inviteID: Data) -> Void)?
 
-    /// v59 Stage 4: the matching clearance, deferred in `redeemInvite` so the
-    /// registration never outlives the call (see the defer's comment there).
+    /// v59 Stage 4: the matching clearance, deferred in `relayInviteEcho` so the
+    /// registration never outlives the one publish it brackets.
     @ObservationIgnored var unregisterInviteEchoTag: ((_ minterNostrPubkey: Data) -> Void)?
+
+    /// Option A, Part 2: how long a redeemer whose echo went out over BLE waits
+    /// for the minter's BLE ack before publishing the same echo to the relay.
+    /// Production 2 s: ~4x the slowest measured in-room ack (461 ms, 7 pairings,
+    /// minter foreground and backgrounded). Injectable for tests.
+    @ObservationIgnored private let inviteEchoAckTimeout: Duration
+
+    /// What a background invite-echo delivery ended as (logged; tests await it).
+    public enum InviteEchoDelivery: Equatable, Sendable {
+        case acked                  // minter acked over BLE — no relay
+        case relayFallbackSent      // no ack: the same echo published to the relay
+        case relayFallbackFailed    // no ack, and no relay took it
+        case skippedWindowPassed    // resumed after the invite window closed
+        case skippedNoHook          // echo-tag hook unwired: never publish on a pair tag
+        case skippedNoNpub          // invite carried no npub: nothing to fall back to
+        case cancelled              // erase began: publish nothing
+    }
+
+    /// Pending background deliveries, keyed by echo envelope id — so erase can
+    /// cancel every one. Each removes itself when it finishes.
+    @ObservationIgnored private var inviteEchoDeliveries: [MessageID: Task<InviteEchoDelivery, Never>] = [:]
+
+    /// The most recently started delivery, for tests to await.
+    @ObservationIgnored private(set) var lastInviteEchoDelivery: Task<InviteEchoDelivery, Never>?
 
     /// v59 Stage 5, MINTER side: tells the Nostr transport to listen for the
     /// redeemer's echo on this invite's echo tags until it expires. Called at
@@ -90,13 +114,15 @@ final class PairingService {
          enrollment: EnrollmentService,
          ourNostrPublicKey: Data?,
          blockedStore: BlockedContactsStore? = nil,
-         initialBlocked: [BlockedContact] = []) {
+         initialBlocked: [BlockedContact] = [],
+         inviteEchoAckTimeout: Duration = .seconds(2)) {
         self.sessionStore = sessionStore
         self.coordinator = coordinator
         self.enrollment = enrollment
         self.ourNostrPublicKey = ourNostrPublicKey
         self.blockedStore = blockedStore
         self.blockedContacts = initialBlocked
+        self.inviteEchoAckTimeout = inviteEchoAckTimeout
     }
 
     // MARK: - Block / Unblock (Guideline 1.2)
@@ -390,30 +416,123 @@ final class PairingService {
             return .alreadyPaired(hint: String(peer.userIDHex.prefix(6)).uppercased())
         }
 
-        // v59: the echo rides the invite-echo tag, registered BEFORE the route
-        // below so the transport resolves it on the echo's publish. SCOPED TO
-        // THIS CALL: the defer clears it on every exit — a BLE-routed echo (the
-        // Nostr resolver never ran), a coordinator throw before routing, or a
-        // publish that failed after consuming it (then a no-op). A retry is a
-        // fresh redeem, which re-registers here. No TTL; the scope is the
-        // lifetime, so the first real message after pairing can never inherit
-        // the echo tag.
-        if let minterNpub = payload.nostrPublicKey {
-            registerInviteEchoTag?(minterNpub, invite.id)
-        }
-        defer {
-            if let minterNpub = payload.nostrPublicKey {
-                unregisterInviteEchoTag?(minterNpub)
+        // Option A, Part 2 — establish, then echo over BLE ONLY. The relay leg
+        // is taken here, never inside the coordinator:
+        //   • no BLE link  → publish the same echo to the relay NOW (the old
+        //     Tier-2 path, same register → publish → unregister sequence);
+        //   • BLE sent     → finish + enroll + return, then a background task
+        //     waits for the minter's BLE ack and publishes to the relay only
+        //     if none arrives in time.
+        // The echo-tag registration brackets each relay publish and nothing
+        // else, so it is never held across the ack wait — where the redeemer's
+        // own announce reply could otherwise consume it.
+        let send = try await coordinator.sendInviteEcho(bundle: payload.bundle,
+                                                        inviteID: invite.id)
+        if send.bleState != .sent {
+            guard let minterNpub = payload.nostrPublicKey else {
+                throw TransportError.sendFailed        // no link and no npub: nothing carries it
             }
+            RedactLog.event("invite-echo: no BLE link — relay now", "")
+            let state = await relayInviteEcho(send.envelope, minterNpub: minterNpub,
+                                              inviteID: invite.id)
+            guard state == .sent || state == .cast else { throw TransportError.sendFailed }
         }
-        // Establish from their bundle + echo back (Nostr-capable for a far peer).
-        _ = try await coordinator.redeemInvite(bundle: payload.bundle,
-                                               inviteID: invite.id,
-                                               nostrRecipient: payload.nostrPublicKey)
+        // The echo left on at least one rail: make the minter a row.
+        try await coordinator.finishInviteRedeem(bundle: payload.bundle,
+                                                 nostrRecipient: payload.nostrPublicKey)
         // Remote pairing → unverified until the SAS words are confirmed.
-        try await enrollment.enroll(identity: rawKey, verified: false)
+        do {
+            try await enrollment.enroll(identity: rawKey, verified: false)
+        } catch {
+            if send.bleState == .sent { await coordinator.forgetInviteEchoAck(send.envelope.id) }
+            throw error
+        }
 
+        if send.bleState == .sent {
+            startInviteEchoDelivery(send.envelope, minterNpub: payload.nostrPublicKey,
+                                    inviteID: invite.id,
+                                    windowEndMillis: invite.expiresAt + Invite.defaultSkewMillis)
+        }
         return .redeemed(PairResult(rawKey: rawKey, hint: String(peer.userIDHex.prefix(6)).uppercased()))
+    }
+
+    // MARK: - Invite-echo relay leg (Option A, Part 2)
+
+    /// Publish the echo to the relay under its ONE-SHOT echo tag: register →
+    /// publish → unregister, and nothing in between. The registration exists
+    /// only for this publish, so no other message to the minter's npub can
+    /// inherit it.
+    private func relayInviteEcho(_ echo: Envelope, minterNpub: Data,
+                                 inviteID: Data) async -> MessageDeliveryState {
+        registerInviteEchoTag?(minterNpub, inviteID)
+        defer { unregisterInviteEchoTag?(minterNpub) }
+        return await coordinator.publishInviteEchoOverRelay(echo, to: minterNpub)
+    }
+
+    /// Start the background ack wait for an echo BLE handed off. Returns at
+    /// once; the redeem's caller never waits on it.
+    private func startInviteEchoDelivery(_ echo: Envelope, minterNpub: Data?,
+                                         inviteID: Data, windowEndMillis: Int64) {
+        let task = Task { () -> InviteEchoDelivery in
+            let outcome = await self.runInviteEchoDelivery(echo, minterNpub: minterNpub,
+                                                           inviteID: inviteID,
+                                                           windowEndMillis: windowEndMillis)
+            self.inviteEchoDeliveries[echo.id] = nil
+            return outcome
+        }
+        inviteEchoDeliveries[echo.id] = task
+        lastInviteEchoDelivery = task
+    }
+
+    /// Wait for the ack; on none, publish the SAME echo to the relay — unless
+    /// the task was cancelled (erase), the invite window has closed, or there is
+    /// no safe way to tag it. Cancellation is checked after the (bounded) wait
+    /// and BEFORE any registration or publish.
+    private func runInviteEchoDelivery(_ echo: Envelope, minterNpub: Data?, inviteID: Data,
+                                       windowEndMillis: Int64) async -> InviteEchoDelivery {
+        guard let minterNpub else {
+            await coordinator.forgetInviteEchoAck(echo.id)
+            RedactLog.event("invite-echo: no npub — no relay fallback possible", "")
+            return .skippedNoNpub
+        }
+        // The minter consumes only until expiry + skew: if less than the full
+        // wait remains, don't wait — a later fallback would miss the window.
+        let remaining = windowEndMillis - Int64(Date().timeIntervalSince1970 * 1000)
+        let c = inviteEchoAckTimeout.components
+        let timeoutMillis = c.seconds * 1000 + c.attoseconds / 1_000_000_000_000_000
+        let wait: Duration = remaining > timeoutMillis ? inviteEchoAckTimeout : .zero
+        RedactLog.event("invite-echo: waiting for ack (BLE sent)", "")
+
+        if await coordinator.awaitInviteEchoAck(echo.id, timeout: wait) {
+            RedactLog.event("invite-echo: acked — no relay", "")
+            return .acked
+        }
+        if Task.isCancelled {
+            RedactLog.event("invite-echo: no ack — cancelled, nothing published", "")
+            return .cancelled
+        }
+        guard Int64(Date().timeIntervalSince1970 * 1000) <= windowEndMillis else {
+            RedactLog.event("invite-echo: no ack — fallback skipped, window passed", "")
+            return .skippedWindowPassed
+        }
+        guard registerInviteEchoTag != nil else {
+            RedactLog.event("invite-echo: fallback skipped — echo tag hook not wired", "")
+            return .skippedNoHook
+        }
+        let state = await relayInviteEcho(echo, minterNpub: minterNpub, inviteID: inviteID)
+        if state == .sent || state == .cast {
+            RedactLog.event("invite-echo: no ack — relay fallback sent", "")
+            return .relayFallbackSent
+        }
+        RedactLog.event("invite-echo: no ack — relay fallback failed", "")
+        return .relayFallbackFailed
+    }
+
+    /// Erase path: cancel every pending invite-echo delivery before the wipe
+    /// begins. A cancelled delivery finishes its bounded ack wait and then
+    /// publishes nothing.
+    func cancelInviteEchoDeliveries() {
+        for task in inviteEchoDeliveries.values { task.cancel() }
     }
 
     // MARK: - base64url + scheme helpers
