@@ -1289,6 +1289,50 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
     }
 
+    /// Option A, Part 1 (MINTER side): acknowledge an OPENED invite echo over
+    /// BLE ONLY. Sent after `redeemInviteEcho` returns, whether or not the echo
+    /// was accepted, so the ack carries no outcome — a redeemer's relay copy
+    /// would meet the same ledger and clock anyway. The payload is the existing
+    /// `.ack` kind (wireID = the echo's envelope id), padded like every other
+    /// delivery ack; no new kind, no new wire format. Nothing consumes it yet:
+    /// on any redeemer build the `.ack` arm's `confirmDelivery` finds no outbox
+    /// entry for the untracked echo and returns.
+    ///
+    /// BLE ONLY, BY CONSTRUCTION — there is no npub in this function's scope,
+    /// and the send is the one call below:
+    ///   • `MessageRouter.send` hands the frame to `transport(for: .ble)` only;
+    ///   • on `noReachablePeers` its Tier-2 branch calls `publishViaNostr` with
+    ///     the recipient we pass — `nil` — whose first line is
+    ///     `guard let recipient … else { return .waitingForRange }`, before any
+    ///     addressed transport is touched;
+    ///   • `tracked: false` creates no outbox entry, so `rerouteToNostr` and
+    ///     `resend` (both outbox-driven) can never carry it to a relay later;
+    ///   • a bystander that relays the BLE frame onward calls every transport's
+    ///     `relay`, and the Nostr transport's `relay` is empty.
+    /// So this can reach a radio and nothing else. No blocked-peer check is
+    /// needed here: `receive` drops a blocked sender before the payload switch.
+    private func sendInviteEchoAck(for echo: Envelope, to peer: PublicIdentity) async {
+        do {
+            let session = try store.session(with: peer)
+            let payload = MessagePayload.deliveryAck(wireID: echo.id, hops: hops(of: echo))
+            let sealed = try session.seal(payload.sealedPlaintext())
+            let state = await router?.send(Envelope(ciphertext: sealed), tracked: false,
+                                           peerKey: nil, nostrRecipient: nil)
+            switch state {
+            case .some(.sent):
+                RedactLog.event("invite-echo: ack sent (BLE)", "echo \(echo.id) → \(peer.userIDHex.prefix(16))…")
+            case .some(.waitingForRange):
+                RedactLog.event("invite-echo: ack not sent — no BLE link", "echo \(echo.id)")
+            case .none:
+                RedactLog.event("invite-echo: ack not sent — no router", "echo \(echo.id)")
+            case .some(let other):
+                RedactLog.event("invite-echo: ack not sent — BLE send failed", "echo \(echo.id) state \(other)")
+            }
+        } catch {
+            RedactLog.event("invite-echo: ack not sent — seal failed", "\(type(of: error))")
+        }
+    }
+
     /// Seal + route one call-signaling frame to a verified peer (FaceTime v1).
     /// UNTRACKED, like a delivery ack: signaling earns no delivery state and
     /// is never acked — ring timeouts belong to CallController, not the
@@ -1665,6 +1709,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // lives in redeemInviteEcho, shared with V2.
                 await redeemInviteEcho(inviteID: inviteID, redeemerNostrPubkey: nil,
                                        peer: peer, rawKey: rawKey)
+                // Option A, Part 1: acknowledge the opened echo, BLE only,
+                // whatever redeemInviteEcho decided (no outcome on the wire).
+                await sendInviteEchoAck(for: envelope, to: peer)
 
             case .inviteEchoV2(let body):
                 guard let parsed = MessagePayload.parseInviteEchoV2(body) else {
@@ -1676,6 +1723,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 await redeemInviteEcho(inviteID: parsed.inviteID,
                                        redeemerNostrPubkey: parsed.redeemerNostrPubkey,
                                        peer: peer, rawKey: rawKey)
+                // Option A, Part 1: same unconditional BLE-only ack as V1.
+                await sendInviteEchoAck(for: envelope, to: peer)
 
             case .callRequest(let body):
                 // F1 (7f STRICT-VERIFIED): call signaling is user-reaching
