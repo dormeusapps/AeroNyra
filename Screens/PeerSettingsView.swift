@@ -33,6 +33,10 @@ struct PeerSettingsView: View {
     /// Called after a successful Block so the presenting Stream can dismiss
     /// this sheet AND pop itself (the conversation is leaving the main list).
     var onBlocked: (() -> Void)? = nil
+    /// Called after a successful SAS "Doesn't match" discard, so the presenting
+    /// Stream can close this sheet AND pop itself; it posts the row removal
+    /// from its own `.onDisappear`. nil = the SAS sheet offers no discard.
+    var onMismatchDiscarded: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -105,7 +109,8 @@ struct PeerSettingsView: View {
                 SASVerifySheet(
                     peerName: displayName,
                     rawKey: peer.publicKeyData,
-                    pairing: pairing
+                    pairing: pairing,
+                    onDiscarded: onMismatchDiscarded
                 )
                 .presentationDetents([.medium])
                 .preferredColorScheme(.dark)

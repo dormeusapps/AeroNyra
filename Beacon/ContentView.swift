@@ -1379,6 +1379,9 @@ private struct ReadyView: View {
     /// replaces its path, the stream view raises the cover and adopts the
     /// link. App-lifetime, like the engines.
     @State private var navigationIntent = NavigationIntent()
+    /// SAS "Doesn't match" → row removal hand-off (chat posts on disappear,
+    /// the chats root deletes). App-lifetime, like the intent above.
+    @State private var contactRemoval = ContactRemovalRequest()
 
     /// STEP 7d-3 outcome surface. The same success/failure pair PairingView
     /// keeps for scan-to-pair (pairMessage/pairFailed), shown as a transient
@@ -1419,6 +1422,7 @@ private struct ReadyView: View {
                     .environment(pttLinkEngine)
                     .environment(pttInboundMeter)
                     .environment(navigationIntent)
+                    .environment(contactRemoval)
                     .task { await inbox.run() }
                     .task { await inbox.runDeliveryUpdates(router.deliveryUpdates) }   // 7b.2a
             } else {
@@ -1745,6 +1749,7 @@ private struct ChatsRootView: View {
     /// `PersistentModel` is Hashable — so rows push the same object they
     /// always did; the only lookup is the intent's key → row, done once.
     @Environment(NavigationIntent.self) private var intent: NavigationIntent?
+    @Environment(ContactRemovalRequest.self) private var removal: ContactRemovalRequest?
     @Environment(\.modelContext) private var modelContext
     @State private var path: [Peer] = []
 
@@ -1760,6 +1765,19 @@ private struct ChatsRootView: View {
             guard let request, let peer = peer(for: request.key) else { return }
             path = [peer]
         }
+        // SAS "Doesn't match": delete the discarded contact's rows HERE, and
+        // only once that Peer is no longer in the stack's path — the path holds
+        // the Peer object itself, so deleting it while it is still there is
+        // the deleted-row-under-a-mounted-view hazard. Re-checked on every
+        // path change until it is out.
+        .onChange(of: removal?.request) { _, _ in removeDiscardedContactIfClear() }
+        .onChange(of: path) { _, _ in removeDiscardedContactIfClear() }
+    }
+
+    private func removeDiscardedContactIfClear() {
+        guard let key = removal?.takeIfClear(pathKeys: path.map(\.publicKeyData)),
+              let peer = peer(for: key) else { return }
+        ContactRows.delete(peer, in: modelContext)
     }
 
     /// Small-roster in-memory lookup (the same shape BlockedContactsView

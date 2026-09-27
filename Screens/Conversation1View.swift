@@ -51,6 +51,12 @@ struct StreamView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    /// SAS "Doesn't match": the chats root deletes this contact's rows only
+    /// after this screen has left the stack (see ContactRemovalRequest).
+    @Environment(ContactRemovalRequest.self) private var contactRemoval: ContactRemovalRequest?
+    /// Set only by a successful "Doesn't match" discard. Gates the row-removal
+    /// post in `.onDisappear`, which also fires under a full-screen cover.
+    @State private var mismatchDiscarded = false
 
     @State private var draft: String = ""
     @FocusState private var composerFocused: Bool
@@ -244,6 +250,11 @@ struct StreamView: View {
                 pttLinkEngine?.close()
                 UIApplication.shared.isIdleTimerDisabled = callEngine?.isCallInProgress ?? false
             }
+            // SAS "Doesn't match": the screen is leaving the stack — only NOW
+            // hand the row removal to the chats root (never delete from here).
+            if mismatchDiscarded {
+                contactRemoval?.post(peer.publicKeyData)
+            }
         }
         .sheet(isPresented: $showSettings) {
             PeerSettingsView(conversation: currentConversation(),
@@ -252,7 +263,8 @@ struct StreamView: View {
                                  // settings sheet and pop this conversation.
                                  showSettings = false
                                  dismiss()
-                             })
+                             },
+                             onMismatchDiscarded: { closeAfterMismatchDiscard() })
         }
         .fullScreenCover(isPresented: $showWalkie) {
             // The globe's hold-to-talk drives beginPTT/endPTT — the ONLY
@@ -382,7 +394,8 @@ struct StreamView: View {
         .sheet(isPresented: $showVerify) {
             SASVerifySheet(peerName: peerName,
                            rawKey: peer.publicKeyData,
-                           pairing: pairing)
+                           pairing: pairing,
+                           onDiscarded: { closeAfterMismatchDiscard() })
                 .presentationDetents([.medium])
                 .preferredColorScheme(.dark)
         }
@@ -572,6 +585,16 @@ struct StreamView: View {
             Rectangle().fill(Stillwater.Palette.biolume.opacity(0.09)).frame(height: 1)
         }
         .animation(.easeOut(duration: 0.18), value: recorder.isRecording)
+    }
+
+    /// SAS "Doesn't match" succeeded (the pairing is already discarded): close
+    /// every sheet this screen presents, then pop — the Block pattern. The rows
+    /// are removed from `.onDisappear`, after the screen has left the stack.
+    private func closeAfterMismatchDiscard() {
+        mismatchDiscarded = true
+        showVerify = false
+        showSettings = false
+        dismiss()
     }
 
     /// STEP 7f — shown INSTEAD of the composer until this contact is verified. No

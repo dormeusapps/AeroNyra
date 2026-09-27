@@ -13,6 +13,13 @@
 //  addVerifiedContact) — so the caller's composer/presence flip on dismiss with no
 //  relaunch. Local-only: nothing here is transmitted.
 //
+//  DOESN'T MATCH (CONTACT_MODEL §4.2 step 5): offered only for an UNVERIFIED
+//  contact with words on screen and a caller that can close the chat
+//  (`onDiscarded`). Behind a confirm, it calls `pairing.discardMismatchedPairing`
+//  (cancel invites → revoke → delete session; nothing sent). On success the
+//  CALLER closes this sheet and the chat; rows are deleted later by the chats
+//  root, never here. On failure the sheet stays open with a retry line.
+//
 
 import SwiftUI
 
@@ -20,12 +27,19 @@ struct SASVerifySheet: View {
     let peerName: String
     let rawKey: Data
     let pairing: PairingService?
+    /// Called after a successful "Doesn't match" discard. nil = no button.
+    var onDiscarded: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
 
     @State private var words: [String] = []
     @State private var failed = false
     @State private var confirming = false
+    /// Read once at load: only an UNVERIFIED contact is offered "doesn't match".
+    @State private var offerMismatch = false
+    @State private var confirmMismatch = false
+    @State private var discarding = false
+    @State private var discardFailed = false
 
     var body: some View {
         VStack(spacing: 22) {
@@ -66,8 +80,23 @@ struct SASVerifySheet: View {
                         .background(RoundedRectangle(cornerRadius: 26).fill(Stillwater.Palette.biolume))
                 }
                 .buttonStyle(.plain)
-                .disabled(words.isEmpty || confirming)
+                .disabled(words.isEmpty || confirming || discarding)
                 .opacity(words.isEmpty ? 0.4 : 1.0)
+            }
+
+            if !failed && offerMismatch && onDiscarded != nil {
+                if discardFailed {
+                    Text("Couldn't remove them. Try again.")
+                        .font(Stillwater.Serif.italic(14))
+                        .foregroundStyle(Stillwater.Palette.mistDim)
+                        .multilineTextAlignment(.center)
+                }
+                Button { confirmMismatch = true } label: {
+                    Text(discarding ? "…" : "doesn't match")
+                        .stillwaterMono(8.5, trackingEm: 0.24, color: Stillwater.Palette.mistDim)
+                }
+                .buttonStyle(.plain)
+                .disabled(words.isEmpty || confirming || discarding)
             }
 
             Button { dismiss() } label: {
@@ -81,14 +110,41 @@ struct SASVerifySheet: View {
         .frame(maxWidth: .infinity)
         .background(Stillwater.Palette.abyss.ignoresSafeArea())
         .task { load() }
+        .confirmationDialog("The words don't match?",
+                            isPresented: $confirmMismatch,
+                            titleVisibility: .visible) {
+            Button("Remove contact", role: .destructive) { discard() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Someone may have come between you when you paired. This removes \(peerName) and your chat from this phone. Nothing is sent to them. Ask them to tap Doesn't match too, then pair again in person with a QR code or send a new invite. Any invites you haven't used yet are cancelled.")
+        }
     }
 
     private func load() {
         guard words.isEmpty, !failed else { return }
         if let computed = try? pairing?.sasWords(forPeerRawKey: rawKey), !computed.isEmpty {
             words = computed
+            offerMismatch = !(pairing?.isVerified(rawKey) ?? true)
         } else {
             failed = true
+        }
+    }
+
+    /// "Doesn't match" → discard. Disabled while in flight (`discarding`), so
+    /// the confirm can never fire twice. The caller closes the sheet on success.
+    private func discard() {
+        guard let pairing, !discarding else { return }
+        discarding = true
+        discardFailed = false
+        Task {
+            do {
+                try await pairing.discardMismatchedPairing(rawKey)
+                onDiscarded?()
+            } catch {
+                RedactLog.event("SAS: discard threw", "\(type(of: error))")
+                discardFailed = true
+                discarding = false
+            }
         }
     }
 
