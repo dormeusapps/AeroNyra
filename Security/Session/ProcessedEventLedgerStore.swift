@@ -126,15 +126,18 @@ public final class ProcessedEventLedgerStore: Wipeable, Sendable {
 
     // MARK: - Wipeable
 
-    /// Crypto-erase: remove the sealed file and destroy its DEK. Idempotent — a
+    /// Crypto-erase: destroy the DEK, then remove the sealed file. Idempotent — a
     /// missing file and an already-absent key are both no-ops, per `Wipeable`.
     public func wipe() async throws {
         // Tombstone FIRST, under the save lock: waits out an in-flight save,
         // then no later save can write.
         wiped.withLock { $0 = true }
+        // KEY FIRST, then the file: if the removal then fails, what survives is
+        // a sealed file under a destroyed key — unreadable, never loadable by a
+        // later identity (a `loadOrCreate` mints a NEW key that cannot open it).
+        try SessionStoreKey.destroy(service: keychainService)
         if FileManager.default.fileExists(atPath: fileURL.path) {
             try FileManager.default.removeItem(at: fileURL)
         }
-        try SessionStoreKey.destroy(service: keychainService)
     }
 }
