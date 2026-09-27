@@ -252,7 +252,7 @@ public final class EnrollmentService {
             return
         }
         guard !allowlist.isVerified(identity: identity) else {
-            print("enroll: markVerified NO-OP — already verified")
+            RedactLog.event("enroll: markVerified NO-OP — already verified", "")
             return
         }
 
@@ -277,7 +277,7 @@ public final class EnrollmentService {
             await coordinator.removeVerifiedContact(rawIdentity: identity)
             return
         }
-        print("enroll: markVerified OK — verified gate opened")
+        RedactLog.event("enroll: markVerified OK — verified gate opened", "")
     }
 
     /// Remove a contact entirely — they can no longer be admitted. Save-then-adopt.
@@ -304,6 +304,10 @@ public final class EnrollmentService {
         allowlist = updated
         await coordinator.removeReconnectContact(rawIdentity: identity)
         await coordinator.removeVerifiedContact(rawIdentity: identity)
+        // One line on EVERY successful revoke (Remove Contact, Block, SAS
+        // discard), whatever the live gates held — so a smoke test can tell
+        // "no revoke" from "revoke not logged". No identifier.
+        RedactLog.event("enroll: revoke OK — removed from allowlist and live gates", "")
     }
 
     // MARK: - Mutations: invite ledger (save-then-adopt)

@@ -493,7 +493,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         if !departed.isEmpty, let router {
             let n = await router.rerouteToNostr(departed: departed)
             if n > 0 {
-                print("first-contact: BLE dropped — rerouted \(n) in-flight msg(s) → Nostr")
+                RedactLog.event("first-contact: BLE dropped — rerouted \(n) in-flight msg(s) → Nostr", "")
             }
         }
     }
@@ -519,7 +519,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
         lastReachableKeys = keys
         reachablePeersContinuation.yield(keys)
-        print("first-contact: presence → \(keys.count) reachable peer(s)")
+        RedactLog.event("first-contact: presence → \(keys.count) reachable peer(s)", "")
         return keys
     }
     
@@ -542,7 +542,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     func onBundle(link: UUID, data: Data) async -> BundleOutcome {
         let bundle = PrekeyBundle(data: data)
         guard let peer = try? store.peerIdentity(from: bundle) else {
-            print("first-contact: malformed bundle")
+            RedactLog.event("first-contact: malformed bundle", "")
             return .malformed
         }
         // STEP 7e/7f — CLOSED-CONTACT GATE. This gate DELIBERATELY stays on the
@@ -838,7 +838,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         guard !reconnectAllowlistIdentities.contains(rawIdentity) else { return }
         reconnectAllowlistIdentities.append(rawIdentity)
         refreshRecognizerCache()
-        print("first-contact: reconnect contact added via enrollment (\(reconnectAllowlistIdentities.count) total)")
+        RedactLog.event("first-contact: reconnect contact added via enrollment (\(reconnectAllowlistIdentities.count) total)", "")
     }
 
     /// PUBLIC revoke entry (STEP 7e). EnrollmentService.revoke calls this after it
@@ -855,7 +855,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         }
         refreshRecognizerCache()
         emitReachablePeers()
-        print("first-contact: reconnect contact revoked (\(reconnectAllowlistIdentities.count) total)")
+        RedactLog.event("first-contact: reconnect contact revoked (\(reconnectAllowlistIdentities.count) total)", "")
     }
 
     /// PUBLIC verified-promotion entry (STEP 7f). `EnrollmentService.markVerified`
@@ -869,7 +869,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         guard !verifiedIdentities.contains(rawIdentity) else { return }
         verifiedIdentities.insert(rawIdentity)
         emitReachablePeers()
-        print("first-contact: verified contact added via enrollment (\(verifiedIdentities.count) verified)")
+        RedactLog.event("first-contact: verified contact added via enrollment (\(verifiedIdentities.count) verified)", "")
     }
 
     /// PUBLIC verified-revoke entry (STEP 7f). `EnrollmentService.revoke` calls this
@@ -880,7 +880,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     func removeVerifiedContact(rawIdentity: Data) {
         guard verifiedIdentities.remove(rawIdentity) != nil else { return }
         emitReachablePeers()
-        print("first-contact: verified contact revoked (\(verifiedIdentities.count) verified)")
+        RedactLog.event("first-contact: verified contact revoked (\(verifiedIdentities.count) verified)", "")
     }
 
     /// PUBLIC block entry (Guideline 1.2). The composition root seeds this at
@@ -891,7 +891,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// ride the existing revoke path, which `PairingService.block` invokes.
     func setBlockedIdentities(_ identities: Set<Data>) {
         blockedIdentities = identities
-        print("first-contact: blocked set updated (\(identities.count) blocked)")
+        RedactLog.event("first-contact: blocked set updated (\(identities.count) blocked)", "")
     }
 
     /// Current epoch from the injected clock.
@@ -932,9 +932,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             let frame = Self.reconnectFrame(Self.reconnectBeaconSet,
                                             Self.encodeEmissionSet(plan.emissionSet))
             try await transport.sendReconnect(frame, toLink: link)
-            print("first-contact: sent reconnect beacons (\(plan.emissionSet.count))")
+            RedactLog.event("first-contact: sent reconnect beacons (\(plan.emissionSet.count))", "")
         } catch {
-            print("first-contact: reconnect beacon send failed: \(type(of: error))")
+            RedactLog.event("first-contact: reconnect beacon send failed: \(type(of: error))", "")
         }
     }
     
@@ -951,7 +951,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         case Self.reconnectItsMe:
             await onReconnectItsMe(link: link, ciphertext: payload)
         default:
-            print("first-contact: unknown reconnect discriminator \(discriminator)")
+            RedactLog.event("first-contact: unknown reconnect discriminator \(discriminator)", "")
         }
     }
     
@@ -961,7 +961,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// our own presence flips only when WE open theirs (`onReconnectItsMe`).
     private func onReconnectBeacon(link: UUID, emissionSetData: Data) async {
         guard let set = Self.decodeEmissionSet(emissionSetData) else {
-            print("first-contact: malformed reconnect emission set")
+            RedactLog.event("first-contact: malformed reconnect emission set", "")
             return
         }
         let present = BeaconRecognizer.recognize(
@@ -1007,7 +1007,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             }
             guard let payload = MessagePayload.decodeSealed(plaintext),
                   case .reconnectHello = payload else {
-                print("first-contact: reconnect it's-me opened but not a hello")
+                RedactLog.event("first-contact: reconnect it's-me opened but not a hello", "")
                 return
             }
             // AUTHENTICATED admission — set presence here and nowhere else on the
@@ -1960,7 +1960,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                            sentAt: done.sentAt, isStory: done.isStory,
                            isPushToTalk: done.isPushToTalk)
         )
-        print("first-contact: MEDIA complete \(done.data.count)B (\(done.mime.rawValue))")
+        RedactLog.event("first-contact: MEDIA complete \(done.data.count)B (\(done.mime.rawValue))", "")
         return wireID
     }
     

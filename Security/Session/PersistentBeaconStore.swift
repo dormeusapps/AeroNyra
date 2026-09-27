@@ -142,8 +142,7 @@ public final class PersistentBeaconStore: IdentityKeyStore, PreKeyStore, SignedP
 
         if let snapshot = Self.loadSnapshot(from: fileURL, key: key) {
             apply(snapshot)
-            print("\(Self.logPrefix) loaded (regId \(registrationId), "
-                + "\(sessionMap.count) session(s), \(prekeyMap.count) prekey(s))")
+            RedactLog.event("\(Self.logPrefix) loaded · \(sessionMap.count) session(s), \(prekeyMap.count) prekey(s)", "")
         } else {
             // No file, or it could not be decrypted (wrong/missing key →
             // crypto-erase semantics). Start fresh with a STABLE registrationId
@@ -151,7 +150,7 @@ public final class PersistentBeaconStore: IdentityKeyStore, PreKeyStore, SignedP
             self.registrationId = UInt32.random(in: 1...0x3FFF)
             self.nextOneTimePreKeyId = 1
             try persist()
-            print("\(Self.logPrefix) initialized fresh (regId \(registrationId))")
+            RedactLog.event("\(Self.logPrefix) initialized fresh", "")
         }
     }
 

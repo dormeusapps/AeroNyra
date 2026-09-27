@@ -54,9 +54,9 @@ final class LocalNotifier: NSObject, UNUserNotificationCenterDelegate {
         do {
             let granted = try await center.requestAuthorization(
                 options: [.alert, .sound, .badge])
-            print("notifier: authorization \(granted ? "granted" : "denied")")
+            RedactLog.event("notifier: authorization \(granted ? "granted" : "denied")", "")
         } catch {
-            print("notifier: authorization request failed: \(type(of: error))")
+            RedactLog.event("notifier: authorization request failed: \(type(of: error))", "")
         }
     }
 
@@ -90,7 +90,7 @@ final class LocalNotifier: NSObject, UNUserNotificationCenterDelegate {
                                             content: content,
                                             trigger: nil)   // deliver now
         do { try await center.add(request) }
-        catch { print("notifier: add failed: \(type(of: error))") }
+        catch { RedactLog.event("notifier: add failed: \(type(of: error))", "") }
     }
 
     /// Reconcile the app-icon badge with the store's unread total (e.g. after
@@ -98,7 +98,7 @@ final class LocalNotifier: NSObject, UNUserNotificationCenterDelegate {
     /// `applicationIconBadgeNumber`.
     func syncBadge(_ unreadTotal: Int) {
         center.setBadgeCount(unreadTotal) { error in
-            if let error { print("notifier: setBadgeCount failed: \(type(of: error))") }
+            if let error { RedactLog.event("notifier: setBadgeCount failed: \(type(of: error))", "") }
         }
     }
 

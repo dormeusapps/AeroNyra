@@ -163,7 +163,7 @@ struct SASVerifySheet: View {
                 // Verification did not take (peer not enrolled, or a persist
                 // failure — see the enroll log). Keep the sheet open so it isn't
                 // silently broken; the button stays tappable.
-                print("SAS: verify DID NOT TAKE — still unverified after markVerified")
+                RedactLog.event("SAS: verify DID NOT TAKE — still unverified after markVerified", "")
                 confirming = false
             }
         }

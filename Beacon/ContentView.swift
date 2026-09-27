@@ -294,7 +294,7 @@ struct ContentView: View {
             do {
                 try await transport.start()
             } catch {
-                print("BLE start failed: \(type(of: error))")
+                RedactLog.event("BLE start failed: \(type(of: error))", "")
             }
             for await ids in transport.reachabilityUpdates {
                 presence.reachableIDs = ids
@@ -676,7 +676,7 @@ struct ContentView: View {
         var blockedLoaded = true
         do {
             loadedBlocked = try blockedStore.load()
-            print("blocked contacts loaded · \(loadedBlocked.count) blocked")
+            RedactLog.event("blocked contacts loaded · \(loadedBlocked.count) blocked", "")
         } catch {
             RedactLog.event("⚠️ blocked-contact list load FAILED — booting empty", "\(type(of: error))")
             loadedBlocked = []
@@ -697,7 +697,7 @@ struct ContentView: View {
         let loadedNostrLedger: ProcessedEventLedger
         do {
             loadedNostrLedger = try nostrEventLedgerStore.load()
-            print("nostr replay ledger loaded \u{00B7} \(loadedNostrLedger.count) id(s)")
+            RedactLog.event("nostr replay ledger loaded \u{00B7} \(loadedNostrLedger.count) id(s)", "")
         } catch {
             RedactLog.event("\u{26A0}\u{FE0F} nostr replay ledger load FAILED \u{2014} booting empty", "\(type(of: error))")
             loadedNostrLedger = ProcessedEventLedger()
@@ -712,7 +712,7 @@ struct ContentView: View {
         do {
             loadedAllowlist = try contactStore.load()
             pairedIdentities = Array(loadedAllowlist.identities)
-            print("contact allowlist loaded · \(pairedIdentities.count) paired contact(s)")
+            RedactLog.event("contact allowlist loaded · \(pairedIdentities.count) paired contact(s)", "")
         } catch {
             // The store threw rather than silently emptying (its contract). At the
             // composition root we log loudly and boot with an empty set: during
@@ -754,7 +754,7 @@ struct ContentView: View {
         let verifiedIdentities = pairedIdentities.filter {
             loadedAllowlist.isVerified(identity: $0)
         }
-        print("contact allowlist · \(verifiedIdentities.count) verified contact(s)")
+        RedactLog.event("contact allowlist · \(verifiedIdentities.count) verified contact(s)", "")
         
         // STEP 7c-2 — load the single-use invite ledger once to seed the
         // EnrollmentService, which then OWNS it (mint/redeem, save-then-adopt) and
@@ -765,7 +765,7 @@ struct ContentView: View {
         let loadedPending: PendingInvites
         do {
             loadedPending = try pendingInvitesStore.load()
-            print("pending invite ledger loaded · \(loadedPending.count) in flight")
+            RedactLog.event("pending invite ledger loaded · \(loadedPending.count) in flight", "")
         } catch {
             RedactLog.event("⚠️ pending invite ledger load FAILED — booting empty", "\(type(of: error))")
             loadedPending = PendingInvites()
@@ -835,7 +835,7 @@ struct ContentView: View {
             let npubHex = ourNostrPubkey?.prefix(6).map { String(format: "%02x", $0) }.joined()
             RedactLog.event("nostr identity ready", "")
         } catch {
-            print("nostr identity load/create failed (BLE unaffected): \(type(of: error))")
+            RedactLog.event("nostr identity load/create failed (BLE unaffected): \(type(of: error))", "")
         }
         
         // PILLAR 1 (BLE) is always present; PILLAR 2 (Nostr) joins when an
@@ -1038,7 +1038,7 @@ struct ContentView: View {
             do {
                 try await mesh.start()   // starts BOTH transports: BLE radio + Nostr relay
             } catch {
-                print("router start failed: \(type(of: error))")
+                RedactLog.event("router start failed: \(type(of: error))", "")
             }
             await coord.onReachable(ids)
         }

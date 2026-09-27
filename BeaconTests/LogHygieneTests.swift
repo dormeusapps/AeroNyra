@@ -22,7 +22,7 @@ final class LogHygieneTests: XCTestCase {
         pattern: #"(RedactLog\.event\(|\blog\.(info|error|debug|notice|warning|fault)\(|(?<![\w.])print\()"#)
     /// A name that identifies someone or something on the wire.
     private static let identifier = try! NSRegularExpression(
-        pattern: #"\b(userIDHex|identifier|link|id|wireID|envID|echoID|envelopeID|eventID|idPrefix|npubHex|pttIDLog|rawKey|identity|peerKey|publicKeyData)\b"#)
+        pattern: #"\b(userIDHex|identifier|link|id|wireID|envID|echoID|envelopeID|eventID|idPrefix|npubHex|pttIDLog|rawKey|identity|peerKey|publicKeyData|registrationId|regId)\b"#)
     /// `\(error)` alone renders the whole value (associated data included).
     private static let wholeError = try! NSRegularExpression(pattern: #"^\s*error\s*$"#)
 
@@ -107,6 +107,7 @@ final class LogHygieneTests: XCTestCase {
             "RedactLog.event(\"x\",\n    \"link \\(link)\")",
             #"print("failed: \(error)")"#,
             #"log.debug("skip \(String(event.id.prefix(12)), privacy: .public)")"#,
+            #"RedactLog.event("loaded (regId \(registrationId))", "")"#,
         ]
         for s in bad { XCTAssertEqual(Self.offenders(in: s, file: "t").count, 1, s) }
         let ok = [

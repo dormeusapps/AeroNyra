@@ -268,7 +268,7 @@ final class MessageInbox {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard let peer = conversation.peer else {
-            print("inbox: cannot send — conversation has no peer")
+            RedactLog.event("inbox: cannot send — conversation has no peer", "")
             return
         }
         let rawKey = peer.publicKeyData
@@ -287,7 +287,7 @@ final class MessageInbox {
         guard isVerified(rawKey) else {
             message.deliveryState = .notDelivered
             save()
-            print("inbox: BLOCKED send to unverified peer")
+            RedactLog.event("inbox: BLOCKED send to unverified peer", "")
             return
         }
 
@@ -321,7 +321,7 @@ final class MessageInbox {
     func sendMedia(_ data: Data, mime: MediaMimeType, in conversation: Conversation,
                    isStory: Bool = false, isPushToTalk: Bool = false) async {
         guard let peer = conversation.peer else {
-            print("inbox: cannot send media — conversation has no peer")
+            RedactLog.event("inbox: cannot send media — conversation has no peer", "")
             return
         }
         let rawKey = peer.publicKeyData
@@ -345,7 +345,7 @@ final class MessageInbox {
         guard isVerified(rawKey) else {
             message.deliveryState = .notDelivered
             save()
-            print("inbox: BLOCKED media send to unverified peer")
+            RedactLog.event("inbox: BLOCKED media send to unverified peer", "")
             return
         }
 
@@ -428,11 +428,11 @@ final class MessageInbox {
         // after the wipe by its surviving mime stamp: mime set + blob gone →
         // skip, forever.
         if message.mediaMimeRaw != nil, message.mediaData == nil {
-            print("inbox: skip resend — media tombstone (reaped ephemeral media)")
+            RedactLog.event("inbox: skip resend — media tombstone (reaped ephemeral media)", "")
             return
         }
         guard let peer = message.conversation?.peer else {
-            print("inbox: cannot resend — message has no peer")
+            RedactLog.event("inbox: cannot resend — message has no peer", "")
             return
         }
         let rawKey = peer.publicKeyData
@@ -443,7 +443,7 @@ final class MessageInbox {
         // sticking at `.sent`. (An unverified peer is never in a reachable set, so a
         // flush wouldn't pick this up anyway — this is defense in depth.)
         guard isVerified(rawKey) else {
-            print("inbox: BLOCKED resend to unverified peer")
+            RedactLog.event("inbox: BLOCKED resend to unverified peer", "")
             return
         }
 
@@ -660,7 +660,7 @@ final class MessageInbox {
         }
         if reaped > 0 {
             save()
-            print("inbox: reaped \(reaped) expired media blob(s)")
+            RedactLog.event("inbox: reaped \(reaped) expired media blob(s)", "")
         }
     }
 
@@ -707,7 +707,7 @@ final class MessageInbox {
             message.deliveryState = .notDelivered
         }
         save()
-        print("inbox: boot reconcile — \(orphans.count) orphaned outbound row(s) → .notDelivered")
+        RedactLog.event("inbox: boot reconcile — \(orphans.count) orphaned outbound row(s) → .notDelivered", "")
     }
 
     // MARK: - Reconnect grace (STEP 0b / A)
