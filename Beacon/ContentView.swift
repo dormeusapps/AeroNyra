@@ -833,9 +833,9 @@ struct ContentView: View {
             // and sysdiagnose. The public key is safe as a launch marker; use the
             // already-hoisted `ourNostrPubkey` (== nostr.publicKeyBytes) in hex.
             let npubHex = ourNostrPubkey?.prefix(6).map { String(format: "%02x", $0) }.joined()
-            RedactLog.event("nostr identity ready", "npub \(npubHex ?? "?")…")
+            RedactLog.event("nostr identity ready", "")
         } catch {
-            print("nostr identity load/create failed (BLE unaffected): \(error)")
+            print("nostr identity load/create failed (BLE unaffected): \(type(of: error))")
         }
         
         // PILLAR 1 (BLE) is always present; PILLAR 2 (Nostr) joins when an
@@ -1000,7 +1000,7 @@ struct ContentView: View {
             ]
         )
         
-        RedactLog.event("session store ready (persistent) · transports=\(transports.count)", "identity \(secure.localIdentity.userIDHex.prefix(16))…")
+        RedactLog.event("session store ready (persistent) · transports=\(transports.count)", "")
         
         // Register the receiver + router and start consuming `incoming`, then
         // catch up on any links that already formed before the coordinator

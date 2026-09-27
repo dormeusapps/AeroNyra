@@ -648,7 +648,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                         }
                     }
                 }
-                self.log.info("nostr: published gift wrap id=\(envID) → \(live.count) relay(s)")
+                self.log.info("nostr: published gift wrap → \(live.count) relay(s)")
                 // Acceptance ledger (F1): watch this event's OKs; a zero-accept
                 // round re-publishes (bounded) and finally fails upward. The
                 // resume below is unchanged — acceptance gating is async.
@@ -1007,7 +1007,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             log.info("nostr: EOSE \(sub, privacy: .public) @ \(host, privacy: .public)")
             captureEventLocked("IN \(host) EOSE \(sub)")
         case .ok(let id, let accepted, let msg):
-            log.info("nostr: OK \(id, privacy: .public) accepted=\(accepted) \(msg, privacy: .public) @ \(host, privacy: .public)")
+            log.info("nostr: OK accepted=\(accepted) \(msg, privacy: .public) @ \(host, privacy: .public)")
             captureEventLocked("IN \(host) OK \(id) accepted=\(accepted) \(msg)")
             noteAcceptanceLocked(eventID: id, accepted: accepted)
         case .notice(let msg):
@@ -1055,7 +1055,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         // zero-accept demotion + resend re-seals a FRESH wrap with a new id)
         // and, for the one-shot invite echo, the re-echo heal (F3).
         if processedLedger.contains(event.id) {
-            log.debug("nostr: skip already-processed 1059 \(String(event.id.prefix(12)), privacy: .public) @ \(host, privacy: .public)")
+            log.debug("nostr: skip already-processed 1059 @ \(host, privacy: .public)")
             return
         }
         if failedWrapsThisSession.contains(event.id) { return }   // logged at first failure
@@ -1070,7 +1070,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             processedLedger.containsOrInsert(event.id)
             scheduleLedgerSaveLocked()   // a new id was recorded — persist (debounced)
             inboundCont.yield((link: Self.nostrSourceLink, envelope: envelope))
-            log.info("nostr: unwrapped inbound envelope id=\(envelope.id) @ \(host, privacy: .public) → incoming")
+            log.info("nostr: unwrapped inbound @ \(host, privacy: .public) → incoming")
         } catch {
             noteFailedWrapLocked(event.id)
             log.error("nostr: unwrap failed @ \(host, privacy: .public): \(error.localizedDescription)")
@@ -1140,19 +1140,18 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     private func finalizeAcceptanceLocked(eventID: String, trigger: String) {
         guard let pending = pendingAcceptance.removeValue(forKey: eventID) else { return }
         let silent = max(0, pending.relayCount - pending.accepted - pending.rejected)
-        let idPrefix = String(eventID.prefix(12))
         switch Self.acceptanceOutcome(accepted: pending.accepted,
                                       attempt: pending.attempt,
                                       maxAttempts: Self.maxPublishAttempts) {
         case .settled:
-            log.info("nostr: acceptance \(idPrefix, privacy: .public) (envelope \(pending.envelopeID)) — accepted=\(pending.accepted) rejected=\(pending.rejected) silent=\(silent) of \(pending.relayCount) [\(trigger, privacy: .public)]")
+            log.info("nostr: acceptance — accepted=\(pending.accepted) rejected=\(pending.rejected) silent=\(silent) of \(pending.relayCount) [\(trigger, privacy: .public)]")
         case .retry:
-            log.error("nostr: NO relay accepted event \(idPrefix, privacy: .public) (envelope \(pending.envelopeID)) — rejected=\(pending.rejected) silent=\(silent) of \(pending.relayCount) [\(trigger, privacy: .public)] — retry \(pending.attempt + 1)/\(Self.maxPublishAttempts) in \(Int(Self.republishDelay))s")
+            log.error("nostr: NO relay accepted event — rejected=\(pending.rejected) silent=\(silent) of \(pending.relayCount) [\(trigger, privacy: .public)] — retry \(pending.attempt + 1)/\(Self.maxPublishAttempts) in \(Int(Self.republishDelay))s")
             queue.asyncAfter(deadline: .now() + Self.republishDelay) { [weak self] in
                 self?.republishLocked(pending)
             }
         case .giveUp:
-            log.error("nostr: NO relay accepted event \(idPrefix, privacy: .public) (envelope \(pending.envelopeID)) after \(pending.attempt) attempt(s) — giving up [\(trigger, privacy: .public)]")
+            log.error("nostr: NO relay accepted event after \(pending.attempt) attempt(s) — giving up [\(trigger, privacy: .public)]")
             onPublishFailed?(pending.envelopeID)
         }
     }
@@ -1174,7 +1173,7 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
                 }
             }
         }
-        log.info("nostr: re-published \(String(pending.eventID.prefix(12)), privacy: .public) (envelope \(pending.envelopeID)) attempt \(pending.attempt + 1)/\(Self.maxPublishAttempts) → \(live.count) relay(s)")
+        log.info("nostr: re-published attempt \(pending.attempt + 1)/\(Self.maxPublishAttempts) → \(live.count) relay(s)")
         recordPublishLocked(eventID: pending.eventID, envelopeID: pending.envelopeID,
                             frame: pending.frame, relayCount: live.count,
                             attempt: pending.attempt + 1)

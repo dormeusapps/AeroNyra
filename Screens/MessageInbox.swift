@@ -482,7 +482,7 @@ final class MessageInbox {
             }
             message.conversation?.lastActivity = .now
             save()
-            RedactLog.event("inbox: resend OK", "→ \(wireID)")
+            RedactLog.event("inbox: resend OK", "")
         } catch {
             message.deliveryState = .notDelivered
             save()
@@ -599,7 +599,7 @@ final class MessageInbox {
                 }
                 message.conversation?.lastActivity = .now
                 save()
-                RedactLog.event("inbox: media re-driven over Nostr", "→ \(wireID)")
+                RedactLog.event("inbox: media re-driven over Nostr", "")
             } catch {
                 // Nostr re-drive itself failed (e.g. every relay down): mark
                 // `.notDelivered` so the ordinary return-to-range flush retries it.

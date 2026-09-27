@@ -457,7 +457,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
                 let notified = !remaining.isEmpty
                 if notified { self.notifySubscribers(frame) }
 
-                self.log.info("RELAY \(envelope.id) → \(writeCount) write + \(notified ? self.subscribedCentrals.count : 0) notify (excluded \(excluded.count))")
+                self.log.info("RELAY → \(writeCount) write + \(notified ? self.subscribedCentrals.count : 0) notify (excluded \(excluded.count))")
                 cont.resume()
             }
         }
@@ -473,7 +473,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
                 guard let self else { cont.resume(); return }
                 guard self.started else { cont.resume(throwing: TransportError.notStarted); return }
                 if self.sendFrameToLink(frame, id: id) {
-                    self.log.info("TX bundle \(data.count) bytes → link \(id)")
+                    self.log.info("TX bundle \(data.count) bytes")
                     cont.resume()
                 } else {
                     cont.resume(throwing: TransportError.noReachablePeers)
@@ -495,7 +495,7 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
                 guard let self else { cont.resume(); return }
                 guard self.started else { cont.resume(throwing: TransportError.notStarted); return }
                 if self.sendFrameToLink(frame, id: id) {
-                    self.log.info("TX reconnect \(data.count) bytes → link \(id)")
+                    self.log.info("TX reconnect \(data.count) bytes")
                     cont.resume()
                 } else {
                     cont.resume(throwing: TransportError.noReachablePeers)
@@ -837,17 +837,17 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
         // ends (duplicates are disabled, so a running session won't re-report
         // this peer; the session restart is what re-reports it).
         if let until = reconnectHoldoff[peripheral.identifier], DispatchTime.now() < until {
-            log.info("discovered \(peripheral.identifier) but in reconnect holdoff → skipping")
+            log.info("discovered but in reconnect holdoff → skipping")
             return
         }
         reconnectHoldoff[peripheral.identifier] = nil
-        log.info("discovered peer \(peripheral.identifier) rssi \(RSSI) → connecting")
+        log.info("discovered peer rssi \(RSSI) → connecting")
         peers[peripheral.identifier] = peripheral
         central.connect(peripheral, options: nil)
     }
 
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        log.info("connected to \(peripheral.identifier) → discovering service")
+        log.info("connected → discovering service")
         peripheral.delegate = self
         peripheral.discoverServices([Self.serviceUUID])
     }
@@ -855,7 +855,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
     public func centralManager(_ central: CBCentralManager,
                                didFailToConnect peripheral: CBPeripheral,
                                error: Error?) {
-        log.error("failed to connect \(peripheral.identifier): \(error?.localizedDescription ?? "nil")")
+        log.error("failed to connect: \(error?.localizedDescription ?? "nil")")
         peers[peripheral.identifier] = nil
     }
 
@@ -876,10 +876,10 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
         // without this guard every erase with a linked phone re-scanned and
         // re-linked (seen on hardware 2026-09-27, no TX).
         guard started else {
-            log.info("disconnected \(peripheral.identifier) → stopped, not rescanning")
+            log.info("disconnected → stopped, not rescanning")
             return
         }
-        log.info("disconnected \(peripheral.identifier) → rescanning")
+        log.info("disconnected → rescanning")
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
     }
 }
@@ -904,14 +904,14 @@ extension BLEMeshTransport: CBPeripheralDelegate {
                 writeTargets[peripheral.identifier] = ch
                 emitReachable()
                 peripheral.setNotifyValue(true, for: ch)
-                log.info("LINK READY → mailbox on \(peripheral.identifier). Ready + subscribing.")
+                log.info("LINK READY → mailbox. Ready + subscribing.")
             case Self.audioCharacteristicUUID:
                 // Lossy PTT audio char — a separate per-link capability, NOT a
                 // reachability signal (reachability stays mailbox-gated: no
                 // emitReachable, no writeTargets write here).
                 audioWriteTargets[peripheral.identifier] = ch
                 peripheral.setNotifyValue(true, for: ch)
-                log.info("AUDIO char ready on \(peripheral.identifier) → subscribing (lossy).")
+                log.info("AUDIO char ready → subscribing (lossy).")
             default:
                 break
             }
@@ -922,9 +922,9 @@ extension BLEMeshTransport: CBPeripheralDelegate {
                            didUpdateNotificationStateFor characteristic: CBCharacteristic,
                            error: Error?) {
         if let error {
-            log.error("notify-state error on \(peripheral.identifier): \(error.localizedDescription)")
+            log.error("notify-state error: \(error.localizedDescription)")
         } else {
-            log.info("subscribed for notify on \(peripheral.identifier)")
+            log.info("subscribed for notify")
         }
     }
 
@@ -933,7 +933,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
                            didUpdateValueFor characteristic: CBCharacteristic,
                            error: Error?) {
         if let error {
-            log.error("notify value error on \(peripheral.identifier): \(error.localizedDescription)")
+            log.error("notify value error: \(error.localizedDescription)")
             return
         }
         guard let value = characteristic.value else { return }
@@ -1017,7 +1017,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
             let retries = chunkRetriesLeft[id] ?? Self.chunkRetryLimit
             if retries > 0 {
                 chunkRetriesLeft[id] = retries - 1
-                log.error("write chunk failed to \(id): \(error.localizedDescription) → retrying (\(retries) left)")
+                log.error("write chunk failed: \(error.localizedDescription) → retrying (\(retries) left)")
                 pumpWriteQueue(id)
                 return
             }
@@ -1028,7 +1028,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
             guard count >= Self.writeErrorTeardownThreshold else {
                 // Below threshold: keep the link — drop this frame whole and
                 // move on, so the burst survives the hiccup.
-                log.error("write frame failed to \(id): \(error.localizedDescription) (transient \(count)/\(Self.writeErrorTeardownThreshold)) → keeping link")
+                log.error("write frame failed: \(error.localizedDescription) (transient \(count)/\(Self.writeErrorTeardownThreshold)) → keeping link")
                 failHeadFrame(id)
                 return
             }
@@ -1039,7 +1039,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         // so reachability drops immediately and the next send routes over Nostr;
         // cancel + rescan so we rediscover the peer if its radio returns.
         let reason = linkDead ? "link-dead code" : "\(writeErrorCounts[id] ?? 0) consecutive frame failures"
-        log.error("write failed to \(id): \(error.localizedDescription) (\(reason)) → dropping dead link")
+        log.error("write failed: \(error.localizedDescription) (\(reason)) → dropping dead link")
         peers[id] = nil
         writeTargets[id] = nil
         audioWriteTargets[id] = nil
@@ -1067,7 +1067,7 @@ extension BLEMeshTransport: CBPeripheralDelegate {
         let delay = min(Self.maxReconnectDelay,
                         Self.baseReconnectDelay * pow(2, Double(attempt - 1)))
         reconnectHoldoff[id] = .now() + delay
-        log.info("reconnect holdoff for \(id): \(delay)s (teardown #\(attempt))")
+        log.info("reconnect holdoff: \(delay)s (teardown #\(attempt))")
         cbQueue.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.started, self.central?.state == .poweredOn else { return }
             self.central?.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
@@ -1133,7 +1133,7 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
         subscribedCentrals.insert(central.identifier)
         audioCentrals[central.identifier] = central
         emitReachable()
-        log.info("central \(central.identifier) subscribed → peripheral-side presence")
+        log.info("central subscribed → peripheral-side presence")
     }
 
     public func peripheralManager(_ peripheral: CBPeripheralManager,
@@ -1144,7 +1144,7 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
         writeReassembly[central.identifier] = nil
         audioNotifyRing[central.identifier] = nil
         emitReachable()
-        log.info("central \(central.identifier) unsubscribed → presence removed")
+        log.info("central unsubscribed → presence removed")
     }
 
     /// Inbound WRITE (central → us). Reassemble + demux by frame type.
@@ -1199,13 +1199,13 @@ extension BLEMeshTransport {
                 log.error("RX envelope frame (\(payload.count) bytes) failed to parse")
                 return
             }
-            log.info("RX envelope id=\(envelope.id) bytes=\(envelope.ciphertext.count) from link \(link) → yielding")
+            log.info("RX envelope \(envelope.ciphertext.count) bytes → yielding")
             inbound.yield((link: link, envelope: envelope))
         case .bundle:
-            log.info("RX bundle \(payload.count) bytes from link \(link) → yielding")
+            log.info("RX bundle \(payload.count) bytes → yielding")
             bundlesCont.yield((link: link, data: payload))
         case .reconnect:
-            log.info("RX reconnect \(payload.count) bytes from link \(link) → yielding")
+            log.info("RX reconnect \(payload.count) bytes → yielding")
             reconnectsCont.yield((link: link, data: payload))
         case .audioFrame:
             // Carrier-neutral: hand the sealed bytes UP; the PTT-receive layer

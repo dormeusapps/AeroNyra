@@ -219,14 +219,9 @@ public final class PTTLinkController {
         }
     }
 
-    static func detail(_ linkID: Data?, _ peerKey: Data?) -> String {
-        "link \(hexPrefix(linkID)) peer \(hexPrefix(peerKey))…"
-    }
-
-    private static func hexPrefix(_ data: Data?) -> String {
-        guard let data else { return "-" }
-        return data.prefix(8).map { String(format: "%02x", $0) }.joined()
-    }
+    /// Log detail for a link event. Deliberately carries NO identifier (no
+    /// link id, no peer key prefix): log lines must not identify anyone.
+    static func detail(_ linkID: Data?, _ peerKey: Data?) -> String { "" }
 
     // MARK: Seams + hooks
 
@@ -284,7 +279,7 @@ public final class PTTLinkController {
             armOpenTimer(linkID: linkID)
         } catch {
             guard isCurrent(session, linkID) else { return }
-            RedactLog.event("ptt-link: open failed (offer or send)", "\(type(of: error)) \(Self.detail(linkID, peerKey))")
+            RedactLog.event("ptt-link: open failed (offer or send)", "\(type(of: error))")
             teardownMedia()
             state = .closed(.failed)
         }
@@ -413,7 +408,7 @@ public final class PTTLinkController {
                 try await session.start(remoteAnswer: sdp)
             } catch {
                 guard isCurrent(session, ourID) else { return }
-                RedactLog.event("ptt-link: applying answer failed", "\(type(of: error)) \(Self.detail(ourID, peerKey))")
+                RedactLog.event("ptt-link: applying answer failed", "\(type(of: error))")
                 stopOpenTimer()
                 teardownMedia()
                 state = .closed(.connectFailed)
@@ -477,7 +472,7 @@ public final class PTTLinkController {
             armOpenTimer(linkID: linkID)
         } catch {
             guard isCurrent(session, linkID) else { return }
-            RedactLog.event("ptt-link: auto-answer failed (answer or send)", "\(type(of: error)) \(Self.detail(linkID, peerKey))")
+            RedactLog.event("ptt-link: auto-answer failed (answer or send)", "\(type(of: error))")
             teardownMedia()
             state = .closed(.failed)
         }

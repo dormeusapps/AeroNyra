@@ -289,7 +289,7 @@ final class PairingService {
         defer { bumpVerificationEpoch() }
         try sessionStore.deleteSession(with: sessionStore.peerIdentity(fromRawKey: rawKey))
         RedactLog.event("SAS mismatch: pairing discarded — invites cancelled, contact revoked, session deleted",
-                        "\(rawKey.prefix(4).map { String(format: "%02x", $0) }.joined())…")
+                        "")
     }
 
     // MARK: - Invite mint (remote pairing, outbound half)
@@ -482,7 +482,7 @@ final class PairingService {
         // echo-tag registration, the coordinator, and enroll below.
         if enrollment.contains(rawKey) {
             RedactLog.event("invite-redeem: already paired — no-op, nothing sent",
-                            "\(peer.userIDHex.prefix(16))…")
+                            "")
             return .alreadyPaired(hint: String(peer.userIDHex.prefix(6)).uppercased())
         }
 

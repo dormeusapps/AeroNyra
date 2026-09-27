@@ -248,7 +248,7 @@ public final class EnrollmentService {
     /// open immediately, without a relaunch.
     public func markVerified(identity: Data) async throws {
         guard allowlist.contains(identity: identity) else {
-            RedactLog.event("enroll: markVerified NO-OP — identity NOT ENROLLED", "\(identity.prefix(4).map { String(format: "%02x", $0) }.joined())…")
+            RedactLog.event("enroll: markVerified NO-OP — identity NOT ENROLLED", "")
             return
         }
         guard !allowlist.isVerified(identity: identity) else {

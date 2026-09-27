@@ -179,7 +179,7 @@ final class PTTSessionOwner {
     func opened(pttID: Data, peerKey: Data) {
         guard !openSessions.contains(pttID) else { return }  // double-open: no-op
         RedactLog.event("[PTTSessionOwner] session open",
-                        "pttID \(shortHex(pttID)) peer \(shortHex(peerKey, bytes: 8))…")
+                        "")
         guard openSessions.isEmpty else { // audio session already ours (live) —
             openSessions.insert(pttID)    // new session joins, no re-activation
             return
@@ -257,14 +257,5 @@ final class PTTSessionOwner {
     /// posting notifications through the real center.
     func interruptionBegan() {
         for pttID in openSessions { closed(pttID: pttID) }
-    }
-
-    // MARK: Log formatting (I4 — pttID/peer short hex only, never key material)
-
-    /// Short hex prefix for logs, same shape as the coordinator's `pttIDLog`.
-    /// pttID is a NON-secret random session id (like a callID); the peer key
-    /// is public identity — a prefix identifies without dumping either.
-    private func shortHex(_ data: Data, bytes: Int = 4) -> String {
-        data.prefix(bytes).map { String(format: "%02x", $0) }.joined()
     }
 }

@@ -542,7 +542,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     func onBundle(link: UUID, data: Data) async -> BundleOutcome {
         let bundle = PrekeyBundle(data: data)
         guard let peer = try? store.peerIdentity(from: bundle) else {
-            print("first-contact: malformed bundle on link \(link)")
+            print("first-contact: malformed bundle")
             return .malformed
         }
         // STEP 7e/7f — CLOSED-CONTACT GATE. This gate DELIBERATELY stays on the
@@ -561,7 +561,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // `reconnectAllowlistIdentities` → `verifiedIdentities` on the guard below.
         let rawKey = store.rawPublicKey(of: peer)
         guard reconnectAllowlistIdentities.contains(rawKey) else {
-            RedactLog.event("first-contact: DROP unenrolled bundle", "from \(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: DROP unenrolled bundle", "")
             return .droppedUnenrolled
         }
 
@@ -579,7 +579,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         if iInitiate {
             return await initiate(with: bundle, peer: peer) ? .initiated : .initiateFailed
         } else {
-            RedactLog.event("first-contact: responder role — session forms on first message", "\(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: responder role — session forms on first message", "")
             return .responder
         }
     }
@@ -595,7 +595,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             _ = try store.establishSession(from: bundle)
             let rawKey = store.rawPublicKey(of: peer)
             eventsContinuation.yield(.established(peerKey: rawKey))
-            RedactLog.event("first-contact: INITIATED session", "with \(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: INITIATED session", "")
             return true
         } catch {
             RedactLog.event("first-contact: initiate failed", "\(type(of: error))")
@@ -693,7 +693,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             eventsContinuation.yield(
                 .learnedNostrIdentity(peerKey: rawKey, nostrPubkey: nostrRecipient))
         }
-        RedactLog.event("first-contact: REDEEMED invite → echo sent", "to \(peer.userIDHex.prefix(16))…")
+        RedactLog.event("first-contact: REDEEMED invite → echo sent", "")
     }
 
     /// Publish an already-sealed invite echo over the relay — the SAME envelope
@@ -755,7 +755,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     private func resolveInviteEchoAck(_ wireID: MessageID, from sender: Data) {
         guard var entry = inviteEchoAcks[wireID] else { return }
         guard entry.minter == sender else {
-            RedactLog.event("invite-echo: ack ignored — wrong sender", "echo \(wireID)")
+            RedactLog.event("invite-echo: ack ignored — wrong sender", "")
             return
         }
         if let waiter = entry.waiter {
@@ -789,13 +789,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // a blocked identity must never burn an invite or conjure a row even
         // if a future caller bypasses that guard.
         guard !blockedIdentities.contains(rawKey) else {
-            RedactLog.event("first-contact: invite-echo REFUSED — redeemer is blocked", "\(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: invite-echo REFUSED — redeemer is blocked", "")
             return
         }
         do {
             let redeemed = try await inviteRedeemer?.redeemEcho(
                 inviteID: inviteID, redeemerIdentity: rawKey) ?? false
-            RedactLog.event("first-contact: invite-echo \(redeemed ? "REDEEMED" : "ignored")", "from \(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: invite-echo \(redeemed ? "REDEEMED" : "ignored")", "")
             // MINTER-SIDE COMPLETION: make the redeemer a Peer/Conversation
             // row, exactly as the redeemer's own `redeemInvite` does for us
             // (same `.established` event → MessageInbox.handleEstablished,
@@ -932,9 +932,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             let frame = Self.reconnectFrame(Self.reconnectBeaconSet,
                                             Self.encodeEmissionSet(plan.emissionSet))
             try await transport.sendReconnect(frame, toLink: link)
-            print("first-contact: sent reconnect beacons (\(plan.emissionSet.count)) → link \(link)")
+            print("first-contact: sent reconnect beacons (\(plan.emissionSet.count))")
         } catch {
-            print("first-contact: reconnect beacon send to \(link) failed: \(type(of: error))")
+            print("first-contact: reconnect beacon send failed: \(type(of: error))")
         }
     }
     
@@ -951,7 +951,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         case Self.reconnectItsMe:
             await onReconnectItsMe(link: link, ciphertext: payload)
         default:
-            print("first-contact: unknown reconnect discriminator \(discriminator) on link \(link)")
+            print("first-contact: unknown reconnect discriminator \(discriminator)")
         }
     }
     
@@ -961,7 +961,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// our own presence flips only when WE open theirs (`onReconnectItsMe`).
     private func onReconnectBeacon(link: UUID, emissionSetData: Data) async {
         guard let set = Self.decodeEmissionSet(emissionSetData) else {
-            print("first-contact: malformed reconnect emission set on link \(link)")
+            print("first-contact: malformed reconnect emission set")
             return
         }
         let present = BeaconRecognizer.recognize(
@@ -982,9 +982,9 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             let sealed = try session.seal(MessagePayload.reconnectHelloV1().sealedPlaintext())
             let frame = Self.reconnectFrame(Self.reconnectItsMe, sealed)
             try await transport.sendReconnect(frame, toLink: link)
-            RedactLog.event("first-contact: sent reconnect it's-me", "link \(link) · \(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: sent reconnect it's-me", "")
         } catch {
-            RedactLog.event("first-contact: it's-me seal/send failed", "link \(link) · \(type(of: error))")
+            RedactLog.event("first-contact: it's-me seal/send failed", "\(type(of: error))")
         }
     }
     
@@ -1002,12 +1002,12 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // enrolled-but-unverified reconnect flips NO presence and is not admitted
             // until the SAS is done (was `reconnectAllowlistIdentities` at 7e).
             guard verifiedIdentities.contains(store.rawPublicKey(of: peer)) else {
-                RedactLog.event("first-contact: DROP reconnect from unverified", "\(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: DROP reconnect from unverified", "")
                 return
             }
             guard let payload = MessagePayload.decodeSealed(plaintext),
                   case .reconnectHello = payload else {
-                print("first-contact: reconnect it's-me opened but not a hello on link \(link)")
+                print("first-contact: reconnect it's-me opened but not a hello")
                 return
             }
             // AUTHENTICATED admission — set presence here and nowhere else on the
@@ -1020,10 +1020,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // peer just reconnected so it can hold that peer's auto-retry briefly
             // and extend its live delivery timeouts (A / STEP 0b) — per-peer.
             eventsContinuation.yield(.reconnected(peerKey: store.rawPublicKey(of: peer)))
-            RedactLog.event("first-contact: reconnect ADMITTED", "link \(link) · \(peer.userIDHex.prefix(16))…")
+            RedactLog.event("first-contact: reconnect ADMITTED", "")
         } catch {
             // Stranger / replay / undecodable: admit nothing. Quiet by design.
-            RedactLog.event("first-contact: reconnect it's-me did not open", "link \(link) · \(type(of: error))")
+            RedactLog.event("first-contact: reconnect it's-me did not open", "\(type(of: error))")
         }
     }
     
@@ -1339,7 +1339,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             await router?.commitToRelay(mediaWireID)
         }
         let via = goingOverBLE ? "BLE" : (redrive ? "Nostr (re-drive)" : "Nostr")
-        RedactLog.event("first-contact: SENT media over \(via)", "\(chunks.count) chunks · \(blob.count)B → \(peer.userIDHex.prefix(16))…")
+        RedactLog.event("first-contact: SENT media over \(via)", "\(chunks.count) chunks · \(blob.count)B")
         return mediaWireID
     }
     
@@ -1385,10 +1385,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             } else if let recipient = nostrRecipient {
                 let state = await router?.publishOverNostr(envelope, to: recipient)
                 if state != .sent && state != .cast {
-                    RedactLog.event("first-contact: delivery-ack relay miss", "→ \(wireID)")
+                    RedactLog.event("first-contact: delivery-ack relay miss", "")
                 }
             } else {
-                RedactLog.event("first-contact: delivery-ack undeliverable (peer out of range, no npub)", "→ \(wireID)")
+                RedactLog.event("first-contact: delivery-ack undeliverable (peer out of range, no npub)", "")
             }
         } catch {
             RedactLog.event("first-contact: delivery-ack seal/send failed", "\(type(of: error))")
@@ -1426,13 +1426,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                                            peerKey: nil, nostrRecipient: nil)
             switch state {
             case .some(.sent):
-                RedactLog.event("invite-echo: ack sent (BLE)", "echo \(echo.id) → \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("invite-echo: ack sent (BLE)", "")
             case .some(.waitingForRange):
-                RedactLog.event("invite-echo: ack not sent — no BLE link", "echo \(echo.id)")
+                RedactLog.event("invite-echo: ack not sent — no BLE link", "")
             case .none:
-                RedactLog.event("invite-echo: ack not sent — no router", "echo \(echo.id)")
+                RedactLog.event("invite-echo: ack not sent — no router", "")
             case .some(let other):
-                RedactLog.event("invite-echo: ack not sent — BLE send failed", "echo \(echo.id) state \(other)")
+                RedactLog.event("invite-echo: ack not sent — BLE send failed", "state \(other)")
             }
         } catch {
             RedactLog.event("invite-echo: ack not sent — seal failed", "\(type(of: error))")
@@ -1519,7 +1519,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         // Resolve exactly ONE audio-addressable link (I6). None → no audio path.
         guard let chosenLink = await transport.resolveAudioLink(among: linksFor(rawKey: rawKey)) else {
             RedactLog.event("first-contact: ptt-open (initiator) no audio link",
-                            "pttID \(pttIDLog(pttID))")
+                            "")
             throw TransportError.noReachablePeers
         }
 
@@ -1533,7 +1533,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
 
         pttInitiatorIDs[rawKey] = pttID
         RedactLog.event("first-contact: PTT OPEN (initiator)",
-                        "pttID \(pttIDLog(pttID)) → \(peer.userIDHex.prefix(16))…")
+                        "")
 
         // The send closure is role-agnostic and bound to the ONE resolved link;
         // fire-and-forget (I1 — the render thread never blocks on transport).
@@ -1566,10 +1566,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 MessagePayload.pttCloseV1(pttID: pttID).sealedPlaintext())
             try await routeOut(Envelope(ciphertext: sealed), tracked: false, peerKey: rawKey)
             RedactLog.event("first-contact: PTT CLOSE (initiator)",
-                            "pttID \(pttIDLog(pttID)) → \(peer.userIDHex.prefix(16))…")
+                            "")
         } catch {
             RedactLog.event("first-contact: ptt-close (initiator) failed",
-                            "pttID \(pttIDLog(pttID)) — \(type(of: error))")
+                            " — \(type(of: error))")
         }
     }
 
@@ -1611,12 +1611,12 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // instead of suppressing the announce for the whole session.
             if state == .sent || state == .cast {
                 announcedNostrTo.insert(rawKey)
-                RedactLog.event("first-contact: announced our Nostr id", "→ \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: announced our Nostr id", "")
             } else {
-                RedactLog.event("first-contact: nostr-id announce missed (will retry)", "to \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: nostr-id announce missed (will retry)", "")
             }
         } catch {
-            RedactLog.event("first-contact: nostr-id announce failed", "to \(peer.userIDHex.prefix(16))… — \(error)")
+            RedactLog.event("first-contact: nostr-id announce failed", "\(type(of: error))")
         }
     }
 
@@ -1661,11 +1661,6 @@ actor FirstContactCoordinator: EnvelopeReceiver {
         linkPeers.compactMap { store.rawPublicKey(of: $0.value) == rawKey ? $0.key : nil }
     }
 
-    /// Short hex of a pttID for logs. pttID is a NON-secret random session id (like
-    /// a callID) — safe to log; S is never passed here.
-    private func pttIDLog(_ id: Data) -> String {
-        id.prefix(4).map { String(format: "%02x", $0) }.joined()
-    }
     
     /// The router's `EnvelopeReceiver` entry point: an inbound envelope that
     /// survived dedup (and was relayed onward if it had hop budget) is handed
@@ -1687,7 +1682,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // peer's traffic flows through this function byte-for-byte as
             // before the guard existed.
             guard !blockedIdentities.contains(rawKey) else {
-                RedactLog.event("first-contact: DROP inbound from BLOCKED", "\(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: DROP inbound from BLOCKED", "")
                 return
             }
 
@@ -1703,7 +1698,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             await announceNostrIdentity(to: peer, rawKey: rawKey)
             
             guard let payload = MessagePayload.decodeSealed(plaintext) else {
-                RedactLog.event("first-contact: opened but undecodable payload", "from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: opened but undecodable payload", "")
                 return
             }
             
@@ -1719,13 +1714,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // echo-open time the redeemer is not yet enrolled (redeemEcho enrolls
                 // them). Only .text/.mediaManifest/.mediaChunk are gated.
                 guard verifiedIdentities.contains(rawKey) else {
-                    RedactLog.event("first-contact: DROP text from unverified", "\(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP text from unverified", "")
                     return
                 }
                 eventsContinuation.yield(
                     .received(peerKey: rawKey, plaintext: body, wireID: envelope.id)
                 )
-                RedactLog.event("first-contact: OPENED text", "from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: OPENED text", "")
                 // Acknowledge the text message by its envelope id, with hops.
                 // Part B: relay-capable — a text that arrived over the relay
                 // gets its receipt back the same way.
@@ -1735,11 +1730,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             case .mediaManifest(let json):
                 // 7f: strict-verified inbound gate (see .text). Drop before reassembly.
                 guard verifiedIdentities.contains(rawKey) else {
-                    RedactLog.event("first-contact: DROP media manifest from unverified", "\(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP media manifest from unverified", "")
                     return
                 }
                 guard let manifest = try? JSONDecoder().decode(MediaManifest.self, from: json) else {
-                    RedactLog.event("first-contact: bad media manifest", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: bad media manifest", "")
                     return
                 }
                 if let done = reassembler.ingest(manifest: manifest),
@@ -1754,7 +1749,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             case .mediaChunk(let chunk):
                 // 7f: strict-verified inbound gate (see .text). Drop before reassembly.
                 guard verifiedIdentities.contains(rawKey) else {
-                    RedactLog.event("first-contact: DROP media chunk from unverified", "\(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP media chunk from unverified", "")
                     return
                 }
                 if let done = reassembler.ingest(chunk: chunk),
@@ -1773,7 +1768,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // Delivered / Relayed, cancelling that message's timeout. We
                 // never ack an ack, so this terminates the receipt exchange.
                 guard let (wireID, hops) = MessagePayload.parseDeliveryAck(body) else {
-                    RedactLog.event("first-contact: malformed delivery ack", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed delivery ack", "")
                     return
                 }
                 // Option A, Part 2: an ack for an invite echo we are waiting
@@ -1781,7 +1776,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // below still runs for every ack, echo or text.
                 resolveInviteEchoAck(wireID, from: rawKey)
                 await router?.confirmDelivery(of: wireID, hops: Int(hops))
-                RedactLog.event("first-contact: ACK (\(hops) hop(s))", "\(wireID) from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: ACK (\(hops) hop(s))", "")
                 
             case .nostrIdentity(let body):
                 // A peer announced their raw 32-byte x-only secp256k1 pubkey over
@@ -1793,13 +1788,13 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // row (keyed by `rawKey`), so the router can later address a Nostr
                 // gift wrap to this peer when BLE is out of range.
                 guard let nostrKey = MessagePayload.parseNostrIdentity(body) else {
-                    RedactLog.event("first-contact: malformed nostr-identity", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed nostr-identity", "")
                     return
                 }
                 eventsContinuation.yield(
                     .learnedNostrIdentity(peerKey: rawKey, nostrPubkey: nostrKey)
                 )
-                RedactLog.event("first-contact: NOSTR identity \(nostrKey.count)B", "from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: NOSTR identity \(nostrKey.count)B", "")
                 
             case .reconnectHello:
                 // A reconnect it's-me must NEVER arrive on the envelope /
@@ -1809,10 +1804,10 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // ONLY there (Invariant #2 — never admit on this relayable path).
                 // Reaching here means a misroute or an adversary stuffing a
                 // reconnect kind into a 0x01 envelope: ignore it, admit nothing.
-                RedactLog.event("first-contact: ignoring reconnectHello on the envelope path (link-local only)", "from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: ignoring reconnectHello on the envelope path (link-local only)", "")
             case .inviteEcho(let body):
                 guard let inviteID = MessagePayload.parseInviteEcho(body) else {
-                    RedactLog.event("first-contact: malformed invite-echo", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed invite-echo", "")
                     return
                 }
                 // V1 (id-only): a redeemer with no Nostr identity. Full handling
@@ -1825,7 +1820,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
 
             case .inviteEchoV2(let body):
                 guard let parsed = MessagePayload.parseInviteEchoV2(body) else {
-                    RedactLog.event("first-contact: malformed invite-echo-v2", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed invite-echo-v2", "")
                     return
                 }
                 // V2: id ‖ redeemer npub — the pure-Nostr npub-bootstrap. The
@@ -1841,11 +1836,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // content — an unverified session-holder must not be able to
                 // ring us. Gated exactly like .text; drop silently, no reply.
                 guard verifiedIdentities.contains(rawKey) else {
-                    RedactLog.event("first-contact: DROP call-request from unverified", "\(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP call-request from unverified", "")
                     return
                 }
                 guard let signal = CallSignal.parseRequestBody(body) else {
-                    RedactLog.event("first-contact: malformed call-request", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed call-request", "")
                     return
                 }
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
@@ -1859,11 +1854,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // initiator must rely on its OWN open timeout to give up; do
                 // not wait for a wire reply that an old peer will never send.
                 guard verifiedIdentities.contains(rawKey) else {
-                    RedactLog.event("first-contact: DROP ptt-request from unverified", "\(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP ptt-request from unverified", "")
                     return
                 }
                 guard let signal = CallSignal.parsePTTRequestBody(body) else {
-                    RedactLog.event("first-contact: malformed ptt-request", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed ptt-request", "")
                     return
                 }
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
@@ -1872,11 +1867,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // F1 (7f STRICT-VERIFIED): gated exactly like .callRequest —
                 // an answer from an unverified holder is dropped, no reply.
                 guard verifiedIdentities.contains(rawKey) else {
-                    RedactLog.event("first-contact: DROP call-answer from unverified", "\(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP call-answer from unverified", "")
                     return
                 }
                 guard let signal = CallSignal.parseAnswerBody(body) else {
-                    RedactLog.event("first-contact: malformed call-answer", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed call-answer", "")
                     return
                 }
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
@@ -1885,11 +1880,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // F1 (7f STRICT-VERIFIED): gated exactly like .callRequest —
                 // a decline from an unverified holder is dropped, no reply.
                 guard verifiedIdentities.contains(rawKey) else {
-                    RedactLog.event("first-contact: DROP call-decline from unverified", "\(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP call-decline from unverified", "")
                     return
                 }
                 guard let signal = CallSignal.parseDeclineBody(body) else {
-                    RedactLog.event("first-contact: malformed call-decline", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed call-decline", "")
                     return
                 }
                 eventsContinuation.yield(.callSignal(peerKey: rawKey, signal: signal))
@@ -1899,11 +1894,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                 // user-reaching — an unverified session-holder must not open a live
                 // audio session to us. Gated exactly like .callRequest; drop, no reply.
                 guard verifiedIdentities.contains(rawKey) else {
-                    RedactLog.event("first-contact: DROP ptt-open from unverified", "\(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP ptt-open from unverified", "")
                     return
                 }
                 guard let (pttID, secret) = MessagePayload.parsePTTOpen(body) else {
-                    RedactLog.event("first-contact: malformed ptt-open", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed ptt-open", "")
                     return
                 }
                 // We RECEIVED the open → we are the RESPONDER, the sender is the
@@ -1915,7 +1910,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     secret: SymmetricKey(data: secret)).initiatorToResponder
                 let links = linksFor(rawKey: rawKey)
                 guard !links.isEmpty else {
-                    RedactLog.event("first-contact: ptt-open with no live link", "pttID \(pttIDLog(pttID)) from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: ptt-open with no live link", "")
                     return
                 }
                 for link in links {
@@ -1923,17 +1918,17 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     catch { RedactLog.event("first-contact: ptt-open session failed", "\(type(of: error))") }
                 }
                 eventsContinuation.yield(.pttOpened(peerKey: rawKey, pttID: pttID))
-                RedactLog.event("first-contact: PTT OPEN", "pttID \(pttIDLog(pttID)) from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: PTT OPEN", "")
 
             case .pttClose(let body):
                 // Gated exactly like .pttOpen — a close from an unverified holder is
                 // dropped, no state touched.
                 guard verifiedIdentities.contains(rawKey) else {
-                    RedactLog.event("first-contact: DROP ptt-close from unverified", "\(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: DROP ptt-close from unverified", "")
                     return
                 }
                 guard let pttID = MessagePayload.parsePTTClose(body) else {
-                    RedactLog.event("first-contact: malformed ptt-close", "from \(peer.userIDHex.prefix(16))…")
+                    RedactLog.event("first-contact: malformed ptt-close", "")
                     return
                 }
                 // C-3c: BOTH link-keyed axes evicted at the same instruction
@@ -1945,7 +1940,7 @@ actor FirstContactCoordinator: EnvelopeReceiver {
                     pttPlayer?.drop(link: link)
                 }
                 eventsContinuation.yield(.pttClosed(peerKey: rawKey, pttID: pttID))
-                RedactLog.event("first-contact: PTT CLOSE", "pttID \(pttIDLog(pttID)) from \(peer.userIDHex.prefix(16))…")
+                RedactLog.event("first-contact: PTT CLOSE", "")
             }
         } catch {
             RedactLog.event("first-contact: open failed", "\(type(of: error))")
