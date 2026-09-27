@@ -225,6 +225,24 @@ public final class CallEngine {
         }
     }
 
+    /// ERASE FIX 4b — the erase teardown hook's entry: end whatever call
+    /// exists, in EVERY state, and release its media (mic, camera, audio
+    /// session). The same per-state policy as backgrounding, because it is
+    /// the same need: the call cannot continue. The erase stops the router
+    /// BEFORE this runs, so the decline/cancel a ringing state sends goes
+    /// nowhere, by decision — the contact's ring times out instead. Media is
+    /// torn down locally first either way (`cancelOutgoing` closes it before
+    /// its send; `hangUp` is local only; an incoming ring has no media yet).
+    ///
+    /// Not covered: the in-flight window (state still `.idle` while
+    /// `makeOffer` gathers). That attempt ends itself — its request send
+    /// fails on the stopped router, which tears the media down — within the
+    /// gather bound (`WebRTCCallMedia.gatherTimeout`, 5 s; host-only
+    /// gathering, as configured today, completes far sooner).
+    public func endForErase() async {
+        await endForExternalEvent()
+    }
+
     // MARK: - Intents (UI-facing)
 
     /// Same wire either way — the camera just starts off for a voice call.
