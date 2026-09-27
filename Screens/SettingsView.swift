@@ -91,11 +91,11 @@ struct SettingsView: View {
         } message: {
             Text("Send your report to \(ReportMail.address) from any email account. Reports are answered within 24 hours.")
         }
-        .alert("Erase everything?", isPresented: $confirmErase) {
+        .alert("Erase this identity?", isPresented: $confirmErase) {
             Button("Erase", role: .destructive) { eraseEverything() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This destroys your identity and every message on this device. It cannot be undone, there is no backup, and your contacts will have to re-pair with you.")
+            Text("This deletes your identity, contacts, and messages from this phone. It cannot be undone, there is no backup, and your contacts will have to pair with you again.")
         }
     }
 
@@ -454,7 +454,7 @@ struct SettingsView: View {
         ) {
             Button { confirmErase = true } label: {
                 SettingsRow {
-                    Text("Erase everything")
+                    Text("Erase this identity")
                         .font(Stillwater.Serif.regular(17))
                         .foregroundStyle(eraseColor)
                         .frame(maxWidth: .infinity, alignment: .leading)

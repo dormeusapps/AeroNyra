@@ -333,7 +333,7 @@ struct ContentView: View {
             VStack(spacing: 16) {
                 ProgressView()
                     .controlSize(.large)
-                Text("Erasing everything…")
+                Text("Erasing…")
                     .font(.callout)
                     .foregroundStyle(Color.secondary)
             }
@@ -412,12 +412,12 @@ struct ContentView: View {
         .confirmationDialog("Erase and start over?",
                             isPresented: $confirmBootErase,
                             titleVisibility: .visible) {
-            Button("Erase everything", role: .destructive) {
+            Button("Erase", role: .destructive) {
                 eraseEverything(store: store)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This permanently deletes your identity and all data on this device. It cannot be undone, and your contacts will have to re-pair.")
+            Text("This deletes your identity, contacts, and messages from this phone. It cannot be undone, and your contacts will have to pair with you again.")
         }
     }
 
@@ -466,12 +466,12 @@ struct ContentView: View {
         .confirmationDialog("Erase and start over?",
                             isPresented: $confirmBootErase,
                             titleVisibility: .visible) {
-            Button("Erase everything", role: .destructive) {
+            Button("Erase", role: .destructive) {
                 eraseEverything(store: store)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This permanently deletes your identity and all data on this device. It cannot be undone, and your contacts will have to re-pair.")
+            Text("This deletes your identity, contacts, and messages from this phone. It cannot be undone, and your contacts will have to pair with you again.")
         }
     }
 
