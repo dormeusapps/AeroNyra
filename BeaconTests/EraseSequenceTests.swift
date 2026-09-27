@@ -74,14 +74,21 @@ final class EraseSequenceTests: XCTestCase {
     }
 
     /// The async steps suspend mid-step. The next step must not start until
-    /// the suspended one has finished: teardown completes before the wiping
-    /// screen, and the wiping screen has appeared before the wipe begins.
+    /// the suspended one has finished: the router has stopped before teardown
+    /// begins (so nothing a teardown sends can leave), teardown completes
+    /// before the wiping screen, and the wiping screen has appeared before the
+    /// wipe begins.
     func testSuspendingStepsFinishBeforeTheNextStarts() async {
         let recorder = Recorder()
         let sequence = EraseSequence(
             retireProcess: { recorder.steps.append("retireProcess") },
             cancelDeliveries: { recorder.steps.append("cancelDeliveries") },
-            stopRouter: { recorder.steps.append("stopRouter") },
+            stopRouter: {
+                recorder.steps.append("stopRouter-begin")
+                for _ in 0..<5 { await Task.yield() }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+                recorder.steps.append("stopRouter-end")
+            },
             teardown: {
                 recorder.steps.append("teardown-begin")
                 for _ in 0..<5 { await Task.yield() }
@@ -107,7 +114,7 @@ final class EraseSequenceTests: XCTestCase {
         XCTAssertEqual(recorder.steps, [
             "retireProcess",
             "cancelDeliveries",
-            "stopRouter",
+            "stopRouter-begin", "stopRouter-end",
             "teardown-begin", "teardown-end",
             "showWipingScreen-begin", "showWipingScreen-end",
             "wipe-begin", "wipe-end",
