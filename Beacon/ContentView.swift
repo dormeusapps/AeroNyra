@@ -99,6 +99,15 @@ struct ContentView: View {
     /// arm appears. Set immediately before the flip to `.wiping`; cleared the
     /// moment it fires so it can never double-resume the continuation.
     @State private var wipingAppeared: (() -> Void)?
+
+    /// Erase fix 4b (F3): true while an erase is running. Checked and set
+    /// synchronously at the top of `eraseEverything`, so a second erase started
+    /// while one is running is ignored instead of racing it (two runs would
+    /// overwrite `wipingAppeared`, and the run whose continuation is lost
+    /// would hang forever on the wiping barrier). Cleared in the sequence's
+    /// `finish` step, which runs on EVERY outcome — so the door's "Erase and
+    /// start over" can still retry after an incomplete wipe.
+    @State private var eraseInFlight = false
     
     /// The single long-lived BLE transport, started at launch.
     @State private var transport = BLEMeshTransport()
@@ -956,17 +965,65 @@ struct ContentView: View {
     /// partial failure; the door wants fail-safe recoverability. Opposite
     /// preferences, kept apart.
     private func eraseEverything(store: IdentityStore) {
+        // ── F3: one erase at a time ─────────────────────────────────────────
+        // Synchronous check-and-set on the main actor: nothing can interleave.
+        // Every run clears it in `finish` below (both outcomes).
+        guard !eraseInFlight else {
+            RedactLog.event("erase: already running — second request ignored", "")
+            return
+        }
+        eraseInFlight = true
+
+        // ── Erase fix 4b (Option B): THE ORDER lives in EraseSequence ───────
         Task { @MainActor in
-            // Erase fix 4a: retire this process FIRST. From here on
-            // `bootstrap()` refuses to build a stack, whatever route the erase
-            // ends on (success, or a door after a failure) — the user relaunches.
-            StackRetirementLatch.shared.retire()
+            await EraseSequence(
+                // Erase fix 4a: retire this process FIRST. From here on
+                // `bootstrap()` refuses to build a stack, whatever route the
+                // erase ends on (success, or a door after a failure) — the
+                // user relaunches.
+                retireProcess: { StackRetirementLatch.shared.retire() },
+                // Option A, Part 2: no pending invite-echo relay fallback may
+                // publish once the wipe starts. Each finishes its bounded ack
+                // wait and publishes nothing.
+                cancelDeliveries: { pairingService?.cancelInviteEchoDeliveries() },
+                // Both rails stop: no relay socket, subscription, reconnect,
+                // or Bluetooth send (reconnect beacons included) leaves this
+                // process after the erase. The shared BLE `transport` is the
+                // router's; the process is retired, so it never restarts.
+                // Advertising can resume after a Bluetooth power toggle
+                // (constants only; known gap).
+                stopRouter: { await router?.stop() },
+                // DEFERRED (Option B, 2026-09-27): no call/walkie teardown
+                // hook. Add one only if a later test shows a mic light or
+                // walkie activity after an erase. The restart screen asks
+                // the user to close the app; until they do, a walkie or call
+                // may stay open (known gap).
+                teardown: {},
+                showWipingScreen: { await showWipingScreenForErase() },
+                wipe: { await wipeForErase(store: store) },
+                releaseReferences: { releaseErasedStack() },
+                finish: { outcome in
+                    eraseInFlight = false
+                    switch outcome {
+                    case .complete:
+                        // Erase fix 4a: a verified wipe ends on the terminal
+                        // screen, NOT onboarding — this process is retired
+                        // and must never build a second stack on the shared
+                        // BLE streams. A fresh process boots to onboarding.
+                        RedactLog.event("erase: complete — relaunch required", "")
+                        phase = .restartRequired
+                    case .incomplete:
+                        // The door: its copy admits something went wrong and
+                        // its Erase button retries. `.identityUnreadable`, not
+                        // `.stackFailed` — see `wipeForErase`.
+                        phase = .bootFailed(store, .identityUnreadable)
+                    }
+                }).run()
+        }
+    }
 
-            // Option A, Part 2: no pending invite-echo relay fallback may
-            // publish once the wipe starts. Cancelled here, BEFORE the phase
-            // flip; each finishes its bounded ack wait and publishes nothing.
-            pairingService?.cancelInviteEchoDeliveries()
-
+    /// The render-commit barrier (EraseSequence step 5).
+    private func showWipingScreenForErase() async {
             // TEARDOWN FIRST (erase-crash fix). Deleting the store files under
             // a mounted ReadyView invalidated its live Peer/Conversation rows,
             // and the first mid-wipe re-render (DeviceResidueWipe's @AppStorage
@@ -984,15 +1041,18 @@ struct ContentView: View {
                 wipingAppeared = { cont.resume() }
                 phase = .wiping
             }
+    }
 
+    /// The wipe (EraseSequence step 6): identity gate, full sweep, verify.
+    /// Returns `.incomplete` on any failure; `finish` routes it to the door.
+    private func wipeForErase(store: IdentityStore) async -> EraseSequence.Outcome {
             // GATE.
             do {
                 try store.delete()
             } catch {
                 RedactLog.event("erase: identity delete FAILED — not routing to onboarding",
                                 "\(type(of: error))")
-                phase = .bootFailed(store, .identityUnreadable)   // stay; Erase-again retries
-                return
+                return .incomplete   // the door; Erase-again retries
             }
 
             // Identity gone → no ghost can strand a blob, and the next load()
@@ -1058,17 +1118,29 @@ struct ContentView: View {
             guard wipeErrors.isEmpty, storeGone else {
                 RedactLog.event("erase: INCOMPLETE — routing to the door, not onboarding",
                                 "errors=\(wipeErrors.count) storeGone=\(storeGone)")
-                phase = .bootFailed(store, .identityUnreadable)
-                return
+                return .incomplete
             }
+            return .complete
+    }
 
-            // Erase fix 4a: a verified wipe ends on the terminal screen, NOT
-            // onboarding — this process is retired (the latch above) and must
-            // never build a second stack on the shared BLE streams. The user
-            // relaunches; a fresh process boots to onboarding normally.
-            RedactLog.event("erase: complete — relaunch required", "")
-            phase = .restartRequired
-        }
+    /// ── F2: EraseSequence step 7 — drop the erased stack's objects ─────────
+    /// After the wipe (which uses some of them), on both outcomes.
+    /// KEPT, deliberately:
+    ///   • `emergencyWipe` — the door's "Erase and start over" re-runs the
+    ///     full sweep through it; nil would make `performEmergencyWipe()`
+    ///     return `[]` and silently skip the allowlist, ledgers and residue.
+    ///   • `pttSessionOwner`, `pttInboundMeter` — walkie runtime; releasing the
+    ///     owner clears `PTTSessionOwner.shared`. Out of scope for this fix.
+    private func releaseErasedStack() {
+        sessionStore = nil
+        coordinator = nil
+        router = nil
+        contactAllowlistStore = nil
+        nostrIdentity = nil
+        nostrTransportRef = nil
+        tagTableOwnerRef = nil
+        enrollmentService = nil
+        pairingService = nil
     }
     
     /// Stable bundle-scoped identifier for the Keychain item holding the
