@@ -34,6 +34,9 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
     private let context: StoreContext
     private let localAddress: ProtocolAddress
     public let localIdentity: PublicIdentity
+    /// Our identity's X25519 private key: every inbound message is sealed to
+    /// it (EnvelopeSeal) and is unsealed with it before libsignal sees it.
+    private let localAgreement: Curve25519.KeyAgreement.PrivateKey
 
     /// Cache of live per-peer sessions, keyed by the peer's user id (hex).
     private var sessions: [String: SignalSession] = [:]
@@ -54,6 +57,7 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
         let registrationId = UInt32.random(in: 1...0x3FFF)
         self.store = InMemoryBeaconStore(identity: identity, registrationId: registrationId)
         self.context = NullContext()
+        self.localAgreement = appIdentity.agreement
         (self.localIdentity, self.localAddress) = Self.localBindings(for: identity)
     }
 
@@ -67,6 +71,7 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
         let identity = Self.bridge(appIdentity)
         self.store = try PersistentBeaconStore(identity: identity, directory: directory, key: dek)
         self.context = NullContext()
+        self.localAgreement = appIdentity.agreement
         (self.localIdentity, self.localAddress) = Self.localBindings(for: identity)
     }
 
@@ -142,6 +147,7 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
             localAddress: localAddress,
             store: store,
             context: context,
+            unseal: { [localAgreement] in try EnvelopeSeal.open($0, with: localAgreement) },
             established: true
         )
         sessions[peer.userIDHex] = session
@@ -162,6 +168,7 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
             localAddress: localAddress,
             store: store,
             context: context,
+            unseal: { [localAgreement] in try EnvelopeSeal.open($0, with: localAgreement) },
             established: false
         )
         sessions[peer.userIDHex] = session
@@ -259,27 +266,37 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
 
     /// Open an inbound opaque payload whose sender is not yet attributed.
     ///
-    /// A first-contact (prekey) message self-identifies its sender, so we read
-    /// the identity straight from the message and establish/advance that
+    /// A first-contact (prekey) message self-identifies its sender (INSIDE the
+    /// seal — a relayer never sees it), so we read the identity straight from
+    /// the message and establish/advance that
     /// session. A normal (whisper) message carries no sender identity, so we try
     /// it against each established session — correct for any number of peers,
     /// and the honest interim until sealed sender lands (open ledger). Returns
     /// the recovered peer and plaintext.
     public func openInbound(_ payload: Data) throws -> (peer: PublicIdentity, plaintext: Data) {
-        guard let typeByte = payload.first else {
+        // Every inbound message is SEALED to our identity key (EnvelopeSeal).
+        // Unseal once, here; anything that is not — plain libsignal bytes from
+        // an old build included — is refused (FLAG DAY) before libsignal parses
+        // a single byte. Relaying never depends on this: the router forwards an
+        // envelope before it is handed here.
+        let inner = try EnvelopeSeal.open(payload, with: localAgreement)
+        guard let typeByte = inner.first else {
             throw SignalAdapterError.unexpectedMessageType
         }
         switch CiphertextMessage.MessageType(rawValue: typeByte) {
         case .preKey:
-            let message = try PreKeySignalMessage(bytes: payload.dropFirst())
+            let message = try PreKeySignalMessage(bytes: inner.dropFirst())
             let keyData = message.identityKey.serialize()
             let peer = PublicIdentity(agreementKey: keyData, signingKey: keyData)
-            let plaintext = try session(with: peer).open(payload)
+            guard let s = try session(with: peer) as? SignalSession else {
+                throw SignalAdapterError.notEstablished
+            }
+            let plaintext = try s.openInner(inner)
             return (peer, plaintext)
 
         case .whisper:
             for (_, session) in sessions {
-                if let plaintext = try? session.open(payload) {
+                if let plaintext = try? session.openInner(inner) {
                     return (session.peer, plaintext)
                 }
             }

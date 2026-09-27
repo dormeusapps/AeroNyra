@@ -170,6 +170,10 @@ final class SignalSession: SecureSession, @unchecked Sendable {
     private let localAddress: ProtocolAddress
     private let store: any BeaconProtocolStore
     private let context: StoreContext
+    /// Opens a message sealed to OUR identity key (EnvelopeSeal), supplied by
+    /// the store that holds that key. The peer's raw identity key is the seal
+    /// recipient on the way out.
+    private let unseal: (Data) throws -> Data
 
     private(set) var state: SecureSessionState
 
@@ -178,12 +182,14 @@ final class SignalSession: SecureSession, @unchecked Sendable {
          localAddress: ProtocolAddress,
          store: any BeaconProtocolStore,
          context: StoreContext,
+         unseal: @escaping (Data) throws -> Data,
          established: Bool) {
         self.peer = peer
         self.peerAddress = peerAddress
         self.localAddress = localAddress
         self.store = store
         self.context = context
+        self.unseal = unseal
         self.state = established ? .established : .uninitialized
     }
 
@@ -198,17 +204,38 @@ final class SignalSession: SecureSession, @unchecked Sendable {
                 context: context
             )
             state = .established
-            // Prefix the libsignal message-type byte so `open` knows whether
-            // this is a prekey (establishing) message or a normal one.
-            var out = Data([msg.messageType.rawValue])
-            out.append(msg.serialize())
-            return out
+            // Prefix the libsignal message-type byte so the receiver knows
+            // whether this is a prekey (establishing) message or a normal one…
+            var inner = Data([msg.messageType.rawValue])
+            inner.append(msg.serialize())
+            // …then SEAL the whole thing to the peer's identity key, so a phone
+            // relaying it sees neither that type byte nor (in a prekey message)
+            // our identity key. Every message, both kinds: one uniform shape.
+            return try EnvelopeSeal.seal(inner, to: Self.rawKey(of: peer))
+        } catch let e as EnvelopeSeal.SealError {
+            throw e
         } catch {
             throw SignalAdapterError.signal(underlying: error)
         }
     }
 
+    /// The peer's raw 32-byte X25519 identity key (the seal recipient): the
+    /// serialized form carries a 0x05 type byte in front.
+    static func rawKey(of peer: PublicIdentity) -> Data {
+        let k = peer.agreementKey
+        return (k.count == 33 && k.first == 0x05) ? Data(k.dropFirst()) : k
+    }
+
+    /// Open a SEALED message from this peer. FLAG DAY: anything not sealed to
+    /// our identity key is refused (EnvelopeSeal.SealError), unsealed plain
+    /// libsignal bytes included.
     func open(_ payload: Data) throws -> Data {
+        try openInner(try unseal(payload))
+    }
+
+    /// Open the UNSEALED libsignal bytes (`[type] ‖ message`). Internal: only
+    /// `open` above and the store's `openInbound`, both after unsealing.
+    func openInner(_ payload: Data) throws -> Data {
         guard let typeByte = payload.first else {
             throw SignalAdapterError.unexpectedMessageType
         }
