@@ -14,9 +14,10 @@
 //   • once erase stops the old router (4b) → cancelling a reader TERMINATES the
 //     stream for everyone: a new stack would get NO Bluetooth inbound at all.
 // So after an erase this process must never build another stack; the user
-// relaunches. Three paths lead from an erase to a new stack — the success
-// route, and "Try again" on the door after a failed identity delete or an
-// incomplete wipe — plus anything added later. All of them go through
+// relaunches. No path from an erase reaches a new stack today: a verified
+// erase ends on the restart screen, and a failed one on its own door
+// (`.eraseIncomplete`), which has no "Try again" — only "Erase and start
+// over". Anything added later that builds a stack still has to go through
 // `bootstrap()`, which consults this latch FIRST. That is why the guard lives
 // there and not on any one route.
 //
