@@ -225,6 +225,11 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     /// Notifications waiting because `updateValue` returned false (TX queue full).
     private var pendingNotifications: [Data] = []
 
+    /// True between `start()` and `stop()`. Every send path checks it, and so
+    /// does every callback that would SCAN, CONNECT or ADVERTISE ("BLE goes
+    /// quiet after stop()"): after `stop()` — in production only after an
+    /// erase, whose process is retired — no CoreBluetooth callback may bring
+    /// the radio back (a disconnect's rescan, a discovery's connect, a power-on).
     private var started = false
     private let log = Logger(subsystem: "com.aeronyra.app", category: "BLE")
 
@@ -264,6 +269,12 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     public func start() async throws {
         cbQueue.async { [weak self] in
             guard let self, !self.started else { return }
+            // ORDER IS LOAD-BEARING: `started = true` is set in THIS block,
+            // before the managers are created. Their delegate queue is this
+            // serial `cbQueue`, so no callback can run until the block returns:
+            // the first power-on always sees `started == true` and scans /
+            // advertises. The power-on guards below depend on it — keep the
+            // flag and the manager creation together, flag first.
             self.started = true
             self.central = CBCentralManager(delegate: self, queue: self.cbQueue)
             self.peripheral = CBPeripheralManager(delegate: self, queue: self.cbQueue)
@@ -276,6 +287,14 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
             guard let self else { return }
             self.central?.stopScan()
             if self.peripheral?.isAdvertising == true { self.peripheral?.stopAdvertising() }
+            // Drop our GATT service: a remote phone still connected to us as
+            // central loses the characteristics, so it can no longer write to
+            // us or subscribe. `stop()` only cancels OUR outgoing connections
+            // (below); without this their link to our server stayed up.
+            // The power-on handler re-adds the service while `started`.
+            self.peripheral?.removeAllServices()
+            self.mailbox = nil
+            self.audioMailbox = nil
             for p in self.peers.values { self.central?.cancelPeripheralConnection(p) }
             self.peers.removeAll()
             self.writeTargets.removeAll()
@@ -796,6 +815,10 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
             emitReachable()
             return
         }
+        guard started else {
+            log.info("central poweredOn → stopped, not scanning")
+            return
+        }
         log.info("central poweredOn → scanning for AeroNyra service")
         central.scanForPeripherals(
             withServices: [Self.serviceUUID],
@@ -807,6 +830,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
                                didDiscover peripheral: CBPeripheral,
                                advertisementData: [String: Any],
                                rssi RSSI: NSNumber) {
+        guard started else { return }   // stopped: never connect
         guard peers[peripheral.identifier] == nil else { return }
         // ISSUE-11: in post-teardown holdoff? Skip — the delayed rescan
         // scheduled at teardown restarts the scan session once the holdoff
@@ -849,6 +873,13 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
         audioRing[peripheral.identifier] = nil
         chunkRetriesLeft[peripheral.identifier] = nil
         emitReachable()
+        // `stop()` itself cancels every connection, and each cancel lands here:
+        // without this guard every erase with a linked phone re-scanned and
+        // re-linked (seen on hardware 2026-09-27, no TX).
+        guard started else {
+            log.info("disconnected \(peripheral.identifier) → stopped, not rescanning")
+            return
+        }
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
     }
 }
@@ -1064,6 +1095,10 @@ extension BLEMeshTransport: CBPeripheralManagerDelegate {
             mailbox = nil
             audioMailbox = nil
             emitReachable()
+            return
+        }
+        guard started else {
+            log.info("peripheral poweredOn → stopped, not advertising")
             return
         }
         let mailbox = CBMutableCharacteristic(
