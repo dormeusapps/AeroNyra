@@ -63,6 +63,13 @@ final class PairingService {
     /// minter foreground and backgrounded). Injectable for tests.
     @ObservationIgnored private let inviteEchoAckTimeout: Duration
 
+    /// Option (a): the pause before the ONE retry of an invite-echo relay
+    /// publish that no socket took (`.waitingForRange` — the pre-reconnect
+    /// window right after a resume, when iOS has reaped the suspended app's
+    /// sockets). Production 2 s: the stale-link repro published OK at +2.05 s
+    /// after the 1 s reconnect backoff. Injectable for tests.
+    @ObservationIgnored private let inviteEchoRelayRetryDelay: Duration
+
     /// What a background invite-echo delivery ended as (logged; tests await it).
     public enum InviteEchoDelivery: Equatable, Sendable {
         case acked                  // minter acked over BLE — no relay
@@ -119,7 +126,8 @@ final class PairingService {
          ourNostrPublicKey: Data?,
          blockedStore: BlockedContactsStore? = nil,
          initialBlocked: [BlockedContact] = [],
-         inviteEchoAckTimeout: Duration = .seconds(2)) {
+         inviteEchoAckTimeout: Duration = .seconds(2),
+         inviteEchoRelayRetryDelay: Duration = .seconds(2)) {
         self.sessionStore = sessionStore
         self.coordinator = coordinator
         self.enrollment = enrollment
@@ -127,6 +135,7 @@ final class PairingService {
         self.blockedStore = blockedStore
         self.blockedContacts = initialBlocked
         self.inviteEchoAckTimeout = inviteEchoAckTimeout
+        self.inviteEchoRelayRetryDelay = inviteEchoRelayRetryDelay
     }
 
     // MARK: - Block / Unblock (Guideline 1.2)
@@ -494,8 +503,10 @@ final class PairingService {
                 throw TransportError.sendFailed        // no link and no npub: nothing carries it
             }
             RedactLog.event("invite-echo: no BLE link — relay now", "")
+            let windowEnd = invite.expiresAt + Invite.defaultSkewMillis
             let state = await relayInviteEcho(send.envelope, minterNpub: minterNpub,
-                                              inviteID: invite.id)
+                                              inviteID: invite.id,
+                                              mayRetry: { Int64(Date().timeIntervalSince1970 * 1000) <= windowEnd })
             guard state == .sent || state == .cast else { throw TransportError.sendFailed }
         }
         // The echo left on at least one rail: make the minter a row.
@@ -519,12 +530,29 @@ final class PairingService {
 
     // MARK: - Invite-echo relay leg (Option A, Part 2)
 
-    /// Publish the echo to the relay under its ONE-SHOT echo tag: register →
-    /// publish → unregister, and nothing in between. The registration exists
-    /// only for this publish, so no other message to the minter's npub can
-    /// inherit it.
-    private func relayInviteEcho(_ echo: Envelope, minterNpub: Data,
-                                 inviteID: Data) async -> MessageDeliveryState {
+    /// Publish the echo to the relay, with ONE bounded retry (option (a)):
+    /// attempts at 0 s and +`inviteEchoRelayRetryDelay`, and a retry ONLY when
+    /// no socket took the first (`.waitingForRange`). `.notDelivered`
+    /// (untaggable / no router) is terminal and `.cast` is never re-sent, so
+    /// the echo is never published twice. `mayRetry` is checked AFTER the
+    /// pause (erase cancelled? window closed?) and before the second attempt.
+    private func relayInviteEcho(_ echo: Envelope, minterNpub: Data, inviteID: Data,
+                                 mayRetry: () -> Bool) async -> MessageDeliveryState {
+        let first = await relayInviteEchoOnce(echo, minterNpub: minterNpub, inviteID: inviteID)
+        guard first == .waitingForRange else { return first }
+        RedactLog.event("invite-echo: relay publish missed — retry 1/1 in 2s", "")
+        try? await Task.sleep(for: inviteEchoRelayRetryDelay)
+        guard mayRetry() else { return first }
+        return await relayInviteEchoOnce(echo, minterNpub: minterNpub, inviteID: inviteID)
+    }
+
+    /// ONE publish under its ONE-SHOT echo tag: register → publish →
+    /// unregister, and nothing in between. Each attempt is its own bracket (a
+    /// failed attempt has already consumed its registration), so the tag is
+    /// never held across the retry pause and no other message to the
+    /// minter's npub can inherit it.
+    private func relayInviteEchoOnce(_ echo: Envelope, minterNpub: Data,
+                                     inviteID: Data) async -> MessageDeliveryState {
         registerInviteEchoTag?(minterNpub, inviteID)
         defer { unregisterInviteEchoTag?(minterNpub) }
         return await coordinator.publishInviteEchoOverRelay(echo, to: minterNpub)
@@ -580,7 +608,14 @@ final class PairingService {
             RedactLog.event("invite-echo: fallback skipped — echo tag hook not wired", "")
             return .skippedNoHook
         }
-        let state = await relayInviteEcho(echo, minterNpub: minterNpub, inviteID: inviteID)
+        let state = await relayInviteEcho(
+            echo, minterNpub: minterNpub, inviteID: inviteID,
+            // Before the retry: an erase cancels, and a closed window ends it.
+            mayRetry: { !Task.isCancelled && Int64(Date().timeIntervalSince1970 * 1000) <= windowEndMillis })
+        if state == .waitingForRange && Task.isCancelled {
+            RedactLog.event("invite-echo: no ack — cancelled before the retry, nothing more published", "")
+            return .cancelled
+        }
         if state == .sent || state == .cast {
             RedactLog.event("invite-echo: no ack — relay fallback sent", "")
             return .relayFallbackSent

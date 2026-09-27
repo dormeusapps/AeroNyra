@@ -11,7 +11,8 @@
 //        register(npub, inviteID) → publish(npub, echo) → unregister(npub);
 //        .redeemed, minter enrolled unverified, session established.
 //    T2  no BLE link AND the relay fails: throws, minter NOT enrolled, and the
-//        same register → publish → unregister sequence (clearance still runs).
+//        register → publish → unregister sequence TWICE (option (a): one retry
+//        after the pause; changed BY DESIGN, 2026-09-27), clearance each time.
 //    T3  no npub in the invite and no BLE link: throws, zero registrations,
 //        zero publishes.
 //    T4  the coordinator's `.ack` arm still confirms a real delivery: a sealed
@@ -132,12 +133,14 @@ final class InviteRedeemRoutingCharacterizationTests: XCTestCase {
 
         XCTAssertFalse(h.enrollment.contains(rawKey), "a failed echo must not enroll")
         let events = h.log.events
-        XCTAssertEqual(events.count, 3, "register → publish → unregister: \(events)")
-        XCTAssertEqual(events.first, .register(npub: minterNpub, inviteID: invite.id))
-        guard events.count == 3, case .publish = events[1] else {
-            return XCTFail("the relay publish was attempted: \(events)")
+        XCTAssertEqual(events.count, 6, "two brackets of register → publish → unregister: \(events)")
+        for bracket in [0, 3] where events.count == 6 {
+            XCTAssertEqual(events[bracket], .register(npub: minterNpub, inviteID: invite.id))
+            guard case .publish = events[bracket + 1] else {
+                return XCTFail("the relay publish was attempted: \(events)")
+            }
+            XCTAssertEqual(events[bracket + 2], .unregister(npub: minterNpub), "clearance runs each time")
         }
-        XCTAssertEqual(events.last, .unregister(npub: minterNpub), "clearance runs on the throw")
     }
 
     // MARK: T3 — no npub and no link
