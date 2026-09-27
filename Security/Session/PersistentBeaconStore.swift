@@ -121,7 +121,7 @@ public final class PersistentBeaconStore: IdentityKeyStore, PreKeyStore, SignedP
     public init(identity: IdentityKeyPair, directory: URL, key: SymmetricKey) throws {
         self.localIdentity = identity
         self.key = key
-        self.fileURL = directory.appendingPathComponent("signalstore.dat")
+        self.fileURL = directory.appendingPathComponent(Self.fileName)
 
         // Ensure the directory exists. On a fresh install the parent
         // (Library/Application Support) may not exist yet and the sandbox blocks
@@ -162,6 +162,19 @@ public final class PersistentBeaconStore: IdentityKeyStore, PreKeyStore, SignedP
     /// (this is the same condition that makes CoreData log "Failed to create
     /// file; code = 2" on first launch). Using `url(for:…create: true)` forces
     /// the parent into existence first, then we create our subfolder under it.
+    /// The snapshot file's name inside the store directory.
+    static let fileName = "signalstore.dat"
+
+    /// Delete the snapshot file in `directory` WITHOUT opening the store (no
+    /// identity needed) — the pre-onboarding leftover sweep. Its DEK is
+    /// destroyed separately (`SessionKeyWipe`), before this runs. Absent → no-op.
+    public static func removeStoreFile(in directory: URL) throws {
+        let url = directory.appendingPathComponent(fileName)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
     public static func defaultDirectory() throws -> URL {
         let appSupport = try FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,

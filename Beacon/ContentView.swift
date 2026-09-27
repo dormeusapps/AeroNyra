@@ -538,13 +538,39 @@ struct ContentView: View {
     }
 
     /// Apply a computed BootRoute to the phase. EXACTLY ONE `phase =` per
-    /// route arm. No catch-all. Called from bootstrap() (directly when the
+    /// route arm — except `.onboarding`, which first sweeps a previous
+    /// identity's leftovers and then lands on onboarding, or on the door if the
+    /// sweep was partial. No catch-all. Called from bootstrap() (directly when the
     /// EULA is already accepted, or for `.bootFailed`) and from the `.eula`
     /// arm's accept action.
     private func enter(_ route: BootRoute, store: IdentityStore) {
         switch route {
         case .onboarding:
-            phase = .onboarding(store)
+            // Identity `.notFound`: anything else on this device belongs to a
+            // previous identity (an erase that did not finish, or a restore to
+            // a new device). Sweep it BEFORE onboarding, or the new identity's
+            // first boot loads it (LeftoverSweep). A partial sweep never
+            // reaches onboarding: the door retries (Try again re-bootstraps).
+            Task { @MainActor in
+                var errors: [Error] = []
+                do {
+                    let sweep = try LeftoverSweep.standard(
+                        storeDirectory: try PersistentBeaconStore.defaultDirectory(),
+                        services: .init(sessionKey: sessionKeyService,
+                                        nostrIdentity: nostrIdentityService),
+                        swiftData: try SwiftDataStoreWipe())
+                    errors = await sweep.run()
+                } catch {
+                    errors = [error]
+                }
+                guard errors.isEmpty else {
+                    RedactLog.event("onboarding: leftover sweep INCOMPLETE — not onboarding",
+                                    "errors=\(errors.count)")
+                    phase = .bootFailed(store, .identityUnreadable)
+                    return
+                }
+                phase = .onboarding(store)
+            }
         case .bootFailed(let failure):
             RedactLog.event("bootstrap: boot failed (\(failure))", "")
             phase = .bootFailed(store, failure)
