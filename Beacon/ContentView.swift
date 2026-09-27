@@ -1440,6 +1440,10 @@ private struct ReadyView: View {
     /// invite channel can't be diagnosed in the field.
     @State private var redeemMessage: String?
     @State private var redeemFailed: String?
+    /// True while a TAPPED invite link is being redeemed, so the banner says
+    /// so instead of showing nothing (a redeem can take the ack wait plus a
+    /// relay retry — seconds). The paste path has its own "redeeming…" pill.
+    @State private var redeemingLink = false
 
     /// Bumped each time redeem(_:) lands an outcome; keys the banner's
     /// auto-clear task BELOW so the 6-second timer lives outside redeem(_:).
@@ -1715,7 +1719,7 @@ private struct ReadyView: View {
     /// (biolume success · mist failure) so redeem and scan speak in one voice.
     @ViewBuilder
     private var redeemBanner: some View {
-        if let text = redeemMessage ?? redeemFailed {
+        if let text = redeemMessage ?? redeemFailed ?? (redeemingLink ? "redeeming invite…" : nil) {
             Text(text)
                 .stillwaterMono(9, trackingEm: 0.2,
                                 color: redeemMessage != nil
@@ -1738,6 +1742,8 @@ private struct ReadyView: View {
     private func redeem(_ url: URL) async {
         redeemMessage = nil
         redeemFailed = nil
+        redeemingLink = true
+        defer { redeemingLink = false }
         do {
             // Exhaustive, no `default`: each outcome names itself. Both are
             // success-colour — `.alreadyPaired` is a no-op, not a failure.
