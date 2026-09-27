@@ -230,6 +230,15 @@ public final class EnrollmentService {
         if verified {
             await coordinator.addVerifiedContact(rawIdentity: identity)
         }
+        // A revoke of this identity may have run on the main actor while we were
+        // suspended above, and its live removals may have reached the coordinator
+        // BEFORE our adds (the two hops race; nothing orders them). Our adds have
+        // now executed, so a removal issued here is ordered after them: the live
+        // gates end matching the allowlist. Fails closed, never open.
+        if !allowlist.contains(identity: identity) {
+            await coordinator.removeReconnectContact(rawIdentity: identity)
+            await coordinator.removeVerifiedContact(rawIdentity: identity)
+        }
     }
 
     /// Promote an already-enrolled identity to verified (the SAS 4-word confirm
@@ -260,6 +269,14 @@ public final class EnrollmentService {
         // matches enroll/revoke: durable first, live-effect second.
         allowlist = updated
         await coordinator.addVerifiedContact(rawIdentity: identity)
+        // Same race as `enroll`: a revoke (Remove Contact / Block) may have run
+        // while we were suspended, and its removal may have reached the
+        // coordinator BEFORE our add. Our add has now executed, so a removal
+        // issued here is ordered after it. Fails closed, never open.
+        if !allowlist.isVerified(identity: identity) {
+            await coordinator.removeVerifiedContact(rawIdentity: identity)
+            return
+        }
         print("enroll: markVerified OK — verified gate opened")
     }
 
