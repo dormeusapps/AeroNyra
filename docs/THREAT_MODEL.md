@@ -1,7 +1,7 @@
 # AeroNyra — Sender-Identity Threat Model
 
 **Phase 9a-1 · Metadata hardening**
-**Written 2026-06-29 · §2 and §3 rewritten 2026-09-19 (v59 connection-leak fix) · Status section updated 2026-09-19**
+**Written 2026-06-29 · §2 and §3 rewritten 2026-09-19 (v59 connection-leak fix) · Status section updated 2026-09-19 · §9 updated 2026-09-27 (envelope seal, erase, mesh relaying, logs)**
 
 Scope of this document: what an adversary can learn about **who sent a message**,
 across both transports, and which exposures Phase 9 will close, defer, or
@@ -124,6 +124,12 @@ follows is the post-fix model, measured on two devices against both relays on
    expiry (typically the next rollover), not merely TTL plus skew. Tracked (§9.3).
 7. **Backlog on reconnect.** The REQ carries no `since`, so every fresh socket
    replays the relay's stored backlog for our tags, bounded by relay retention.
+8. **An invite echo, only when the Bluetooth handshake does not complete** (Option A,
+   2026-09-26; see "Structural invariant" below). The operator then sees the
+   minter's echo subscription and one echo-sized event from the redeemer's
+   connection: that a pairing happened between those two connections, not its
+   content. Since 2026-09-27 a publish that no socket took is retried once, 2 s
+   later, so there can be two attempts; never two accepted copies.
 
 ### 3.3 What adversary C2 (the firehose observer) learns
 
@@ -203,6 +209,10 @@ reading the sender's long-term identity key **straight from the message bytes,
 with no session required.** A sniffer parses the same field identically. The
 PreKeySignalMessage framing carries `identityKey` and `registrationId` as
 plaintext; only the inner payload is encrypted.
+
+*(Closed 2026-09-27 for builds with the envelope seal — every session message is
+sealed to the recipient's identity key, `9c685a6`; see §9.1. Builds before the flag
+day still emit it.)*
 
 Worse, the discriminator is cleartext: `openInbound` switches on
 `payload.first` (the libsignal message-type byte), so **A/B can distinguish
@@ -324,15 +334,60 @@ live pairing path.
 KAT-anchored. See `RECONNECT_HANDSHAKE.md`, `RECONNECT_BEACON_KAT.md`,
 `RECONNECT_DISCOVERY_SECRET_KAT.md`.
 
+**§4.2 — the PreKeySignalMessage (closed 2026-09-27, flag day).** `e2536d1` adds
+EnvelopeSeal v1: `0x01 ‖ eph_pub ‖ ChaCha20-Poly1305(inner)`, X25519 with a fresh
+ephemeral key per message to the recipient's identity key, HKDF-SHA256 with
+`info = label ‖ version ‖ eph_pub ‖ recipient_pub`, `aad = version ‖ eph_pub`.
+Known-answer vectors come from an independent stdlib-only Python implementation
+(`tools/gen_envelope_seal_kat.py`, self-checked against RFC 7748, 5869 and 8439).
+`9c685a6` seals EVERY session message inside `SignalSession.seal` and unseals in
+`openInbound` / `SignalSession.open`: a relaying phone now sees the version byte, a
+random ephemeral key and ciphertext — neither the sender's identity key nor the
+`.preKey` / `.whisper` type byte, so first contact is indistinguishable from steady
+state. Plain libsignal bytes are refused before libsignal parses them, so builds
+before this one cannot exchange messages with it (flag day). Relaying is unaffected
+(the router forwards before the session layer sees an envelope; pinned by test).
+What stays visible: size (bucket + 49 bytes), timing, hop count (the envelope TTL).
+The outer layer has no forward secrecy of its own — the inner libsignal ratchet does.
+
+**Erase leaves nothing running (2026-09-27).** Before, the old stack kept its relay
+sockets and subscriptions and its Bluetooth link after "erase: complete", and kept
+sending reconnect beacons its former contacts' phones recognise, once per new link,
+until the process died (hardware, build `5a2cdf0`). `25b0719`/`b12c8c9` stop the
+router inside the erase; `69abbb2` makes the Bluetooth transport quiet after
+`stop()` (no rescan, connect or advertise; GATT service removed). Hardware-verified.
+
+**Failed-erase leftovers (2026-09-27).** A new identity's first boot opened every
+store with `loadOrCreate` and could load a previous identity's allowlist (with its
+verified states), Nostr secret, ledgers and chats. `a64a7ff` sweeps them before
+onboarding (a partial sweep lands on the door); `c30c541` makes every store wipe
+destroy its key before its file, so a partial failure leaves an unreadable file.
+
+**Removed contacts' sessions (2026-09-27).** A libsignal session left on disk was
+reused by a same-key re-pair (an old-ratchet message still opened — verified by a
+throwaway test). Remove Contact and the SAS "Doesn't match" discard now delete it
+(`fb63283`, `8e12c62`), and boot deletes any session that belongs to no enrolled or
+blocked contact (`907ed20`).
+
+**Live gates follow the allowlist (2026-09-27).** A revoke racing an in-flight enroll
+or verify could leave a revoked key in the live reconnect or verified gate until
+relaunch (fail-open). `52b892b` re-checks after the coordinator adds and removes if
+revoked.
+
+**Identifiers in logs (2026-09-27).** `8e51e7d` removes every identity-key prefix,
+Bluetooth peripheral/central id, link id, message/envelope/event id, npub and
+walkie session id from log calls; `LogHygieneTests` scans the sources for any log
+call that interpolates one. `10d22fc` routes the remaining bare prints through
+`RedactLog`.
+
 ### 9.2 Still open
 
-**§4.2 — the PreKeySignalMessage.** Not resolved by `ce57ae8`. Removing the greet
-closed the *unsolicited bundle broadcast*; it did not change the fact that a
-libsignal `PreKeySignalMessage` carries `identityKey` and `registrationId` in
-plaintext framing, nor that the message-type byte distinguishes `.preKey` from
-`.whisper` to a passive observer. **Whether the bootstrap prekey message still
-traverses BLE after QR/invite pairing must be verified against real source before
-this row is called closed.** Do not assume.
+**§4.2 — the PreKeySignalMessage: verified, then closed (2026-09-27).** Verified
+against source: it did traverse Bluetooth after invite pairing — the invite echo is
+a prekey message and Option A sends it over Bluetooth first — and every nearby
+AeroNyra phone relays it (§9.3, mesh relaying). Closed by the envelope seal for
+builds from the flag day on (§9.1). Builds before it, still in the field, keep the
+exposure until they update; the privacy page discloses it.
 
 **§4.4 — the advertisement local name.** `CBAdvertisementDataLocalNameKey:
 "AeroNyra"` still broadcasts. Not identity-bearing (identical for every install),
@@ -438,6 +493,17 @@ ever learns call-time IPs or call timing. Cross-network calling requires both
 sides to have working IPv6; IPv4-only endpoints on either side fail to connect
 rather than falling back to a relay.
 
+**Mesh relaying (documented 2026-09-27).** Every AeroNyra phone relays every
+Bluetooth envelope it receives from any linked AeroNyra phone, before and whether
+or not it can open it (`MessageRouter.handleInbound`), up to 7 hops; links form
+with any phone advertising the service, with no identity check. Relays never
+re-flood (Nostr arrivals are not relayed). A relaying phone sees the cleartext
+header (version, TTL — so hop distance — and a random id), the size bucket, timing
+and the arrival link; since the envelope seal, not the sender's identity key and
+not the message type. Nothing is persisted on the relaying phone (an in-memory
+seen-id cache); there is no store-and-forward and no setting to turn it off.
+Disclosed on the privacy page.
+
 ### 9.4 Current disposition
 
 | Exposure | Adversary | Disposition |
@@ -453,10 +519,15 @@ rather than falling back to a relay.
 | Relay count and availability claims | — | **Corrected 2026-09-19** — two relays; damus never served; NIP-42 forbidden (§3.1) |
 | BLE steady-state sender | A, B | **Closed** (§4.1) |
 | BLE PrekeyBundle broadcasts identity key | A, B | **Closed** — `ce57ae8` deleted `sendOurBundle` |
-| BLE PreKeySignalMessage leaks identity key + `.preKey` tell | A, B | **Open — verify against source** (§9.2) |
+| BLE PreKeySignalMessage leaks identity key + `.preKey` tell | A, B | **Closed 2026-09-27** for flag-day builds — every session message sealed to the recipient (§9.1); older builds in the field still emit it |
+| Any nearby AeroNyra phone relays our envelopes (size, timing, hop count, arrival link) | A | **Accepted/disclosed** — mesh relaying (§9.3) |
+| Erased process keeps relay sockets, subscriptions and Bluetooth beacons alive | A, B, C | **Closed 2026-09-27** — router stopped in the erase; Bluetooth quiet after stop (§9.1) |
+| Failed erase: a new identity loads the previous identity's stores | local | **Closed 2026-09-27** — pre-onboarding sweep; key-before-file wipes (§9.1) |
+| Removed contact's session reused by a same-key re-pair | local / the contact | **Closed 2026-09-27** — deleted on remove, on SAS discard and at boot (§9.1) |
+| Revoke racing enroll/verify leaves a live gate open | local | **Closed 2026-09-27** — post-checks (§9.1) |
 | Ciphertext length leaks message length | A, B, C | **Closed** — 9b padding ladder |
 | BLE service UUID / local name / CB id linkability | A, B | **Open** — advertisement local name unstripped |
-| Identity in app logs | local | **Closed** — `RedactLog`, Release-verified |
+| Identity in app logs | local | **Closed** — `RedactLog`, Release-verified; 2026-09-27: no identifiers in any log call, source-scanned by `LogHygieneTests` (§9.1) |
 | Identity in OS URL-router logs | local | **Accepted/documented** (§9.3) |
 | Locked-Keychain identity overwrite via BLE restoration | — | **Closed** — `BootRouter` single-preimage routing + `load()` error taxonomy, regression-tested (§9.3) |
 | Call-time IP of each party | the counterparty (flow visible to path observer) | **Accepted** — inherent to P2P media; no relay means no third party learns it (§9.3) |
