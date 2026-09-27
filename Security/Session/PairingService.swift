@@ -102,6 +102,10 @@ final class PairingService {
     /// spurious repaint, never a wrong verified answer.
     private(set) var verificationEpoch = 0
 
+    /// Minter identities whose invite is being redeemed right now (the
+    /// double-redeem guard in `redeemInvite`).
+    @ObservationIgnored private var redeemsInFlight: Set<Data> = []
+
     /// Bump the repaint signal. Called UNCONDITIONALLY on every non-throwing
     /// return of a mutation that MAY have changed verified state: the enrollment
     /// layer no-ops silently (not-enrolled / already-verified), so this façade
@@ -305,6 +309,7 @@ final class PairingService {
         case selfScan       // it's our own code
         case expired        // an invite whose TTL has passed (redeem path)
         case blocked        // identity is on the denylist — unblock to pair again
+        case redeemInProgress // this minter's invite is already being redeemed
     }
 
     public struct PairResult: Sendable {
@@ -425,6 +430,18 @@ final class PairingService {
         // BLOCKED (Guideline 1.2) — refuse an invite minted by a blocked
         // identity before any establishment/echo/enroll (see pairFromScanned).
         guard !isBlocked(rawKey) else { throw PairError.blocked }
+
+        // DOUBLE-REDEEM GUARD. The same invite can arrive twice at once — a
+        // tapped link AND a paste, or two differently encoded URLs. Both would
+        // pass the enrolled check below before either enrolls, both would
+        // establish from the same bundle, and the second session would replace
+        // the first: the minter opens echo 1, the redeemer keeps session 2, and
+        // every message after fails silently. Keyed on the MINTER's identity,
+        // checked and claimed synchronously on the main actor before the first
+        // suspension, released on every exit.
+        guard !redeemsInFlight.contains(rawKey) else { throw PairError.redeemInProgress }
+        redeemsInFlight.insert(rawKey)
+        defer { redeemsInFlight.remove(rawKey) }
 
         // READ-COMPARE-DECIDE (Finding B). The invite channel is explicitly
         // untrusted (CONTACT_MODEL §2) and the Invite envelope is

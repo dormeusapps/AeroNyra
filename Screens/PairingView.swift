@@ -387,6 +387,9 @@ struct PairingView: View {
             } catch PairingService.PairError.blocked {
                 pairFailed = "this contact is blocked — unblock them in Settings to pair again"
                 RedactLog.event("invite-paste: FAILED blocked", "")
+            } catch PairingService.PairError.redeemInProgress {
+                pairFailed = "already redeeming that invite — one moment"
+                RedactLog.event("invite-paste: refused — already in progress", "")
             } catch {
                 pairFailed = "couldn't redeem — try again"
                 RedactLog.event("invite-paste: FAILED downstream", "\(type(of: error))")

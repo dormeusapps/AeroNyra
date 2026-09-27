@@ -1764,6 +1764,9 @@ private struct ReadyView: View {
         } catch PairingService.PairError.blocked {
             redeemFailed = "this contact is blocked — unblock them in Settings to pair again"
             RedactLog.event("invite-redeem: FAILED blocked", "")
+        } catch PairingService.PairError.redeemInProgress {
+            redeemFailed = "already redeeming that invite — one moment"
+            RedactLog.event("invite-redeem: refused — already in progress", "")
         } catch {
             redeemFailed = "couldn't redeem the invite — try again"
             RedactLog.event("invite-redeem: FAILED downstream", "\(type(of: error))")
