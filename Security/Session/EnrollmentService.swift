@@ -333,6 +333,24 @@ public final class EnrollmentService {
         return invite
     }
 
+    /// Cancel EVERY open invite (SAS "Doesn't match"): after a mismatch the
+    /// channel the invites travelled over is suspect, and any open invite would
+    /// auto-enroll whoever redeems it (`redeemEcho`). Save-then-adopt: persist an
+    /// EMPTY ledger FIRST, adopt on success; on a persist failure NOTHING changes
+    /// and `persistFailed` is thrown. SYNCHRONOUS on purpose — no suspension, so a
+    /// caller can cancel and then start a revoke with no `redeemEcho` in between.
+    /// An echo for a cancelled id is then unknown → `redeemEcho` returns false.
+    public func cancelAllInvites() throws {
+        guard pending.count > 0 else { return }   // nothing open: no pointless write
+        let empty = PendingInvites()
+        do {
+            try pendingStore.save(empty)
+        } catch {
+            throw EnrollmentError.persistFailed(underlying: error)
+        }
+        pending = empty
+    }
+
     /// Redeem an invite-echo: burn the echoed id EXACTLY ONCE and, on a valid burn,
     /// enroll the redeemer as an UNVERIFIED contact (pending the SAS). Returns
     /// whether the echo was valid — an unknown / replayed / expired id returns

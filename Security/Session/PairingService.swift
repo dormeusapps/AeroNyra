@@ -235,6 +235,43 @@ final class PairingService {
         bumpVerificationEpoch()
     }
 
+    // MARK: - SAS "Doesn't match" (CONTACT_MODEL §4.2 step 5)
+
+    public enum DiscardError: Error {
+        /// Not a 32-byte raw identity key (would trap in `peerIdentity`).
+        case invalidKey
+        /// The contact is VERIFIED: this path never removes a verified contact.
+        case refusedVerified
+    }
+
+    /// The four words did not match: abort the pairing. Nothing is sent — in a
+    /// real attack any notice would reach the attacker. Rows are NOT touched here:
+    /// the UI deletes them only after the chat has left the screen.
+    ///
+    /// ORDER (each step runs only if every earlier one succeeded; a throw stops
+    /// everything after it, and a retry is safe — each step is a no-op once done):
+    ///  1. Refuse a malformed key or a VERIFIED contact. Trust only shrinks here,
+    ///     and only for an unverified pairing.
+    ///  2. Cancel EVERY open invite. Synchronous, so it completes before revoke's
+    ///     first suspension: no `redeemEcho` can re-enroll anyone during the
+    ///     revoke, the same key included.
+    ///  3. Revoke: the allowlist is saved without the contact FIRST, then the
+    ///     live reconnect + verified gates drop it.
+    ///  4. Delete the libsignal session. THROWS rather than logging: a surviving
+    ///     session is reused by a same-key re-pair (an old-ratchet message still
+    ///     opens). A retry rewrites the file without it.
+    ///  5. Repaint (once the revoke has succeeded, even if step 4 throws).
+    func discardMismatchedPairing(_ rawKey: Data) async throws {
+        guard rawKey.count == 32 else { throw DiscardError.invalidKey }
+        guard !enrollment.isVerified(rawKey) else { throw DiscardError.refusedVerified }
+        try enrollment.cancelAllInvites()
+        try await enrollment.revoke(identity: rawKey)
+        defer { bumpVerificationEpoch() }
+        try sessionStore.deleteSession(with: sessionStore.peerIdentity(fromRawKey: rawKey))
+        RedactLog.event("SAS mismatch: pairing discarded — invites cancelled, contact revoked, session deleted",
+                        "\(rawKey.prefix(4).map { String(format: "%02x", $0) }.joined())…")
+    }
+
     // MARK: - Invite mint (remote pairing, outbound half)
 
     /// Mint a fresh single-use invite carrying our payload; return the shareable
