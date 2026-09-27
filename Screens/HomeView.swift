@@ -341,18 +341,13 @@ struct HomeView: View {
     /// coordinator.removeReconnectContact/removeVerifiedContact). If that
     /// persist throws, STOP with the rows intact: better a visible row with
     /// trust intact than a vanished row with a live pairing left behind.
-    /// The .direct conversation is deleted explicitly (Peer→Conversation is
-    /// .nullify, so deleting the peer alone would orphan it), then the Peer;
-    /// the `peers` @Query drops the row on save.
+    /// The rows go through the shared `ContactRows.delete` (conversation
+    /// first, then the Peer); the `peers` @Query drops the row on save.
     private func removeContact(_ peer: Peer) {
         let rawKey = peer.publicKeyData
         Task {
             do { try await pairing?.revoke(rawKey) } catch { return }
-            if let convo = peer.conversations.first(where: { $0.kind == .direct }) {
-                modelContext.delete(convo)
-            }
-            modelContext.delete(peer)
-            try? modelContext.save()
+            ContactRows.delete(peer, in: modelContext)
         }
     }
 
