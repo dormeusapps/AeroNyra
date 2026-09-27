@@ -230,9 +230,16 @@ final class PairingService {
     /// `EnrollmentService.revoke`: persists the allowlist removal (save-then-
     /// adopt), then drops the identity from the live reconnect AND verified
     /// gates — they cannot reconnect or message again without re-pairing.
+    /// THEN deletes the libsignal session (trust first: only after the revoke
+    /// is saved). A surviving session would be reused by a same-key re-pair —
+    /// an old-ratchet message still opens — so a failed delete THROWS; a retry
+    /// is safe (the revoke is then a no-op) and rewrites the file without it.
+    /// Block is different on purpose: it keeps the session so unblock resumes.
     func revoke(_ rawKey: Data) async throws {
         try await enrollment.revoke(identity: rawKey)
-        bumpVerificationEpoch()
+        defer { bumpVerificationEpoch() }
+        guard rawKey.count == 32 else { return }   // `peerIdentity` traps otherwise
+        try sessionStore.deleteSession(with: sessionStore.peerIdentity(fromRawKey: rawKey))
     }
 
     // MARK: - SAS "Doesn't match" (CONTACT_MODEL §4.2 step 5)
