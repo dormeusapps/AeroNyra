@@ -17,6 +17,11 @@
 //                          decline are dropped, by decision. The contact's
 //                          call or walkie times out instead. Nothing leaves
 //                          the device after an erase, goodbyes included.
+//                          AWAITED: `MessageRouter` is an actor, so its
+//                          `stop()` runs on the router's executor. Awaiting it
+//                          means each transport's stop is already queued on
+//                          its own serial queue before any later step runs,
+//                          so any send a later step causes is queued behind it.
 //   4. teardown          — end live calls and walkies and release their audio
 //                          (mic, camera, audio session). While the ready
 //                          screen is still mounted: its engines live there.
@@ -52,7 +57,7 @@ struct EraseSequence {
 
     let retireProcess: () -> Void
     let cancelDeliveries: () -> Void
-    let stopRouter: () -> Void
+    let stopRouter: () async -> Void
     let teardown: () async -> Void
     let showWipingScreen: () async -> Void
     let wipe: () async -> Outcome
@@ -65,7 +70,7 @@ struct EraseSequence {
     func run() async -> Outcome {
         retireProcess()
         cancelDeliveries()
-        stopRouter()
+        await stopRouter()
         await teardown()
         await showWipingScreen()
         let outcome = await wipe()
