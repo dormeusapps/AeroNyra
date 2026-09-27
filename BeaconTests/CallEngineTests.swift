@@ -16,6 +16,8 @@
 //   • RING RULE: a `.request` while idle pre-empts; a `.request` while busy
 //     does not (CallController would auto-decline it); `.pttRequest` never.
 //   • `isCallInProgress` truth table across every state; nil hook is a no-op.
+//   • ERASE (fix 4b): `endForErase` ends the call in every state and closes
+//     any media exactly once; idle is a no-op.
 //
 
 import XCTest
@@ -155,6 +157,77 @@ final class CallEngineTests: XCTestCase {
         XCTAssertEqual(h.sent.last, .decline(callID: idX))
     }
 
+    // MARK: - Erase teardown (endForErase, erase fix 4b)
+    //
+    // Every state ends, and any media is closed. In the app the router is
+    // stopped before this runs, so the decline a ringing state sends is
+    // dropped there; here `sendSignal` just records it.
+
+    func testEndForEraseHangsUpActiveCallAndClosesMedia() async {
+        let h = Harness()
+        await h.engine.handleInbound(.request(callID: idX, sdp: "o"), from: peerA)
+        await h.engine.accept(withCamera: false)
+        h.media?.onConnected?()
+        XCTAssertEqual(h.engine.state, .active(callID: idX, peerKey: peerA))
+
+        await h.engine.endForErase()
+
+        XCTAssertEqual(h.engine.state, .ended(.hungUp))
+        XCTAssertEqual(h.media?.closeCount, 1)
+        XCTAssertFalse(h.engine.isCallInProgress)
+    }
+
+    func testEndForEraseHangsUpConnectingCallAndClosesMedia() async {
+        let h = Harness()
+        await h.engine.handleInbound(.request(callID: idX, sdp: "o"), from: peerA)
+        await h.engine.accept(withCamera: true)
+        XCTAssertEqual(h.engine.state, .connecting(callID: idX, peerKey: peerA))
+
+        await h.engine.endForErase()
+
+        XCTAssertEqual(h.engine.state, .ended(.hungUp))
+        XCTAssertEqual(h.media?.closeCount, 1)
+    }
+
+    func testEndForEraseCancelsOutgoingRingAndClosesMedia() async {
+        let h = Harness()
+        await h.engine.startVoiceCall(peerKey: peerA)
+        guard case .outgoingRinging(let callID, _) = h.engine.state else {
+            return XCTFail("expected outgoingRinging, got \(h.engine.state)")
+        }
+        XCTAssertEqual(h.media?.closeCount, 0)
+
+        await h.engine.endForErase()
+
+        XCTAssertEqual(h.engine.state, .ended(.hungUp))
+        XCTAssertEqual(h.media?.closeCount, 1)
+        XCTAssertEqual(h.sent.last, .decline(callID: callID),
+                       "the cancel is attempted; in the app the stopped router drops it")
+    }
+
+    func testEndForEraseDeclinesIncomingRingWithNoMedia() async {
+        let h = Harness()
+        await h.engine.handleInbound(.request(callID: idX, sdp: "o"), from: peerA)
+        XCTAssertNil(h.media, "an incoming ring has no media yet")
+
+        await h.engine.endForErase()
+
+        XCTAssertEqual(h.engine.state, .ended(.declined))
+        XCTAssertEqual(h.sent, [.decline(callID: idX)])
+        XCTAssertNil(h.media)
+    }
+
+    func testEndForEraseWhileIdleDoesNothing() async {
+        let h = Harness()
+
+        await h.engine.endForErase()
+
+        XCTAssertEqual(h.engine.state, .idle)
+        XCTAssertEqual(h.sent, [])
+        XCTAssertEqual(h.journal, [])
+        XCTAssertNil(h.media)
+    }
+
     func testPTTRequestAndOtherKindsNeverPreempt() async {
         let h = Harness()
         await h.engine.handleInbound(.pttRequest(callID: idX, sdp: "o"), from: peerA)
@@ -202,7 +275,8 @@ private final class GatedMedia: CallMediaSession {
     }
     func makeAnswer(remoteOffer: String) async throws -> String { "answer-sdp" }
     func start(remoteAnswer: String) async throws {}
-    func close() {}
+    private(set) var closeCount = 0
+    func close() { closeCount += 1 }
 }
 
 @MainActor
