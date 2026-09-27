@@ -647,12 +647,14 @@ struct ContentView: View {
             dek: try SessionStoreKey.loadOrCreate(
                 service: BlockedContactsStore.defaultKeychainService))
         let loadedBlocked: [BlockedContact]
+        var blockedLoaded = true
         do {
             loadedBlocked = try blockedStore.load()
             print("blocked contacts loaded · \(loadedBlocked.count) blocked")
         } catch {
             RedactLog.event("⚠️ blocked-contact list load FAILED — booting empty", "\(type(of: error))")
             loadedBlocked = []
+            blockedLoaded = false
         }
 
         // ISSUE-5 — persisted Nostr backlog-replay ledger. Own DEK (a distinct
@@ -680,6 +682,7 @@ struct ContentView: View {
         // EnrollmentService so it starts from the real persisted set, not empty.
         let loadedAllowlist: ContactAllowlist
         let pairedIdentities: [Data]
+        var allowlistLoaded = true
         do {
             loadedAllowlist = try contactStore.load()
             pairedIdentities = Array(loadedAllowlist.identities)
@@ -694,6 +697,28 @@ struct ContentView: View {
             RedactLog.event("⚠️ contact allowlist load FAILED — booting with empty set", "\(type(of: error))")
             loadedAllowlist = ContactAllowlist()
             pairedIdentities = []
+            allowlistLoaded = false
+        }
+
+        // ORPHAN SESSIONS — delete every persisted libsignal session that
+        // belongs to no enrolled and no blocked contact (a removed contact's
+        // session from an older build, a half-finished pairing): a survivor is
+        // reused by a same-key re-pair. Before any session is warmed or any
+        // transport starts. SKIPPED if either trust list failed to load — an
+        // empty stand-in there means "unknown", not "none".
+        if let keep = SignalSessionStore.orphanPruneKeepSet(
+            allowlist: allowlistLoaded ? loadedAllowlist : nil,
+            blocked: blockedLoaded ? loadedBlocked : nil) {
+            do {
+                let removed = try secure.pruneSessions(keepingRawKeys: keep)
+                if removed > 0 {
+                    RedactLog.event("sessions: removed \(removed) orphan session(s)", "")
+                }
+            } catch {
+                RedactLog.event("sessions: orphan cleanup FAILED", "\(type(of: error))")
+            }
+        } else {
+            RedactLog.event("sessions: orphan cleanup SKIPPED — a trust list failed to load", "")
         }
 
         // STEP 7f (STRICT-VERIFIED) — the VERIFIED subset seeds the coordinator's

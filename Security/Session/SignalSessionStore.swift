@@ -186,6 +186,29 @@ public final class SignalSessionStore: SecureSessionStore, @unchecked Sendable {
         }
     }
 
+    // MARK: Orphan cleanup (boot)
+
+    /// Which raw keys may KEEP a session at boot: every enrolled contact and
+    /// every BLOCKED one (unblock resumes on the same ratchet). nil — prune
+    /// NOTHING — when either list failed to load: an empty set there means
+    /// "unknown", and pruning against it would delete live sessions.
+    public static func orphanPruneKeepSet(allowlist: ContactAllowlist?,
+                                          blocked: [BlockedContact]?) -> Set<Data>? {
+        guard let allowlist, let blocked else { return nil }
+        return allowlist.identities.union(blocked.map(\.rawKey))
+    }
+
+    /// Delete every persisted session that belongs to none of `keep` — a
+    /// removed contact's session left by an older build, or a half-finished
+    /// pairing. A surviving session would be reused by a same-key re-pair.
+    /// In-memory backend: nothing persists, nothing to do. Returns the count.
+    public func pruneSessions(keepingRawKeys keep: Set<Data>) throws -> Int {
+        guard let persistent = store as? PersistentBeaconStore else { return 0 }
+        let names = Set(keep.filter { $0.count == 32 }.map { peerIdentity(fromRawKey: $0).userIDHex })
+        for name in sessions.keys where !names.contains(name) { sessions[name] = nil }
+        return try persistent.removeSessions(keepingNames: names)
+    }
+
     public func deleteAllSessions() throws {
         sessions.removeAll()
         if let persistent = store as? PersistentBeaconStore {

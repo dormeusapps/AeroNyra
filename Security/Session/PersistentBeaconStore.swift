@@ -324,6 +324,17 @@ public final class PersistentBeaconStore: IdentityKeyStore, PreKeyStore, SignedP
         try persist()
     }
 
+    /// Remove every session whose address name is NOT in `keep` (orphan
+    /// cleanup at boot). One write, only if something was removed. Returns how
+    /// many were removed.
+    public func removeSessions(keepingNames keep: Set<String>) throws -> Int {
+        let doomed = sessionMap.keys.filter { !keep.contains($0.name) }
+        guard !doomed.isEmpty else { return 0 }
+        for address in doomed { sessionMap.removeValue(forKey: address) }
+        try persist()
+        return doomed.count
+    }
+
     /// Wipe ALL crypto state and the file (the persistent half of an emergency
     /// wipe / `deleteAllSessions`). Identity is injected, so it is untouched.
     public func wipe() throws {
