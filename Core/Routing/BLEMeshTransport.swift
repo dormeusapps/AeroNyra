@@ -862,7 +862,6 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
     public func centralManager(_ central: CBCentralManager,
                                didDisconnectPeripheral peripheral: CBPeripheral,
                                error: Error?) {
-        log.info("disconnected \(peripheral.identifier) → rescanning")
         peers[peripheral.identifier] = nil
         writeTargets[peripheral.identifier] = nil
         audioWriteTargets[peripheral.identifier] = nil
@@ -880,6 +879,7 @@ extension BLEMeshTransport: CBCentralManagerDelegate {
             log.info("disconnected \(peripheral.identifier) → stopped, not rescanning")
             return
         }
+        log.info("disconnected \(peripheral.identifier) → rescanning")
         central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
     }
 }
