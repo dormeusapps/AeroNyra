@@ -72,7 +72,8 @@ struct ContentView: View {
         /// "Erase and start over" can delete the real identity item, and the
         /// `BootFailure` so the copy can distinguish "identity unreadable" from
         /// "identity fine, stack broke." Reachable ONLY from `bootstrap()`'s
-        /// route switch and a failed erase — never a catch-all.
+        /// route switch and the onboarding save tripwire — never a catch-all.
+        /// A failed erase has its own door (`.eraseIncomplete`).
         case bootFailed(IdentityStore, BootFailure)
         case ready(IdentityKeypair, ModelContainer, IdentityStore)
         /// Mid-erase: between "user confirmed erase" and "wipe verified
@@ -84,10 +85,19 @@ struct ContentView: View {
         case wiping
         /// Erase fix 4a: an erase has begun in this process, so no new stack
         /// may be built here (StackRetirementLatch) — the user must relaunch.
-        /// Terminal and model-free. Reached from a completed erase, and from
-        /// `bootstrap()` whenever the latch is set (e.g. "Try again" on the
-        /// door after a failed erase). A relaunch starts at `.launching`.
+        /// Terminal and model-free. Reached from a verified erase. `bootstrap()`
+        /// also routes here whenever the latch is set, but no path from an
+        /// erase reaches `bootstrap()` any more (a failed erase lands on
+        /// `.eraseIncomplete`, which has no "Try again"). A relaunch starts at
+        /// `.launching`.
         case restartRequired
+        /// Erase step 5: an erase in this process did not finish (the identity
+        /// delete failed, or the sweep/verify came up short). Its own door, not
+        /// `.bootFailed`: that door's copy is about a failed boot, and its
+        /// "Try again" re-runs `bootstrap()`, which the latch refuses. One
+        /// action, "Erase and start over", which retries the erase. Reached
+        /// only from `eraseEverything`'s finish on `.incomplete`.
+        case eraseIncomplete(IdentityStore)
     }
 
     @State private var phase: Phase = .launching
@@ -264,6 +274,9 @@ struct ContentView: View {
 
             case .restartRequired:
                 restartRequiredScreen
+
+            case .eraseIncomplete(let store):
+                eraseIncompleteScreen(store: store)
             }
         }
         .preferredColorScheme(.dark)
@@ -329,23 +342,82 @@ struct ContentView: View {
 
     /// Erase fix 4a: the terminal surface after an erase. Model-free like
     /// `wipingScreen`, with no action — nothing in this process may build a
-    /// stack again. PLACEHOLDER COPY: neutral, and true on every path that
-    /// lands here (a completed erase, and the doors after a failed one). The
-    /// real copy — including the network instruction — is its own commit.
+    /// stack again. Reached only after a VERIFIED wipe (see `.restartRequired`),
+    /// so "gone" is true. It says "identity, contacts, and messages", not
+    /// "everything": the EULA acceptance flag deliberately survives, and relays
+    /// may still hold sealed copies. The network line is the stated residual:
+    /// relays can link the old and new identities by IP + timing.
     private var restartRequiredScreen: some View {
         ZStack {
             Color.bgApp.ignoresSafeArea()
             VStack(spacing: 12) {
-                Text("Restart AeroNyra")
+                Text("Erase complete")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(Color.primary)
-                Text("Close AeroNyra and open it again to continue.")
+                Text("Your identity, contacts, and messages are gone from this phone. Close AeroNyra fully (swipe it away in the app switcher), then open it again to set up.")
                     .font(.callout)
                     .foregroundStyle(Color.secondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("For a clean break, switch networks before you set up again, for example from Wi-Fi to mobile data. Otherwise the relays may be able to link your old and new identities by your network address and timing.")
+                    .font(.footnote)
+                    .foregroundStyle(Color.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(32)
             .frame(maxWidth: 360)
+        }
+    }
+
+    // MARK: - Erase-incomplete door (erase step 5)
+
+    /// The door after an erase that did not finish. ONE action: "Erase and
+    /// start over" retries the erase (the F3 guard was cleared in `finish`).
+    /// No "Try again": `bootstrap()` is latched in this process. The copy says
+    /// "may" because what survived depends on which step failed — after a
+    /// failed identity delete the identity is still in the Keychain; after an
+    /// incomplete sweep it is gone but other data may remain. Reuses
+    /// `confirmBootErase`: only one door is ever mounted.
+    private func eraseIncompleteScreen(store: IdentityStore) -> some View {
+        ZStack {
+            Color.bgApp.ignoresSafeArea()
+            VStack(spacing: 22) {
+                Text("Erase didn't finish")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(Color.primary)
+
+                Text("Something went wrong, and not everything was erased. Some of your old data, possibly including your identity, may still be on this phone.")
+                    .font(.callout)
+                    .foregroundStyle(Color.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("Tap Erase and start over to try again. Keep the app open until it finishes.")
+                    .font(.callout)
+                    .foregroundStyle(Color.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(role: .destructive) {
+                    confirmBootErase = true
+                } label: {
+                    Text("Erase and start over").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(32)
+            .frame(maxWidth: 360)
+        }
+        .confirmationDialog("Erase and start over?",
+                            isPresented: $confirmBootErase,
+                            titleVisibility: .visible) {
+            Button("Erase everything", role: .destructive) {
+                eraseEverything(store: store)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your identity and all data on this device. It cannot be undone, and your contacts will have to re-pair.")
         }
     }
 
@@ -413,8 +485,9 @@ struct ContentView: View {
     /// stack constructor is inside it, and its sole caller is the BootRouter
     /// closure below), so the retirement latch is checked HERE, first — before
     /// the store, BootRouter, or any build. Once an erase has begun in this
-    /// process, no path (success route, either door's "Try again", anything
-    /// added later) can build a second stack on the shared BLE streams.
+    /// process, no path (success route, the boot door's "Try again", anything
+    /// added later) can build a second stack on the shared BLE streams. (The
+    /// erase's own door, `.eraseIncomplete`, has no "Try again".)
     private func bootstrap() {
         guard StackRetirementLatch.shared.bootstrapDecision == .build else {
             RedactLog.event("bootstrap: refused — an erase began in this process; relaunch required", "")
@@ -1013,10 +1086,9 @@ struct ContentView: View {
                         RedactLog.event("erase: complete — relaunch required", "")
                         phase = .restartRequired
                     case .incomplete:
-                        // The door: its copy admits something went wrong and
-                        // its Erase button retries. `.identityUnreadable`, not
-                        // `.stackFailed` — see `wipeForErase`.
-                        phase = .bootFailed(store, .identityUnreadable)
+                        // Erase step 5: the erase's own door. Its copy says
+                        // the erase did not finish; its one button retries.
+                        phase = .eraseIncomplete(store)
                     }
                 }).run()
         }
@@ -1108,12 +1180,9 @@ struct ContentView: View {
             // files actually gone (a live container's late write can recreate a
             // sidecar after deletion — the residual risk SwiftDataStoreWipe's
             // header records; this check is what catches it). On a partial or
-            // unverified wipe, land on the door — its copy admits something
-            // went wrong and its Erase button retries — never on onboarding
-            // over surviving data. `.identityUnreadable` is the honest choice
-            // of the two existing BootFailure cases: `.stackFailed`'s copy
-            // promises "your identity and contacts are safe," which is false
-            // after the gate above deleted the identity.
+            // unverified wipe, land on the erase's own door (`.eraseIncomplete`)
+            // — its copy says the erase did not finish and its one button
+            // retries — never on onboarding over surviving data.
             let storeGone = ((try? SwiftDataStoreWipe())?.verifyStoreDeleted()) ?? false
             guard wipeErrors.isEmpty, storeGone else {
                 RedactLog.event("erase: INCOMPLETE — routing to the door, not onboarding",
