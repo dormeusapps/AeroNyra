@@ -18,23 +18,6 @@
 
 import SwiftUI
 
-/// Version 1 acceptance, still read by ContentView until the launch gate
-/// moves to `TermsAcceptanceStore`. Removed in that change.
-enum EULA {
-    static let currentVersion = 1
-    static let defaultsKey = "aeronyra.eulaAccepted.v1"
-
-    static var isAccepted: Bool {
-        let record = UserDefaults.standard.dictionary(forKey: defaultsKey)
-        return (record?["version"] as? Int ?? 0) >= currentVersion
-    }
-
-    static func recordAcceptance() {
-        UserDefaults.standard.set(["version": currentVersion, "acceptedAt": Date()],
-                                  forKey: defaultsKey)
-    }
-}
-
 /// Paging and agreement state, kept out of the view so it can be tested.
 struct TermsPager: Equatable {
 

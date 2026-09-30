@@ -8,9 +8,9 @@
 //
 //  Phases:
 //   1. .launching   — checking the Keychain. Brief.
-//   2. .eula        — Terms of Use not yet accepted on this device
-//                     (Guideline 1.2). Holds the computed BootRoute until
-//                     the user explicitly accepts.
+//   2. .terms       — the current Terms of Use not yet accepted on this
+//                     install (Guideline 1.2). Shown BEFORE the identity is
+//                     loaded or any stack is built (LaunchGate).
 //   3. .onboarding  — no identity yet. OnboardingView generates one on
 //                     user tap; we save it, then transition to .ready.
 //   4. .ready       — identity loaded; render the main tabbed app.
@@ -59,14 +59,14 @@ struct ContentView: View {
     
     private enum Phase {
         case launching
-        /// Terms of Use not yet accepted on this device (fresh install, or a
-        /// reinstall whose UserDefaults were cleared while the identity
-        /// survived in the Keychain). Holds the fully-computed BootRoute so
-        /// acceptance applies it directly — bootstrap() is not re-run and
-        /// BootRouter's decision table is untouched. `.bootFailed` routes are
-        /// never held here: the recovery door stays reachable without
-        /// acceptance.
-        case eula(BootRoute, IdentityStore)
+        /// The current Terms of Use are not accepted on this install (fresh
+        /// install, reinstall, an update that raised the terms version, or
+        /// the launch after an Erase). Reached only from `bootstrap()`, which
+        /// shows it BEFORE loading the identity or building anything, so no
+        /// socket, router or session exists behind it. Carries nothing: Accept
+        /// records the acceptance and re-runs `bootstrap()`. No exemptions —
+        /// the boot-failed door is behind it too.
+        case terms
         case onboarding(IdentityStore)
         /// Boot could not reach `.ready`. Carries the store so the door's
         /// "Erase and start over" can delete the real identity item, and the
@@ -104,6 +104,9 @@ struct ContentView: View {
 
     /// Drives the destructive-confirmation dialog on the `.bootFailed` door.
     @State private var confirmBootErase = false
+
+    /// Bumped when saving the terms acceptance fails, so the pages start over.
+    @State private var termsAttempt = 0
 
     /// Resumes `eraseEverything`'s render-commit barrier when the `.wiping`
     /// arm appears. Set immediately before the flip to `.wiping`; cleared the
@@ -219,11 +222,13 @@ struct ContentView: View {
                 launchScreen
                     .task { bootstrap() }
 
-            case .eula(let route, let store):
+            case .terms:
                 EULAView {
-                    EULA.recordAcceptance()
-                    enter(route, store: store)
+                    acceptTerms()
                 }
+                // A failed save re-creates the pages (they restart at page 1)
+                // rather than leaving a spent Accept on screen.
+                .id(termsAttempt)
 
             case .onboarding(let store):
                 OnboardingView { identity in
@@ -344,8 +349,10 @@ struct ContentView: View {
     /// `wipingScreen`, with no action — nothing in this process may build a
     /// stack again. Reached only after a VERIFIED wipe (see `.restartRequired`),
     /// so "gone" is true. It says "identity, contacts, and messages", not
-    /// "everything": the EULA acceptance flag deliberately survives, and relays
-    /// may still hold sealed copies. The network line is the stated residual:
+    /// "everything": relays may still hold sealed copies, and some settings
+    /// (e.g. the accent colour) survive. The terms acceptance does not: the
+    /// next launch shows the Terms of Use again, then onboarding. The network
+    /// line is the stated residual:
     /// relays can link the old and new identities by IP + timing.
     private var restartRequiredScreen: some View {
         ZStack {
@@ -477,9 +484,8 @@ struct ContentView: View {
 
     // MARK: - Bootstrap
     
-    /// Try to load an existing identity. If found, build the persistent
-    /// ModelContainer + secure-session store + coordinator and enter .ready.
-    /// If not, route to Onboarding.
+    /// The launch sequence. First the retirement latch, then the Terms of Use,
+    /// then the identity load and stack build (LaunchGate) — in that order.
     ///
     /// Erase fix 4a: the ONLY funnel to `makeSessionStack` (every call to a
     /// stack constructor is inside it, and its sole caller is the BootRouter
@@ -488,12 +494,35 @@ struct ContentView: View {
     /// process, no path (success route, the boot door's "Try again", anything
     /// added later) can build a second stack on the shared BLE streams. (The
     /// erase's own door, `.eraseIncomplete`, has no "Try again".)
+    ///
+    /// Terms gate (Guideline 1.2): the current terms version must be accepted
+    /// on this install before the identity is even loaded, so nothing — no
+    /// session store, router, relay socket or Bluetooth link — starts behind
+    /// the terms, on ANY route: fresh install, reinstall (the Keychain
+    /// identity survives deletion, the acceptance file does not), an update
+    /// that raised the version, the launch after an Erase, and the boot-failed
+    /// door (no exemption). The gate lives here, not in BootRouter, so the
+    /// router's pinned decision table (BootRouterTests) stays untouched.
     private func bootstrap() {
-        guard StackRetirementLatch.shared.bootstrapDecision == .build else {
+        let step = LaunchGate.run(
+            retirement: StackRetirementLatch.shared.bootstrapDecision,
+            termsAccepted: { ((try? TermsAcceptanceStore.standard())?.isAccepted()) ?? false },
+            boot: { bootRoute() })
+        switch step {
+        case .restartRequired:
             RedactLog.event("bootstrap: refused — an erase began in this process; relaunch required", "")
             phase = .restartRequired
-            return
+        case .terms:
+            RedactLog.event("bootstrap: terms not accepted — showing the terms first", "")
+            phase = .terms
+        case .booted(let booted):
+            enter(booted.0, store: booted.1)
         }
+    }
+
+    /// Load the identity and, only on success, build the stack. Reached only
+    /// through `LaunchGate` (latch clear, terms accepted).
+    private func bootRoute() -> (BootRoute, IdentityStore) {
         let wrapper = try? SecureEnclaveWrapper(service: enclaveService)
         let store = IdentityStore(
             service: identityService,
@@ -517,32 +546,30 @@ struct ContentView: View {
                                      container: container)
                 return container
             })
+        return (route, store)
+    }
 
-        // EULA gate (Guideline 1.2): the Terms of Use must be accepted once
-        // per install before ANY use — gating BOTH .onboarding and .ready,
-        // because the Keychain survives app deletion, so a delete-and-
-        // reinstall user routes straight to .ready and would otherwise never
-        // see the terms. `.bootFailed` is exempt: it is a recovery door, not
-        // use of the app. The gate lives here, not in BootRouter, so the
-        // router's pinned decision table (BootRouterTests) stays untouched.
-        // The acceptance flag deliberately survives crypto-erase (a legal
-        // fact about the person, not identifying residue) and is NOT in
-        // DeviceResidueWipe's allowlist.
-        if case .bootFailed = route {
-            enter(route, store: store)
-        } else if EULA.isAccepted {
-            enter(route, store: store)
-        } else {
-            phase = .eula(route, store)
+    /// The terms' final Accept: save the acceptance, then run the launch
+    /// sequence again (which now passes the gate). If the save fails the
+    /// terms stay up — never boot on an unsaved acceptance.
+    private func acceptTerms() {
+        do {
+            try TermsAcceptanceStore.standard().recordAcceptance()
+        } catch {
+            RedactLog.event("terms: saving the acceptance FAILED — showing the terms again",
+                            "\(type(of: error))")
+            termsAttempt += 1
+            return
         }
+        RedactLog.event("terms: accepted version \(TermsVersion.current)", "")
+        bootstrap()
     }
 
     /// Apply a computed BootRoute to the phase. EXACTLY ONE `phase =` per
     /// route arm — except `.onboarding`, which first sweeps a previous
     /// identity's leftovers and then lands on onboarding, or on the door if the
-    /// sweep was partial. No catch-all. Called from bootstrap() (directly when the
-    /// EULA is already accepted, or for `.bootFailed`) and from the `.eula`
-    /// arm's accept action.
+    /// sweep was partial. No catch-all. Called only from `bootstrap()`, after
+    /// the terms gate.
     private func enter(_ route: BootRoute, store: IdentityStore) {
         switch route {
         case .onboarding:
@@ -1207,6 +1234,15 @@ struct ContentView: View {
             do { try await NostrIdentityWipe(service: nostrIdentityService).wipe() }
             catch {
                 RedactLog.event("erase: Nostr secret wipe FAILED", "\(type(of: error))")
+                wipeErrors.append(error)
+            }
+            // Erase is a fresh start: the next launch shows the Terms of Use
+            // again. Here, on both erase paths (Settings and the doors), and
+            // NOT in DeviceResidueWipe, which the pre-onboarding LeftoverSweep
+            // also runs — just after an acceptance it would delete.
+            do { try await TermsAcceptanceWipe(store: TermsAcceptanceStore.standard()).wipe() }
+            catch {
+                RedactLog.event("erase: terms acceptance wipe FAILED", "\(type(of: error))")
                 wipeErrors.append(error)
             }
 
