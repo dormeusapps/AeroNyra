@@ -65,16 +65,23 @@ final class MessageInbox {
     /// + `@ObservationIgnored`: not view state, absent in tests/previews.
     @ObservationIgnored private let notifier: LocalNotifier?
 
+    /// Content filter (Guideline 1.2): true when a text must not reach the user
+    /// (the filter is ON and the text contains a filtered word). Injected so
+    /// tests don't read the app's settings; production reads them live.
+    @ObservationIgnored private let filterBlocks: @MainActor (String) -> Bool
+
     init(modelContext: ModelContext,
          coordinator: FirstContactCoordinator,
          router: MessageRouter,
          isVerified: @escaping (Data) -> Bool,
-         notifier: LocalNotifier? = nil) {
+         notifier: LocalNotifier? = nil,
+         filterBlocks: @escaping @MainActor (String) -> Bool = { ContentFilter.blocks($0) }) {
         self.modelContext = modelContext
         self.coordinator = coordinator
         self.router = router
         self.isVerified = isVerified
         self.notifier = notifier
+        self.filterBlocks = filterBlocks
     }
 
     // MARK: - Inbound event loop
@@ -106,7 +113,7 @@ final class MessageInbox {
             case .established(let key):
                 handleEstablished(peerKey: key)
             case .received(let key, let plaintext, let wireID):
-                handleReceived(peerKey: key, plaintext: plaintext, wireID: wireID)
+                ingestReceivedText(peerKey: key, plaintext: plaintext, wireID: wireID)
             case .receivedMedia(let key, let data, let mime, let wireID, let sentAt, let isStory, let isPushToTalk):
                 handleReceivedMedia(peerKey: key, data: data, mime: mime, wireID: wireID,
                                     sentAt: sentAt, isStory: isStory, isPushToTalk: isPushToTalk)
@@ -139,17 +146,41 @@ final class MessageInbox {
         save()
     }
 
+    /// What happened to one inbound text.
+    enum InboundTextOutcome: Equatable {
+        case stored
+        case duplicate
+        /// Content filter: never stored, shown, notified or counted as unread.
+        case dropped
+    }
+
     /// A sealed message was opened: create-or-fetch the peer + conversation and
-    /// persist the inbound Message (which lights the unread dot).
-    private func handleReceived(peerKey: Data, plaintext: Data, wireID: MessageID) {
+    /// persist the inbound Message (which lights the unread dot) — unless the
+    /// content filter drops it.
+    @discardableResult
+    func ingestReceivedText(peerKey: Data, plaintext: Data, wireID: MessageID) -> InboundTextOutcome {
         // Dedup: a relayed duplicate of a message we already stored is ignored.
-        guard !alreadyStored(wireID) else { return }
+        guard !alreadyStored(wireID) else { return .duplicate }
+
+        let text = String(data: plaintext, encoding: .utf8) ?? ""
+
+        // CONTENT FILTER (Guideline 1.2): with the filter ON, a text containing
+        // a filtered word is DROPPED here — before any Peer, Conversation or
+        // Message row is touched, so nothing is stored, shown, notified or
+        // counted as unread, and turning the filter off later cannot bring it
+        // back. The coordinator already acknowledged it (FirstContactCoordinator
+        // `receive`, `.text`), so the sender sees Delivered and never re-sends.
+        // Known edge (accepted 2026-09-30): if that receipt is lost and a relay
+        // copy arrives after a relaunch with the filter OFF, that copy is stored.
+        guard !filterBlocks(text) else {
+            RedactLog.event("inbox: DROP filtered text", "")
+            return .dropped
+        }
 
         let peer = peer(forRawKey: peerKey)
         peer.lastSeen = .now
         let conversation = conversation(for: peer)
 
-        let text = String(data: plaintext, encoding: .utf8) ?? ""
         let message = Message(content: text,
                               isOutbound: false,
                               deliveryState: .delivered,
@@ -161,6 +192,7 @@ final class MessageInbox {
         save()
         notifyMessageArrived(peerKey: peerKey, conversationKey: conversation.id,
                              isStory: false)   // N2 — genuinely-new row only (dedup above)
+        return .stored
     }
 
     /// A complete media transfer was reassembled + verified: persist it as an
@@ -781,8 +813,8 @@ final class MessageInbox {
     // MARK: - Local notification (N2)
 
     /// Fire the banner + badge for a genuinely-new inbound row. Called ONLY from
-    /// the two persist seams above, after their `alreadyStored(wireID)` dedup and
-    /// after the row is saved — so the unread count below already includes it,
+    /// the two persist seams above, after their `alreadyStored(wireID)` dedup (and,
+    /// for text, the content filter's drop) and after the row is saved — so the unread count below already includes it,
     /// and a relay replay of a BLE-delivered message never reaches here. The
     /// thread key is the peer's raw 32-byte identity key (`Peer.publicKeyData`),
     /// the same `Data` form every key crossing this boundary uses. Suppression
