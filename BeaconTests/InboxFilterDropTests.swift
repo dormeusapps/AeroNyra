@@ -78,6 +78,39 @@ final class InboxFilterDropTests: XCTestCase {
         XCTAssertEqual(try count(Message.self, in: h.context), 1)
     }
 
+    // MARK: - Send
+
+    private func conversation(in context: ModelContext) -> Conversation {
+        let peer = Peer(publicKeyData: peerKey)
+        context.insert(peer)
+        let conversation = Conversation(kind: .direct, peer: peer)
+        context.insert(conversation)
+        return conversation
+    }
+
+    func testFilteredSendIsNeverStoredOrSent() async throws {
+        let h = try makeHarness(blocks: { ContentFilterMatcher(userWords: "").matches($0) })
+        let convo = conversation(in: h.context)
+        await h.inbox.send("  you bitch ", in: convo)
+        XCTAssertEqual(try count(Message.self, in: h.context), 0)
+    }
+
+    /// Control: a clean text is stored (then fails to send — no session here).
+    func testCleanSendIsStored() async throws {
+        let h = try makeHarness(blocks: { ContentFilterMatcher(userWords: "").matches($0) })
+        let convo = conversation(in: h.context)
+        await h.inbox.send("see you at 7", in: convo)
+        XCTAssertEqual(try count(Message.self, in: h.context), 1)
+    }
+
+    /// Filter OFF: no check on the send side either (one switch).
+    func testFilterOffSendsTheSameText() async throws {
+        let h = try makeHarness(blocks: { _ in false })
+        let convo = conversation(in: h.context)
+        await h.inbox.send("you bitch", in: convo)
+        XCTAssertEqual(try count(Message.self, in: h.context), 1)
+    }
+
     /// The real app wiring: `ContentFilter.blocks` reading the settings.
     func testDefaultWiringReadsTheSetting() throws {
         let container = try ModelContainer(

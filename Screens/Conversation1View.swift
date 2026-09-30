@@ -59,6 +59,9 @@ struct StreamView: View {
     @State private var mismatchDiscarded = false
 
     @State private var draft: String = ""
+    /// Content filter: the last Send was refused because the draft contains a
+    /// filtered word. Shown above the composer; cleared on the next edit.
+    @State private var filteredSendNotice = false
     @FocusState private var composerFocused: Bool
     @State private var showSettings = false
     /// STEP 7f — presents the 4-word SAS sheet from the verify-gate composer.
@@ -648,7 +651,25 @@ struct StreamView: View {
         }
     }
 
+    /// The composer row, with the content filter's notice above it when the
+    /// last Send was refused.
     private var normalComposer: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if filteredSendNotice {
+                Text("This message contains filtered words and wasn't sent.")
+                    .font(Stillwater.Serif.italic(14))
+                    .foregroundColor(Stillwater.Palette.mist)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
+            }
+            composerRow
+        }
+        .onChange(of: draft) { _, _ in
+            if filteredSendNotice { filteredSendNotice = false }
+        }
+    }
+
+    private var composerRow: some View {
         // Bottom-aligned so the plus and mic/send buttons stay pinned beside
         // the LAST line as the field grows; the field's small bottom padding
         // re-centers a single line against the 34–38pt buttons, so the
@@ -984,6 +1005,13 @@ struct StreamView: View {
     private func sendDraft() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, let inbox else { return }
+        // Content filter (Guideline 1.2): a draft with a filtered word is not
+        // sent. It stays in the field and the notice says why. OFF = no check.
+        // (MessageInbox.send refuses it too — the backstop.)
+        guard !ContentFilter.blocks(text) else {
+            withAnimation(.easeOut(duration: 0.18)) { filteredSendNotice = true }
+            return
+        }
         let convo = currentConversation()
         draft = ""
         composerFocused = false

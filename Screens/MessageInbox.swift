@@ -299,6 +299,13 @@ final class MessageInbox {
     func send(_ text: String, in conversation: Conversation) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // Content filter (Guideline 1.2) backstop: a text with a filtered word
+        // is never stored or sent. The composer checks first and keeps the
+        // draft with a notice; this refuses even if a send is driven here.
+        guard !filterBlocks(trimmed) else {
+            RedactLog.event("inbox: REFUSED send — filtered words", "")
+            return
+        }
         guard let peer = conversation.peer else {
             RedactLog.event("inbox: cannot send — conversation has no peer", "")
             return
