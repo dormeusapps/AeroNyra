@@ -21,7 +21,8 @@
 //  Keychain Data Protection only — which is fine for development.
 //
 //  Wiring owned here:
-//   • BLE transport — started at launch, lives the whole app lifetime.
+//   • BLE transport — started once the terms are accepted (never before),
+//     then lives the whole app lifetime.
 //   • MeshPresence  — fed from the transport's reachability (link ids) AND,
 //     via ReadyView, from the coordinator's identity-resolved presence (peer
 //     keys). Read by Nearby (blips + count) and by per-conversation presence.
@@ -108,6 +109,11 @@ struct ContentView: View {
     /// Bumped when saving the terms acceptance fails, so the pages start over.
     @State private var termsAttempt = 0
 
+    /// Set once `bootstrap()` has passed the terms gate. Until then the root
+    /// radio task does not start Bluetooth (no scanning, no advertising). One
+    /// way: nothing sets it back.
+    @State private var radioAllowed = false
+
     /// Resumes `eraseEverything`'s render-commit barrier when the `.wiping`
     /// arm appears. Set immediately before the flip to `.wiping`; cleared the
     /// moment it fires so it can never double-resume the continuation.
@@ -122,7 +128,7 @@ struct ContentView: View {
     /// start over" can still retry after an incomplete wipe.
     @State private var eraseInFlight = false
     
-    /// The single long-lived BLE transport, started at launch.
+    /// The single long-lived BLE transport, started once the terms gate passes.
     @State private var transport = BLEMeshTransport()
     
     /// Live radio presence, fed from the transport and read by the Chats list
@@ -291,11 +297,17 @@ struct ContentView: View {
             pendingInviteURL = url
         }
         .environment(presence)
-        .task {
+        .task(id: radioAllowed) {
             // Start the radio, then keep presence in sync AND feed the
             // coordinator newly-reachable links. Main-actor isolated, so
             // touching `presence` here is safe; coordinator calls hop to it.
             // (transport.start() is idempotent; the router may also start it.)
+            // Terms gate: NOT before the current terms are accepted. The first
+            // run (flag false) returns without starting the radio or reading
+            // the stream; the run after `bootstrap()` passes the gate is the
+            // only one that does, so the single-consumer reachability stream
+            // still has exactly one reader.
+            guard radioAllowed else { return }
             do {
                 try await transport.start()
             } catch {
@@ -516,6 +528,7 @@ struct ContentView: View {
             RedactLog.event("bootstrap: terms not accepted — showing the terms first", "")
             phase = .terms
         case .booted(let booted):
+            radioAllowed = true
             enter(booted.0, store: booted.1)
         }
     }
