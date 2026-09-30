@@ -68,6 +68,7 @@ struct SettingsView: View {
                     filterSection
                     walkieSection
                     blockedSection
+                    safetySection
                     supportSection
                     aboutSection
                     dangerSection
@@ -83,7 +84,11 @@ struct SettingsView: View {
             Task { await applyPickedPhoto(item) }
         }
         .sheet(isPresented: $showMyCode) { PairingView() }
-        .sheet(isPresented: $showTerms) { EULAView() }
+        .sheet(isPresented: $showTerms) {
+            // Read-only: the same pages as the launch gate, no agreement,
+            // with the version and date this install accepted.
+            EULAView(acceptedRecord: (try? TermsAcceptanceStore.standard())?.load())
+        }
         .sheet(isPresented: $showBlocked) { BlockedContactsView() }
         .alert("No mail app available", isPresented: $reportMailUnavailable) {
             Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
@@ -381,6 +386,25 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Safety & Support (Guideline 1.2)
+    /// Holds the Terms of Use for now; the other safety rows move here in
+    /// later steps.
+    private var safetySection: some View {
+        SettingsGroup(header: "Safety & Support") {
+            Button { showTerms = true } label: {
+                SettingsRow {
+                    HStack(spacing: 12) {
+                        Text("Terms of Use").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                        Spacer(minLength: 12)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Stillwater.Palette.mistDim)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     // MARK: - Report a problem
     private var supportSection: some View {
         SettingsGroup(
@@ -424,17 +448,6 @@ struct SettingsView: View {
                         .font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.mist)
                 }
             }
-            Button { showTerms = true } label: {
-                SettingsRow {
-                    HStack(spacing: 12) {
-                        Text("Terms of Use").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
-                        Spacer(minLength: 12)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Stillwater.Palette.mistDim)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
         }
     }
 
