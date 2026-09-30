@@ -130,13 +130,12 @@ struct StreamView: View {
     @State private var reportMailUnavailable = false
     @Environment(\.openURL) private var openURL
 
-    /// Content filter (Guideline 1.2): render-time check of INBOUND text only.
-    /// Keys mirrored in DeviceResidueWipe — both die on crypto-erase. Reveal
-    /// state is per-session display state (Message.id), never persisted; the
-    /// model row is untouched either way.
+    /// Content filter (Guideline 1.2). New filtered texts never reach the
+    /// store (MessageInbox drops them); these settings only hide rows stored
+    /// BEFORE the drop existed (see `visibleMessages`). Keys mirrored in
+    /// DeviceResidueWipe — both die on crypto-erase.
     @AppStorage("aeronyra.contentFilter.enabled.v1") private var contentFilterEnabled = true
     @AppStorage("aeronyra.contentFilter.words.v1") private var contentFilterWords = ""
-    @State private var revealedFilteredIDs = Set<UUID>()
 
     /// Reported messages (Guideline 1.2): a reported message leaves the feed
     /// the moment the report is INITIATED — not conditional on the mail being
@@ -163,13 +162,20 @@ struct StreamView: View {
     }
     /// What the stream actually renders: every row except reported ones —
     /// all kinds (text, photo, video, voice note, story), the exclusion sits
-    /// above the row dispatch. Day marks and the empty state derive from THIS
+    /// above the row dispatch — and, while the content filter is ON, except
+    /// received texts with a filtered word stored before the inbox's drop
+    /// existed (display-only: nothing is deleted, no tap-to-reveal). Day marks and the empty state derive from THIS
     /// list, so a day whose messages are all reported gets no orphaned
     /// separator and an all-reported conversation shows still water. Read
     /// bookkeeping (`markInboundRead`) and selection deletes still operate on
     /// the full set, so a reported message can't strand the app badge.
     private var visibleMessages: [Message] {
-        sortedMessages.filter { !ReportedMessages.contains($0.id, in: reportedMessageIDs) }
+        sortedMessages.filter {
+            !ReportedMessages.contains($0.id, in: reportedMessageIDs)
+                && !ContentFilter.hidesStoredText($0.content, isOutbound: $0.isOutbound,
+                                                  enabled: contentFilterEnabled,
+                                                  userWords: contentFilterWords)
+        }
     }
     private var tier: Stillwater.Presence {
         presence.isReachable(peer.publicKeyData) ? .near : .gone
@@ -1331,39 +1337,19 @@ struct StreamView: View {
             Circle().fill(Stillwater.Palette.biolume)
                 .frame(width: 5, height: 5).padding(.top, 6)
             VStack(alignment: .leading, spacing: 5) {
-                if isFilteredHidden(m) {
-                    // Tap-to-reveal placeholder. DISPLAY-ONLY: the row is
-                    // untouched, so a false positive is a one-tap non-event
-                    // and disabling the filter restores everything.
-                    Text("hidden by your content filter · tap to view")
-                        .font(Stillwater.Serif.italic(15))
-                        .foregroundColor(Stillwater.Palette.mistDim)
-                        .onTapGesture { revealedFilteredIDs.insert(m.id) }
-                } else {
-                    Text(m.content)
-                        .font(Stillwater.Serif.regular(17))
-                        .foregroundColor(Stillwater.Palette.foam)
-                        // Explicit, not inherited: wrapped inbound lines share
-                        // one flush LEFT edge (the mirror of myLine's
-                        // .trailing), immune to any ancestor ever putting a
-                        // different alignment into the environment.
-                        .multilineTextAlignment(.leading)
-                }
+                Text(m.content)
+                    .font(Stillwater.Serif.regular(17))
+                    .foregroundColor(Stillwater.Palette.foam)
+                    // Explicit, not inherited: wrapped inbound lines share
+                    // one flush LEFT edge (the mirror of myLine's
+                    // .trailing), immune to any ancestor ever putting a
+                    // different alignment into the environment.
+                    .multilineTextAlignment(.leading)
                 Text(time(m))
                     .stillwaterMono(8.5, trackingEm: 0.18, color: Stillwater.Palette.mistDimmest)
             }
             Spacer(minLength: 40)
         }
-    }
-
-    /// Render-time filter check — inbound text only (`theirLine` is already
-    /// inbound-only; the `isOutbound` guard is belt-and-braces so the filter
-    /// can never touch the send side). Reads the model, never writes it.
-    private func isFilteredHidden(_ m: Message) -> Bool {
-        contentFilterEnabled
-            && !m.isOutbound
-            && !revealedFilteredIDs.contains(m.id)
-            && ContentFilter.matches(m.content, userWords: contentFilterWords)
     }
 
     @ViewBuilder

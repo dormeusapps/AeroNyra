@@ -132,6 +132,19 @@ final class ContentFilterTests: XCTestCase {
         XCTAssertFalse(matcher.matches("pineapple"))
     }
 
+    // MARK: - Rows stored before the drop
+
+    func testStoredRowGuard() {
+        XCTAssertTrue(ContentFilter.hidesStoredText("you bitch", isOutbound: false, enabled: true, userWords: ""))
+        XCTAssertFalse(ContentFilter.hidesStoredText("you bitch", isOutbound: false, enabled: false, userWords: ""))
+        XCTAssertFalse(ContentFilter.hidesStoredText("you bitch", isOutbound: true, enabled: true, userWords: ""))
+        XCTAssertFalse(ContentFilter.hidesStoredText("see you at 7", isOutbound: false, enabled: true, userWords: ""))
+        XCTAssertFalse(ContentFilter.hidesStoredText("", isOutbound: false, enabled: true, userWords: ""))
+        // Verdicts are cached per text, but a new user word takes effect.
+        XCTAssertFalse(ContentFilter.hidesStoredText("pineapple", isOutbound: false, enabled: true, userWords: ""))
+        XCTAssertTrue(ContentFilter.hidesStoredText("pineapple", isOutbound: false, enabled: true, userWords: "pineapple"))
+    }
+
     // MARK: - The switch
 
     func testOffPassesEverythingOnBlocks() {

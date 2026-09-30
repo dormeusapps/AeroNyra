@@ -240,7 +240,20 @@ enum ContentFilter {
     /// True when `text` contains a filtered word (library or user word).
     /// Ignores the setting — see `blocks`.
     static func matches(_ text: String, userWords: String) -> Bool {
-        matcher(for: userWords).matches(text)
+        let matcher = matcher(for: userWords)       // resets the verdicts on a word change
+        if let verdict = verdicts[text] { return verdict }
+        let verdict = matcher.matches(text)
+        if verdicts.count >= 4096 { verdicts.removeAll(keepingCapacity: true) }
+        verdicts[text] = verdict
+        return verdict
+    }
+
+    /// Display guard for a row stored BEFORE the inbox's drop existed: a
+    /// received text with a filtered word is left out of the chat while the
+    /// filter is ON. Display-only: nothing is deleted, nothing to reveal.
+    static func hidesStoredText(_ content: String, isOutbound: Bool,
+                                enabled: Bool, userWords: String) -> Bool {
+        enabled && !isOutbound && !content.isEmpty && matches(content, userWords: userWords)
     }
 
     /// True when the filter is ON and `text` contains a filtered word.
@@ -248,15 +261,19 @@ enum ContentFilter {
         isEnabled(defaults) && matches(text, userWords: defaults.string(forKey: wordsKey) ?? "")
     }
 
-    // One matcher per distinct user-word string (the library is fixed).
+    // One matcher per distinct user-word string (the library is fixed), and
+    // its verdicts per text — the chat re-checks every stored row on each
+    // render. Bounded; cleared whenever the user's words change.
     private static var cachedUserWords: String?
     private static var cachedMatcher: ContentFilterMatcher?
+    private static var verdicts: [String: Bool] = [:]
 
     private static func matcher(for userWords: String) -> ContentFilterMatcher {
         if userWords == cachedUserWords, let cachedMatcher { return cachedMatcher }
         let matcher = ContentFilterMatcher(userWords: userWords)
         cachedUserWords = userWords
         cachedMatcher = matcher
+        verdicts.removeAll()
         return matcher
     }
 }
