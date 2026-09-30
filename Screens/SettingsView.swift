@@ -37,18 +37,17 @@ struct SettingsView: View {
     @AppStorage("aeronyra.selfPhoto") private var selfPhotoData = Data()
     @AppStorage("aeronyra.accentHex") private var accentHex = Int(Stillwater.Accent.defaultHex)
 
-    /// Content filter (Guideline 1.2). Keys mirrored in DeviceResidueWipe —
-    /// both die on crypto-erase. Default ON with the built-in list.
-    @AppStorage("aeronyra.contentFilter.enabled.v1") private var contentFilterEnabled = true
+    /// Content filter (Guideline 1.2): only the On/Off label here; the switch
+    /// and the words live on ContentFilterView.
+    @AppStorage(ContentFilter.enabledKey) private var contentFilterEnabled = true
     /// Walkie kill switch (key mirrored in WalkieSettings + DeviceResidueWipe).
     @AppStorage(WalkieSettings.allowInboundKey) private var allowInboundWalkie = true
-    @AppStorage("aeronyra.contentFilter.words.v1") private var contentFilterWords = ""
 
     @FocusState private var nameFocused: Bool
-    @FocusState private var filterWordsFocused: Bool
     @State private var pickedPhoto: PhotosPickerItem?
     @State private var showMyCode = false
     @State private var showTerms = false
+    @State private var showContentFilter = false
     @State private var showBlocked = false
     @State private var confirmErase = false
 
@@ -65,11 +64,9 @@ struct SettingsView: View {
                     youSection
                     identitySection
                     appearanceSection
-                    filterSection
                     walkieSection
                     blockedSection
                     safetySection
-                    supportSection
                     aboutSection
                     dangerSection
                 }
@@ -90,11 +87,12 @@ struct SettingsView: View {
             EULAView(acceptedRecord: (try? TermsAcceptanceStore.standard())?.load())
         }
         .sheet(isPresented: $showBlocked) { BlockedContactsView() }
+        .sheet(isPresented: $showContentFilter) { ContentFilterView() }
         .alert("No mail app available", isPresented: $reportMailUnavailable) {
             Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Send your report to \(ReportMail.address) from any email account. Reports are answered within 24 hours.")
+            Text("Send your report to \(ReportMail.address) from any email account. Reports are reviewed within 24 hours.")
         }
         .alert("Erase this identity?", isPresented: $confirmErase) {
             Button("Erase", role: .destructive) { eraseEverything() }
@@ -300,40 +298,6 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Content filter
-    private var filterSection: some View {
-        SettingsGroup(
-            header: "Content filter",
-            footer: "Checked on this device only, after messages arrive — nothing is transmitted. Hidden messages can always be revealed with a tap. Add your own words, separated by commas."
-        ) {
-            SettingsRow {
-                Toggle(isOn: $contentFilterEnabled) {
-                    Text("Hide messages containing offensive language")
-                        .font(Stillwater.Serif.regular(17))
-                        .foregroundStyle(Stillwater.Palette.foam)
-                }
-                .tint(Stillwater.Palette.biolume)
-            }
-            if contentFilterEnabled {
-                SettingsRow {
-                    TextField(text: $contentFilterWords, axis: .vertical) {
-                        Text("your own words, comma-separated")
-                            .foregroundStyle(Stillwater.Palette.mistDim)
-                    }
-                    .textFieldStyle(.plain)
-                    .font(Stillwater.Serif.regular(17))
-                    .foregroundStyle(Stillwater.Palette.foam)
-                    .tint(Stillwater.Palette.biolume)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .focused($filterWordsFocused)
-                    .submitLabel(.done)
-                    .onSubmit { filterWordsFocused = false }
-                }
-            }
-        }
-    }
-
     // MARK: - Walkie (kill switch — see WalkieSettings)
     private var walkieSection: some View {
         SettingsGroup(
@@ -387,10 +351,57 @@ struct SettingsView: View {
     }
 
     // MARK: - Safety & Support (Guideline 1.2)
-    /// Holds the Terms of Use for now; the other safety rows move here in
-    /// later steps.
+    /// Everything App Review looks for, in one place: the content filter,
+    /// blocked contacts (also under Contacts — two ways in, same screen), the
+    /// report / support address in plain text, and the Terms of Use.
     private var safetySection: some View {
-        SettingsGroup(header: "Safety & Support") {
+        SettingsGroup(
+            header: "Safety & Support",
+            footer: "Reports go to the developer by email and are reviewed within 24 hours."
+        ) {
+            Button { showContentFilter = true } label: {
+                SettingsRow {
+                    HStack(spacing: 12) {
+                        Text("Content filter").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                        Spacer(minLength: 12)
+                        Text(contentFilterEnabled ? "On" : "Off")
+                            .font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.mist)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Stillwater.Palette.mistDim)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            Button { showBlocked = true } label: {
+                SettingsRow {
+                    HStack(spacing: 12) {
+                        Text("Blocked contacts").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                        Spacer(minLength: 12)
+                        let count = pairing?.blockedContacts.count ?? 0
+                        Text(count > 0 ? "\(count)" : "None")
+                            .font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.mist)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold)).foregroundStyle(Stillwater.Palette.mistDim)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            Button { reportProblem() } label: {
+                SettingsRow {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Report a problem").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
+                            Text(ReportMail.address)
+                                .font(Stillwater.Serif.regular(14)).foregroundStyle(Stillwater.Palette.mist)
+                                .textSelection(.enabled)
+                        }
+                        Spacer(minLength: 12)
+                        Image(systemName: "envelope")
+                            .font(.system(size: 15, weight: .regular)).foregroundStyle(Stillwater.Palette.biolume)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
             Button { showTerms = true } label: {
                 SettingsRow {
                     HStack(spacing: 12) {
@@ -398,26 +409,6 @@ struct SettingsView: View {
                         Spacer(minLength: 12)
                         Image(systemName: "chevron.right")
                             .font(.system(size: 13, weight: .semibold)).foregroundStyle(Stillwater.Palette.mistDim)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    // MARK: - Report a problem
-    private var supportSection: some View {
-        SettingsGroup(
-            header: "Support",
-            footer: "Reports go to the developer by email and are answered within 24 hours. The app adds only your app version and a timestamp — never message content or keys."
-        ) {
-            Button { reportProblem() } label: {
-                SettingsRow {
-                    HStack(spacing: 12) {
-                        Text("Report a problem").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
-                        Spacer(minLength: 12)
-                        Image(systemName: "envelope")
-                            .font(.system(size: 15, weight: .regular)).foregroundStyle(Stillwater.Palette.biolume)
                     }
                 }
             }

@@ -63,6 +63,10 @@ struct DeviceResidueWipe: Wipeable {
     /// built-in list on the post-wipe install.
     static let contentFilterEnabledKey = "aeronyra.contentFilter.enabled.v1"
     static let contentFilterWordsKey   = "aeronyra.contentFilter.words.v1"
+    /// The Content filter screen's one-time explanation (`ContentFilterIntro`).
+    /// Cleared so Erase shows it again (a fresh start). MUST match
+    /// `ContentFilterIntro.shownKey`.
+    static let contentFilterIntroShownKey = "aeronyra.contentFilter.introShown.v1"
 
     /// Guideline 1.2 reported-message hiding, written by Conversation via
     /// `@AppStorage` (`Conversation1View` / `ReportedMessages`). A comma-joined
@@ -85,6 +89,7 @@ struct DeviceResidueWipe: Wipeable {
         defaults.removeObject(forKey: Self.lastLocalNostrPubkeyKey)
         defaults.removeObject(forKey: Self.contentFilterEnabledKey)
         defaults.removeObject(forKey: Self.contentFilterWordsKey)
+        defaults.removeObject(forKey: Self.contentFilterIntroShownKey)
         defaults.removeObject(forKey: Self.reportedMessagesKey)
         defaults.removeObject(forKey: Self.walkieAllowInboundKey)
 
