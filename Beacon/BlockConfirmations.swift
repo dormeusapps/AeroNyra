@@ -3,9 +3,9 @@
 //  Beacon
 //
 //  Plain Block / Unblock (Guideline 1.2), shared by Home (long-press and
-//  swipe) and contact settings: the confirm alerts, their copy, and the call
-//  into PairingService. A blocked chat stays in the chat list, read-only and
-//  marked "blocked"; nothing here deletes or hides a row.
+//  accessibility actions) and contact settings: the confirm alerts, their
+//  copy, and the call into PairingService. A blocked chat stays in the chat
+//  list, read-only and marked "blocked"; nothing here deletes or hides a row.
 //
 //  Lives in Beacon/ (a synchronized folder), not Screens/ (a classic group).
 //

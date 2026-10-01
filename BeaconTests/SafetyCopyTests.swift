@@ -10,7 +10,9 @@
 //     never "removed from your chats" or "moved to Blocked Contacts";
 //   • a report is never described as carrying no content or keys only
 //     (it carries what the user sees in the preview);
-//   • no unbuilt-feature notes left in the Terms (`// PENDING` comments).
+//   • no unbuilt-feature notes left in the Terms (`// PENDING` comments);
+//   • no "swipe" in any user-facing string: Home has no swipe actions —
+//     press and hold the chat (or the VoiceOver actions).
 //
 
 import XCTest
@@ -77,7 +79,7 @@ final class SafetyCopyTests: XCTestCase {
     /// Terms pages 3 and 4 describe the built block and report.
     func testTheTermsDescribeTheBuiltBlockAndReport() {
         let block = TermsContent.pages[2].paragraphs.joined(separator: " ")
-        XCTAssertTrue(block.contains("swipe left on their chat"))
+        XCTAssertTrue(block.contains("press and hold the chat"))
         XCTAssertTrue(block.contains("If you report them, they can never pair with you again."))
         XCTAssertTrue(block.contains("stays in your chats, marked as blocked or reported"))
         let report = TermsContent.pages[3].paragraphs.joined(separator: " ")
@@ -87,5 +89,48 @@ final class SafetyCopyTests: XCTestCase {
         XCTAssertTrue(report.contains("contact the police first"))
         XCTAssertFalse(report.contains("picture"), "no screenshot in a report")
         XCTAssertFalse(report.contains("screenshot"))
+    }
+
+    /// Every string literal in the app's sources (single-line and triple-
+    /// quoted), with whole-line `//` comments left out.
+    static func stringLiterals(in source: String) -> [String] {
+        let code = source.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        let pattern = try! NSRegularExpression(pattern: #""{3}[\s\S]*?"{3}|"(?:[^"\\\n]|\\.)*""#)
+        let ns = code as NSString
+        return pattern.matches(in: code, range: NSRange(location: 0, length: ns.length))
+            .map { ns.substring(with: $0.range) }
+    }
+
+    func testNoUserFacingStringMentionsASwipe() throws {
+        var hits: [String] = []
+        for root in Self.roots {
+            let dir = repoRoot.appendingPathComponent(root)
+            guard let e = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil) else {
+                return XCTFail("source folder not found: \(dir.path)")
+            }
+            for case let url as URL in e where url.pathExtension == "swift" {
+                for literal in Self.stringLiterals(in: try String(contentsOf: url, encoding: .utf8))
+                where literal.range(of: "swipe", options: .caseInsensitive) != nil {
+                    hits.append("\(url.lastPathComponent): \(literal)")
+                }
+            }
+        }
+        XCTAssertEqual(hits, [], "say \"press and hold the chat\", not swipe")
+    }
+
+    /// The literal scanner itself finds what it must (so an empty result means something).
+    func testTheStringScannerFindsLiterals() {
+        let source = """
+        // "swipe in a comment" is not user-facing
+        Text("Swipe left on a chat")
+        let a = \"\"\"
+            swipe in a block
+            \"\"\"
+        .swipeBackEnabled()
+        """
+        let found = Self.stringLiterals(in: source).filter { $0.lowercased().contains("swipe") }
+        XCTAssertEqual(found.count, 2, "\(found)")
     }
 }

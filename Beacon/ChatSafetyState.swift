@@ -83,7 +83,7 @@ enum ChatAction: Equatable, Sendable {
 
 enum ChatActions {
 
-    /// Swipe, long-press and accessibility actions on a Home row, in order.
+    /// Long-press and accessibility actions on a Home row, in order.
     static func row(_ safety: ChatSafety) -> [ChatAction] {
         switch safety {
         case .normal: return [.block, .report]

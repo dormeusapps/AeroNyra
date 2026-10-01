@@ -373,7 +373,7 @@ struct ContentView: View {
                 Text("Erase complete")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(Color.primary)
-                Text("Your identity, contacts, and messages are gone from this phone. Close AeroNyra fully (swipe it away in the app switcher), then open it again to set up.")
+                Text("Your identity, contacts, and messages are gone from this phone. Close AeroNyra fully in the app switcher, then open it again to set up.")
                     .font(.callout)
                     .foregroundStyle(Color.secondary)
                     .multilineTextAlignment(.center)

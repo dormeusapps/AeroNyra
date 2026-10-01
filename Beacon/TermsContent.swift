@@ -56,7 +56,7 @@ enum TermsContent {
             title: "Zero tolerance for abusive users.",
             paragraphs: [
                 "You may not use AeroNyra to harass, threaten or abuse anyone. There is no tolerance for abusive users.",
-                "You can block any contact at any time: swipe left on their chat, or use their contact settings. Blocking takes effect at once, and they are not told. Their messages stop arriving, and they can't pair with you again unless you unblock them. If you report them, they can never pair with you again.",
+                "You can block any contact at any time: press and hold the chat, or use their contact settings. Blocking takes effect at once, and they are not told. Their messages stop arriving, and they can't pair with you again unless you unblock them. If you report them, they can never pair with you again.",
                 "A blocked or reported chat stays in your chats, marked as blocked or reported, so you can keep it as evidence.",
             ],
             agreeLabel: "I agree"
@@ -68,7 +68,7 @@ enum TermsContent {
         TermsPage(
             title: "Report anything, any time.",
             paragraphs: [
-                "Swipe left on a chat and tap Report, press and hold a message and tap Report, or tap Report contact in a contact's settings. A reported message is removed from your chat right away.",
+                "Press and hold the chat and tap Report, press and hold a message and tap Report, or tap Report contact in a contact's settings. A reported message is removed from your chat right away.",
                 "A report is an email you send to the developer from your mail app. You can include what you know about the person, such as their name, phone number or how you met. Before it's sent you see everything in it: the reason, your name for the contact, a code that identifies them, the app version and time, what you added, and, unless you remove it, the reported message's text. Photos, videos and voice notes are never included.",
                 "When the report is sent, the contact is blocked and can never pair with you again. The chat stays in your chats, marked as reported.",
                 "If a crime has happened or you're in danger, contact the police first. The developer reviews every report within 24 hours.",

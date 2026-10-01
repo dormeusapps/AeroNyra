@@ -73,7 +73,7 @@ final class ChatSafetyStateTests: XCTestCase {
     func testRowActions() {
         XCTAssertEqual(ChatActions.row(.normal), [.block, .report])
         XCTAssertEqual(ChatActions.row(.blocked), [.unblock, .report])
-        XCTAssertEqual(ChatActions.row(.reported), [], "no swipe actions on a reported row")
+        XCTAssertEqual(ChatActions.row(.reported), [], "no actions on a reported row")
     }
 
     func testReportIsOfferedOnABlockedChatButNotAReportedOne() {
