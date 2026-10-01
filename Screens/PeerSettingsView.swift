@@ -401,13 +401,10 @@ struct PeerSettingsView: View {
 
     /// Open the user's mail client pre-filled with the ReportMail body. Passes
     /// the RAW local petname (`peer.displayName`) — deliberately NOT this
-    /// view's `displayName`, whose fallback is a key-derived fingerprint stub —
-    /// and the locally-minted Conversation UUID. See ReportMail's privacy
-    /// contract for what may never be included.
+    /// view's `displayName`, whose fallback is a key-derived fingerprint stub.
+    /// See ReportMail's rules for what may never be included.
     private func reportContact() {
-        guard let url = ReportMail.url(contactNickname: conversation.peer?.displayName,
-                                       conversationID: conversation.id,
-                                       messageID: nil) else { return }
+        guard let url = ReportMail.url(contactNickname: conversation.peer?.displayName) else { return }
         openURL(url) { accepted in
             if !accepted { reportMailUnavailable = true }
         }

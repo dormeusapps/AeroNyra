@@ -2,22 +2,35 @@
 //  ReportMail.swift
 //  Screens
 //
-//  The Report affordance (App Review Guideline 1.2): a pre-filled email to the
-//  support address, composed as a `mailto:` URL and opened through the user's
-//  own default mail client via `openURL`. No server, no upload — the report
-//  leaves the device only when the user sends the email themselves.
+//  Reports to the developer (App Review Guideline 1.2), by email from the
+//  user's own mail app — no server, no upload. Two kinds:
+//   • a REPORT about a contact or a message: `ReportDraft` (Beacon/), shown
+//     in full in the report preview and sent through `ReportComposer`
+//     (Apple Mail's composer, or the share sheet) — TEXT ONLY;
+//   • "Report a problem" (Settings): the `mailto:` below, with only the app
+//     version and the time; the user types the rest.
 //
-//  PRIVACY CONTRACT — the pre-filled body may contain ONLY:
-//   • app version + build (Bundle.main)
-//   • an ISO-8601 timestamp
-//   • the LOCAL, user-assigned nickname (Peer.displayName raw value — never
-//     the key-derived short-fingerprint fallback some views display)
-//   • the locally-minted SwiftData UUIDs (Conversation.id / Message.id),
-//     which exist only on this device and correlate to nothing on the wire
-//  FORBIDDEN — never add: publicKeyData / userIDHex (any prefix, however
-//  short), nostrPubkey, wireIDData, Message.content, mediaData, or the
-//  reporter's own fingerprint. Those identify people or content globally
-//  and would break the app's "Data Not Collected" posture.
+//  RULES — a report's email may contain ONLY:
+//   • the reason the user chose;
+//   • the user's LOCAL nickname for the contact (Peer.displayName, never the
+//     key-derived short-fingerprint fallback some views display);
+//   • the contact code (`ReportDraft.contactCode`): SHA-256 of a domain label
+//     and the key, 16 bytes — a code, never the key;
+//   • the app version and the time;
+//   • what the user typed — the identity fields and "What happened" — exactly
+//     as typed, each only when filled;
+//   • the reported message's text, VERBATIM, only for a message report and
+//     only while its preview switch is on (media only as "[photo]" /
+//     "[video]" / "[voice note]").
+//  The preview and the email are built from the SAME `ReportDraft`, so the
+//  email never carries anything the preview did not show. The content filter
+//  NEVER applies to report content.
+//  FORBIDDEN — never add: the identity key or any part of it (publicKeyData,
+//  userIDHex, however short), nostrPubkey, wire ids (wireIDData), local
+//  reference numbers (Conversation / Message UUIDs), any media bytes, ANY
+//  IMAGE OF ANY KIND (a report has no attachment at all), the reporter's own
+//  key or code, or anything from another conversation.
+//  Nothing in a report is stored on this device or logged.
 //
 
 import Foundation
@@ -27,30 +40,23 @@ enum ReportMail {
     static let address = "support@dormeusapps.com"
     static let subject = "AeroNyra report"
 
-    /// The complete `mailto:` URL for a report. `messageID` is nil when
-    /// reporting a contact rather than a specific message; ALL THREE nil is
-    /// the contact-less "Report a problem" variant (Settings) — the body then
-    /// carries only version + timestamp and the user types the rest. Returns
-    /// nil only if URL composition fails (never expected for this fixed shape).
-    static func url(contactNickname: String?,
-                    conversationID: UUID?,
-                    messageID: UUID?) -> URL? {
+    /// The `mailto:` URL for a plain email to the developer. `contactNickname`
+    /// nil is "Report a problem" (Settings): the body then carries only the
+    /// app version and the time, and the user types the rest. Returns nil
+    /// only if URL composition fails (never expected for this fixed shape).
+    static func url(contactNickname: String?) -> URL? {
         var components = URLComponents()
         components.scheme = "mailto"
         components.path = address
         components.queryItems = [
             URLQueryItem(name: "subject", value: subject),
-            URLQueryItem(name: "body", value: body(contactNickname: contactNickname,
-                                                   conversationID: conversationID,
-                                                   messageID: messageID)),
+            URLQueryItem(name: "body", value: body(contactNickname: contactNickname)),
         ]
         return components.url
     }
 
-    /// See the file-header privacy contract before touching this.
-    static func body(contactNickname: String?,
-                     conversationID: UUID?,
-                     messageID: UUID?) -> String {
+    /// See the file-header rules before touching this.
+    static func body(contactNickname: String?, at date: Date = Date()) -> String {
         var lines: [String] = [
             "Describe what happened here. You can include any information you choose — the context below is everything the app adds.",
             "",
@@ -58,28 +64,16 @@ enum ReportMail {
             "",
             "— context added by the app (no message content, no keys) —",
             "App version: \(appVersion)",
-            "Reported at: \(ISO8601DateFormatter().string(from: Date()))",
+            "Reported at: \(ISO8601DateFormatter().string(from: date))",
         ]
-        // The contact line only when the report is ABOUT a contact or message
-        // (any context field present). The contact-less Settings variant
-        // passes all nil, and "(no nickname set)" there would imply a contact
-        // exists. Existing callers always pass a conversationID, so their
-        // bodies are unchanged.
-        if contactNickname != nil || conversationID != nil || messageID != nil {
-            let nickname = contactNickname?.trimmingCharacters(in: .whitespacesAndNewlines)
-            lines.append("Contact (your local nickname): \((nickname?.isEmpty == false) ? nickname! : "(no nickname set)")")
-        }
-        if let conversationID {
-            lines.append("Conversation ref: \(conversationID.uuidString)")
-        }
-        if let messageID {
-            lines.append("Message ref: \(messageID.uuidString)")
+        if let nickname = contactNickname?.trimmingCharacters(in: .whitespacesAndNewlines), !nickname.isEmpty {
+            lines.append("Contact (your local nickname): \(nickname)")
         }
         return lines.joined(separator: "\n")
     }
 
     /// "1.0 (8)" — marketing version + build, from the generated Info.plist.
-    private static var appVersion: String {
+    static var appVersion: String {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "—"
         let build = info?["CFBundleVersion"] as? String ?? "—"

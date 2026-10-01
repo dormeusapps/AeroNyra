@@ -1129,16 +1129,14 @@ struct StreamView: View {
 
     /// Report a specific message: open the user's mail client pre-filled with
     /// the ReportMail body. Passes the RAW local petname (`peer.displayName`),
-    /// never a key-derived name fallback, and the locally-minted row UUIDs —
-    /// see ReportMail's privacy contract for what may never be included.
+    /// never a key-derived name fallback — see ReportMail's rules for what may
+    /// never be included.
     private func reportMessage(_ m: Message) {
         // Hide FIRST, unconditionally: initiating the report is the signal,
         // not the mail actually sending — a user who backs out of Mail has
         // still flagged the message, and it must leave the feed immediately.
         reportedMessageIDs = ReportedMessages.adding(m.id, to: reportedMessageIDs)
-        guard let url = ReportMail.url(contactNickname: peer.displayName,
-                                       conversationID: m.conversation?.id ?? conversation?.id,
-                                       messageID: m.id) else { return }
+        guard let url = ReportMail.url(contactNickname: peer.displayName) else { return }
         openURL(url) { accepted in
             if !accepted { reportMailUnavailable = true }
         }

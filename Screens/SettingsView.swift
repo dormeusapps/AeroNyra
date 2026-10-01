@@ -416,13 +416,10 @@ struct SettingsView: View {
         }
     }
 
-    /// The contact-less report: same ReportMail composer and privacy contract
-    /// as the per-contact rows, with all context fields nil — the body carries
-    /// only version + timestamp and the user types the rest.
+    /// The contact-less report: a plain email (ReportMail's rules) whose body
+    /// carries only the version and the time; the user types the rest.
     private func reportProblem() {
-        guard let url = ReportMail.url(contactNickname: nil,
-                                       conversationID: nil,
-                                       messageID: nil) else { return }
+        guard let url = ReportMail.url(contactNickname: nil) else { return }
         openURL(url) { accepted in
             if !accepted { reportMailUnavailable = true }
         }
