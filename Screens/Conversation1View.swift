@@ -146,6 +146,13 @@ struct StreamView: View {
     /// it just does not render. See `ReportedMessages` for the storage contract.
     @AppStorage("aeronyra.reportedMessages.v1") private var reportedMessageIDs = ""
 
+    /// A delete from a REPORTED chat awaiting the evidence warning.
+    private enum EvidenceDelete: Equatable {
+        case message(Message)
+        case selection
+    }
+    @State private var pendingEvidenceDelete: EvidenceDelete?
+
     /// Observe the app-wide accent so the stream recolours on change.
     @AppStorage("aeronyra.accentHex") private var accentHex = Int(Stillwater.Accent.defaultHex)
 
@@ -190,6 +197,14 @@ struct StreamView: View {
         _ = pairing.verificationEpoch
         return pairing.isVerified(peer.publicKeyData)
     }
+    /// Guideline 1.2: normal / blocked / reported, from the observable denylist.
+    private var safety: ChatSafety {
+        ChatSafety.of(peer.publicKeyData, in: pairing?.blockedContacts ?? [])
+    }
+    /// What this screen shows (ChatMode): the composer, the verify-gate, or —
+    /// blocked / reported — the transcript only: no composer, no verify-gate,
+    /// no call, video or walkie.
+    private var mode: ChatMode { ChatMode.of(safety: safety, verified: isVerified) }
     private var peerName: String {
         if let n = peer.displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty {
             return n
@@ -215,8 +230,9 @@ struct StreamView: View {
 
             VStack(spacing: 0) {
                 header
+                if mode.isReadOnly { safetyBanner }
                 stream
-                composer
+                if isSelecting || !mode.isReadOnly { composer }
             }
             .padding(.horizontal, 24)
             .padding(.top, 12)
@@ -268,10 +284,10 @@ struct StreamView: View {
         .sheet(isPresented: $showSettings) {
             PeerSettingsView(conversation: currentConversation(),
                              onBlocked: {
-                                 // The peer just left the main list — close the
-                                 // settings sheet and pop this conversation.
+                                 // Blocked or unblocked: close the settings
+                                 // sheet. The chat stays — read-only while
+                                 // blocked (Guideline 1.2).
                                  showSettings = false
-                                 dismiss()
                              },
                              onMismatchDiscarded: { closeAfterMismatchDiscard() })
         }
@@ -413,6 +429,23 @@ struct StreamView: View {
         } message: {
             Text("Enable microphone access in Settings to send voice notes.")
         }
+        .alert("Delete from this chat?",
+               isPresented: Binding(get: { pendingEvidenceDelete != nil },
+                                    set: { if !$0 && pendingEvidenceDelete != .selection { pendingEvidenceDelete = nil } }),
+               presenting: pendingEvidenceDelete) { pending in
+            Button("Delete", role: .destructive) {
+                switch pending {
+                case .message(let m):
+                    pendingEvidenceDelete = nil
+                    deleteMessage(m)
+                case .selection:
+                    deleteSelected()
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingEvidenceDelete = nil }
+        } message: { _ in
+            Text(ChatActions.evidenceWarning(name: peerName))
+        }
         .alert("No mail app available", isPresented: $reportMailUnavailable) {
             Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
             Button("OK", role: .cancel) {}
@@ -460,7 +493,7 @@ struct StreamView: View {
 
             // FaceTime v1 (P4): voice + video call. Same wire either way —
             // always audio+video; the camera just starts off for voice.
-            if let callEngine {
+            if let callEngine, mode.showsCallButtons {
                 Button {
                     Task { await callEngine.startVoiceCall(peerKey: peer.publicKeyData) }
                 } label: {
@@ -481,18 +514,42 @@ struct StreamView: View {
 
             // Walkie mode (full-screen globe). NOT gated on callEngine — it
             // rides the shipped async push-to-talk path, not the call stack.
-            Button { showWalkie = true } label: {
-                Image(systemName: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Stillwater.Palette.biolume)
+            // Hidden on a blocked / reported chat (ChatMode).
+            if mode.showsCallButtons {
+                Button { showWalkie = true } label: {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Stillwater.Palette.biolume)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Walkie mode")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Walkie mode")
         }
         .padding(.bottom, 16)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Stillwater.Palette.biolume.opacity(0.09)).frame(height: 1)
         }
+    }
+
+    /// Guideline 1.2: the read-only chat's banner (blocked / reported).
+    private var safetyBanner: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(safety == .reported ? "You reported this contact" : "You blocked this contact")
+                .stillwaterSerif(15, color: Stillwater.Palette.foam)
+            Text(safety == .reported
+                 ? "They can never pair with you again. This chat is kept as evidence."
+                 : "Their messages don't reach you and they aren't told.")
+                .font(Stillwater.Serif.italic(13))
+                .foregroundStyle(Stillwater.Palette.mist)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Stillwater.Palette.shallow))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .strokeBorder(Stillwater.Palette.biolume.opacity(0.09), lineWidth: 1))
+        .padding(.top, 14)
     }
 
     private var headerSublabel: String {
@@ -536,11 +593,17 @@ struct StreamView: View {
                                                 selection = [m.persistentModelID]
                                                 isSelecting = true
                                             }
-                                            Button("Report") {
-                                                reportMessage(m)
+                                            if ChatActions.offersReport(safety) {
+                                                Button("Report") {
+                                                    reportMessage(m)
+                                                }
                                             }
                                             Button("Delete", role: .destructive) {
-                                                deleteMessage(m)
+                                                if ChatActions.warnsBeforeDeleting(safety) {
+                                                    pendingEvidenceDelete = .message(m)
+                                                } else {
+                                                    deleteMessage(m)
+                                                }
                                             }
                                         }
                                 }
@@ -578,7 +641,7 @@ struct StreamView: View {
         Group {
             if isSelecting {
                 selectionBar
-            } else if !isVerified {
+            } else if mode.showsVerifyGate {
                 verifyGate
             } else if recorder.isRecording && !pttHolding {
                 // Tap-record (mic button) shows the full recording bar. A walkie
@@ -1118,6 +1181,12 @@ struct StreamView: View {
     /// limitation: deleted rows' `wireIDData` were the dedup records.
     private func deleteSelected() {
         guard !selection.isEmpty else { exitSelectMode(); return }
+        // A reported chat is the user's evidence: warn first (Guideline 1.2).
+        if ChatActions.warnsBeforeDeleting(safety), pendingEvidenceDelete == nil {
+            pendingEvidenceDelete = .selection
+            return
+        }
+        pendingEvidenceDelete = nil
         let convo = conversation
         let doomed = sortedMessages.filter { selection.contains($0.persistentModelID) }
         for m in doomed { modelContext.delete(m) }

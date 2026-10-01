@@ -5,8 +5,9 @@
 //  Settings → Blocked Contacts (Guideline 1.2 Block). Lists the persisted
 //  denylist (petname snapshot + block date), offers Unblock, and opens a
 //  READ-ONLY transcript of the preserved conversation — blocking never
-//  deletes messages (the user may need the history to report to authorities);
-//  it only hides the conversation from the main list.
+//  deletes messages (the user may need the history to report to authorities).
+//  The chat also stays in the main list, read-only and marked blocked or
+//  reported; this screen is a second way in.
 //
 //  The transcript view is deliberately NOT StreamView: no composer, no calls,
 //  no PTT, no resend — nothing here can transmit anything. It reads the
@@ -81,7 +82,7 @@ struct BlockedContactsView: View {
 
     private var listSection: some View {
         SettingsGroup(
-            footer: "Blocked contacts can't reach you and can't re-pair. Tap a name to read the preserved conversation. Unblocking restores the conversation to your main list."
+            footer: "Blocked contacts can't reach you. Reported contacts can never pair with you again and can't be unblocked. Their chats also stay in your chats, marked."
         ) {
             ForEach(entries) { entry in
                 SettingsRow {

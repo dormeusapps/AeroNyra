@@ -51,6 +51,10 @@ struct HomeView: View {
 
     /// Remove Contact: the peer awaiting the confirm dialog (nil = none).
     @State private var peerPendingRemoval: Peer?
+    /// Clear History on a REPORTED chat: the evidence warning first.
+    @State private var peerPendingClear: Peer?
+    /// Block / Unblock awaiting its confirm alert (BlockConfirmations).
+    @State private var blockRequest: BlockRequest?
 
     /// Your local display name (Settings) — greets you on the surface line.
     @AppStorage("aeronyra.displayName") private var myName = ""
@@ -65,16 +69,19 @@ struct HomeView: View {
 
     /// Stable within-zone order. NOT recency — the water sorts by physics
     /// (which zone), and inside a zone we sort by name so it doesn't jitter.
-    /// BLOCKED contacts (Guideline 1.2) are filtered out of the main list —
-    /// their Peer/Conversation/Message rows are PRESERVED, readable from
-    /// Settings → Blocked Contacts; `isBlocked` reads the observable denylist,
-    /// so a block/unblock repaints this roster immediately.
+    /// BLOCKED and REPORTED contacts (Guideline 1.2) STAY in the list, sorted
+    /// with everyone else and labelled on the row (ChatRoster); opening one
+    /// shows the chat read-only. Their revoke keeps them out of "near".
+    /// `blockedContacts` is observable, so a block/unblock repaints at once.
     private var sortedPeers: [Peer] {
-        peers
-            .filter { pairing?.isBlocked($0.publicKeyData) != true }
-            .sorted {
-                displayName(for: $0).localizedCaseInsensitiveCompare(displayName(for: $1)) == .orderedAscending
-            }
+        ChatRoster.rows(peers, key: \.publicKeyData, name: { displayName(for: $0) },
+                        blocked: blockedEntries).map(\.item)
+    }
+
+    private var blockedEntries: [BlockedContact] { pairing?.blockedContacts ?? [] }
+
+    private func safety(for peer: Peer) -> ChatSafety {
+        ChatSafety.of(peer.publicKeyData, in: blockedEntries)
     }
 
     /// STEP 7f — "near" means VERIFIED + reachable. An unverified contact (even one
@@ -173,9 +180,27 @@ struct HomeView: View {
         ) { peer in
             Button("Remove", role: .destructive) { removeContact(peer) }
             Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("You'll need to pair again in person to reconnect.")
+        } message: { peer in
+            // A reported chat is the user's evidence (Guideline 1.2): say so.
+            Text(ChatActions.warnsBeforeDeleting(safety(for: peer))
+                 ? ChatActions.evidenceWarning(name: displayName(for: peer))
+                 : "You'll need to pair again in person to reconnect.")
         }
+        .confirmationDialog(
+            "Clear history with \(peerPendingClear.map { displayName(for: $0) } ?? "contact")?",
+            isPresented: Binding(
+                get: { peerPendingClear != nil },
+                set: { if !$0 { peerPendingClear = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: peerPendingClear
+        ) { peer in
+            Button("Clear History", role: .destructive) { clearHistory(for: peer) }
+            Button("Cancel", role: .cancel) {}
+        } message: { peer in
+            Text(ChatActions.evidenceWarning(name: displayName(for: peer)))
+        }
+        .blockConfirmations($blockRequest, pairing: pairing)
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -261,34 +286,61 @@ struct HomeView: View {
                     // itself the link swallows the long-press and no menu shows.
                     peerRow(peer, presence: z.presence)
                         .contextMenu {
+                            // Guideline 1.2: Block / Unblock (ChatActions.row).
+                            ForEach(blockActions(for: peer), id: \.self) { action in
+                                Button(actionLabel(action), role: action == .block ? .destructive : nil) {
+                                    requestBlockAction(action, for: peer)
+                                }
+                            }
                             // "Clear History" — the contact (and its verification
-                            // state) survives; only the conversation goes.
+                            // state) survives; only the conversation goes. On a
+                            // reported chat, the evidence warning first.
                             Button("Clear History", role: .destructive) {
-                                clearHistory(for: peer)
+                                if ChatActions.warnsBeforeDeleting(safety(for: peer)) {
+                                    peerPendingClear = peer
+                                } else {
+                                    clearHistory(for: peer)
+                                }
                             }
                             // "Remove Contact" — peer + conversation + crypto
-                            // trust all go, behind a confirm dialog.
-                            Button("Remove Contact", role: .destructive) {
-                                peerPendingRemoval = peer
+                            // trust all go, behind a confirm dialog. Not on a
+                            // BLOCKED chat: removal deletes the session, and a
+                            // later Unblock would re-enroll a contact with no
+                            // session (re-pairing an enrolled contact is a
+                            // no-op). Unblock first, then remove. A REPORTED
+                            // chat can be removed (never unblocked anyway).
+                            if safety(for: peer) != .blocked {
+                                Button("Remove Contact", role: .destructive) {
+                                    peerPendingRemoval = peer
+                                }
                             }
                         }
                 }
                 .buttonStyle(.plain)
+                .accessibilityActions {
+                    ForEach(blockActions(for: peer), id: \.self) { action in
+                        Button(actionLabel(action)) { requestBlockAction(action, for: peer) }
+                    }
+                }
             }
         }
         .padding(.bottom, 14)
     }
 
     private func peerRow(_ peer: Peer, presence tier: Stillwater.Presence) -> some View {
-        HStack(spacing: 18) {
+        // Guideline 1.2: a blocked or reported chat is muted and labelled.
+        let marked = safety(for: peer).label
+        return HStack(spacing: 18) {
             PresenceLight(presence: tier, breath: breath(for: peer), delay: delay(for: peer), accent: accentHex)
                 .frame(width: 30, height: 30)
+                .opacity(marked == nil ? 1 : 0.45)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(displayName(for: peer))
-                    .stillwaterSerif(21, color: tier.nameColor)
-                Text(sublabel(for: peer, tier: tier))
-                    .stillwaterMono(9, trackingEm: 0.18, color: tier.labelColor)
+                    .stillwaterSerif(21, color: marked == nil ? tier.nameColor : Stillwater.Palette.mistDim)
+                Text(marked ?? sublabel(for: peer, tier: tier))
+                    .stillwaterMono(9, trackingEm: 0.18,
+                                    color: marked == nil ? tier.labelColor : Stillwater.Palette.mistDimmest)
             }
 
             Spacer()
@@ -333,6 +385,34 @@ struct HomeView: View {
         else { return }
         modelContext.delete(convo)
         try? modelContext.save()
+    }
+
+    // MARK: Block / Unblock (Guideline 1.2)
+
+    /// The Block / Unblock entries of `ChatActions.row` (Report is wired with
+    /// the report flow).
+    private func blockActions(for peer: Peer) -> [ChatAction] {
+        ChatActions.row(safety(for: peer)).filter { $0 != .report }
+    }
+
+    private func actionLabel(_ action: ChatAction) -> String {
+        switch action {
+        case .block: return "Block"
+        case .unblock: return "Unblock"
+        case .report: return "Report"
+        }
+    }
+
+    private func requestBlockAction(_ action: ChatAction, for peer: Peer) {
+        switch action {
+        case .block, .unblock:
+            blockRequest = BlockRequest(kind: action == .block ? .block : .unblock,
+                                        rawKey: peer.publicKeyData,
+                                        name: displayName(for: peer),
+                                        petname: peer.displayName)
+        case .report:
+            break
+        }
     }
 
     /// Remove Contact: full removal — crypto trust FIRST, rows second.

@@ -5,7 +5,9 @@
 //  Guideline 1.2 copy rules, enforced by scanning the app's sources (the
 //  LogHygieneTests approach: #filePath, run on the Mac that built them).
 //  Copy that would no longer be true must not come back:
-//   • reports are REVIEWED within 24 hours — never "answered".
+//   • reports are REVIEWED within 24 hours — never "answered";
+//   • a blocked or reported chat STAYS in the chat list, marked — it is
+//     never "removed from your chats" or "moved to Blocked Contacts".
 //
 
 import XCTest
@@ -44,5 +46,13 @@ final class SafetyCopyTests: XCTestCase {
     func testReportsAreNeverSaidToBeAnswered() throws {
         XCTAssertEqual(try occurrences(of: "answered within 24 hours"), [])
         XCTAssertEqual(try occurrences(of: "reviewed and answered"), [])
+    }
+
+    func testABlockedChatIsNeverSaidToLeaveTheChatList() throws {
+        for phrase in ["removed from your chats", "moves to Blocked Contacts",
+                       "restores the conversation to your main list",
+                       "stays readable under Settings", "preserved here, unread by the water"] {
+            XCTAssertEqual(try occurrences(of: phrase), [], phrase)
+        }
     }
 }

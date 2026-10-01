@@ -30,8 +30,9 @@ struct PeerSettingsView: View {
 
     @Bindable var conversation: Conversation
 
-    /// Called after a successful Block so the presenting Stream can dismiss
-    /// this sheet AND pop itself (the conversation is leaving the main list).
+    /// Called after a successful Block or Unblock so the presenting Stream can
+    /// close this sheet. The chat stays (Guideline 1.2): it turns read-only,
+    /// marked blocked, rather than leaving the list.
     var onBlocked: (() -> Void)? = nil
     /// Called after a successful SAS "Doesn't match" discard, so the presenting
     /// Stream can close this sheet AND pop itself; it posts the row removal
@@ -53,18 +54,13 @@ struct PeerSettingsView: View {
     @State private var reportMailUnavailable = false
     @Environment(\.openURL) private var openURL
 
-    /// Block (Guideline 1.2): the confirm dialog + failure alert.
-    @State private var confirmBlock = false
-    @State private var blockFailed = false
-    /// Guideline 1.2 also wants blocking to offer notifying the developer:
-    /// after a SUCCESSFUL block (only), this presents the report follow-up.
-    /// `onBlocked` (sheet dismiss + conversation pop) is DEFERRED until the
-    /// prompt resolves — an alert needs a live presenter, so dismissing first
-    /// would race it. Every exit from the prompt ends in `onBlocked`.
-    @State private var promptReportAfterBlock = false
-    /// True only on the blocked-flow's failed mail-open: the shared
-    /// no-mail-client alert then finishes the deferred dismissal on close.
-    @State private var finishAfterMailFallback = false
+    /// Block / Unblock (Guideline 1.2): the pending confirm (BlockConfirmations).
+    @State private var blockRequest: BlockRequest?
+
+    /// Normal / blocked / reported, from the observable denylist.
+    private var safety: ChatSafety {
+        ChatSafety.of(conversation.peer?.publicKeyData ?? Data(), in: pairing?.blockedContacts ?? [])
+    }
 
     private var hairlineColor: Color { Stillwater.Palette.biolume.opacity(0.09) }
 
@@ -75,9 +71,11 @@ struct PeerSettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 26) {
                     profileSection
-                    verificationSection
+                    // No SAS for a blocked or reported contact: there is no
+                    // pairing left to verify (and no "Doesn't match" discard).
+                    if safety == .normal { verificationSection }
                     identitySection
-                    reportSection
+                    if ChatActions.offersReport(safety) { reportSection }
                     blockSection
                 }
                 .padding(.top, 24)
@@ -117,31 +115,12 @@ struct PeerSettingsView: View {
             }
         }
         .alert("No mail app available", isPresented: $reportMailUnavailable) {
-            Button("Copy address") {
-                UIPasteboard.general.string = ReportMail.address
-                finishDeferredDismissalIfNeeded()
-            }
-            Button("OK", role: .cancel) { finishDeferredDismissalIfNeeded() }
+            Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
+            Button("OK", role: .cancel) {}
         } message: {
             Text("Send your report to \(ReportMail.address) from any email account. Reports are reviewed within 24 hours.")
         }
-        .alert("Report this contact?", isPresented: $promptReportAfterBlock) {
-            Button("Report") { reportBlockedContact() }
-            Button("Not now", role: .cancel) { onBlocked?() }
-        } message: {
-            Text("You can send a report to the developer. Reports are reviewed within 24 hours.")
-        }
-        .alert("Block \(displayName)?", isPresented: $confirmBlock) {
-            Button("Block", role: .destructive) { performBlock() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("They will no longer be able to reach you. This conversation moves to Blocked Contacts in Settings, where you can still read it.")
-        }
-        .alert("Couldn't block", isPresented: $blockFailed) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Something went wrong saving the block. Please try again.")
-        }
+        .blockConfirmations($blockRequest, pairing: pairing) { onBlocked?() }
     }
 
     // MARK: - Header
@@ -369,83 +348,56 @@ struct PeerSettingsView: View {
     }
 
     // MARK: - Block
+    /// Normal: Block. Blocked: Unblock. Reported: a fixed "Reported" row —
+    /// never unblocked, no Report (Guideline 1.2).
     private var blockSection: some View {
-        SettingsGroup(
-            footer: "Blocking is silent — they are never notified. Their messages stop arriving, they can't re-pair without you unblocking, and this conversation stays readable under Settings → Blocked Contacts."
-        ) {
-            Button { confirmBlock = true } label: {
+        SettingsGroup(footer: blockFooter) {
+            switch safety {
+            case .normal:
+                blockButton("Block", color: blockColor, kind: .block)
+            case .blocked:
+                blockButton("Unblock", color: Stillwater.Palette.biolume, kind: .unblock)
+            case .reported:
                 SettingsRow {
-                    Text("Block")
+                    Text("Reported")
                         .font(Stillwater.Serif.regular(17))
-                        .foregroundStyle(blockColor)
+                        .foregroundStyle(Stillwater.Palette.mistDim)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .buttonStyle(.plain)
-            // REQUIRE the service (never a silent no-op à la the optional-chain
-            // hazard at HomeView.removeContact): with no PairingService or no
-            // Peer row, the action is unavailable, not quietly skipped.
-            .disabled(pairing == nil || conversation.peer == nil)
         }
+    }
+
+    private var blockFooter: String {
+        switch safety {
+        case .normal, .blocked:
+            return "Blocking is silent — they are never notified. Their messages stop arriving, they can't re-pair unless you unblock them, and your chat stays in your chats, marked as blocked."
+        case .reported:
+            return "You reported this contact. They can never pair with you again, and your chat stays in your chats, marked as reported."
+        }
+    }
+
+    private func blockButton(_ title: String, color: Color, kind: BlockRequest.Kind) -> some View {
+        Button {
+            guard let peer = conversation.peer else { return }
+            blockRequest = BlockRequest(kind: kind, rawKey: peer.publicKeyData,
+                                        name: displayName, petname: peer.displayName)
+        } label: {
+            SettingsRow {
+                Text(title)
+                    .font(Stillwater.Serif.regular(17))
+                    .foregroundStyle(color)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .buttonStyle(.plain)
+        // REQUIRE the service (never a silent no-op à la the optional-chain
+        // hazard at HomeView.removeContact): with no PairingService or no
+        // Peer row, the action is unavailable, not quietly skipped.
+        .disabled(pairing == nil || conversation.peer == nil)
     }
 
     private var blockColor: Color { Color(hue: 0.02, saturation: 0.62, brightness: 0.86) }
-
-    /// Block this contact via PairingService (denylist + live drop + revoke).
-    /// The service is REQUIRED — the button is disabled without it — and any
-    /// failure surfaces as an alert, never a silent no-op.
-    private func performBlock() {
-        guard let pairing, let peer = conversation.peer else {
-            blockFailed = true
-            return
-        }
-        let rawKey = peer.publicKeyData
-        let petname = peer.displayName
-        Task {
-            do {
-                try await pairing.block(rawKey: rawKey, petname: petname)
-                // Success ONLY: offer the report follow-up (Guideline 1.2 —
-                // blocking should also notify the developer). The block is
-                // fully in effect already; `onBlocked` fires when the prompt
-                // resolves, whatever the user chooses. Failure keeps the
-                // existing alert path and never prompts.
-                promptReportAfterBlock = true
-            } catch {
-                RedactLog.event("block: FAILED", "\(type(of: error))")
-                blockFailed = true
-            }
-        }
-    }
-
-    /// The blocked-flow report: same recipient, same ReportMail pre-fill
-    /// contract, same fallback semantics as the plain Report row — only the
-    /// completion differs, because this path still owes the deferred
-    /// `onBlocked` dismissal. The Peer row survives blocking (nothing is
-    /// deleted), so the petname/conversation inputs are still live.
-    private func reportBlockedContact() {
-        guard let url = ReportMail.url(contactNickname: conversation.peer?.displayName,
-                                       conversationID: conversation.id,
-                                       messageID: nil) else {
-            onBlocked?()
-            return
-        }
-        openURL(url) { accepted in
-            if accepted {
-                onBlocked?()
-            } else {
-                finishAfterMailFallback = true
-                reportMailUnavailable = true
-            }
-        }
-    }
-
-    /// Close-out for the shared no-mail-client alert: a no-op on the plain
-    /// Report path; on the blocked flow it runs the deferred `onBlocked`.
-    private func finishDeferredDismissalIfNeeded() {
-        guard finishAfterMailFallback else { return }
-        finishAfterMailFallback = false
-        onBlocked?()
-    }
 
     /// Open the user's mail client pre-filled with the ReportMail body. Passes
     /// the RAW local petname (`peer.displayName`) — deliberately NOT this

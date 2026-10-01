@@ -328,7 +328,7 @@ struct SettingsView: View {
     private var blockedSection: some View {
         SettingsGroup(
             header: "Contacts",
-            footer: "Blocked contacts can't reach you or re-pair. Their conversations are preserved here, unread by the water."
+            footer: "Blocked and reported contacts can't reach you. Their chats stay in your chats, marked as blocked."
         ) {
             Button { showBlocked = true } label: {
                 SettingsRow {
