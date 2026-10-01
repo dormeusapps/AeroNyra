@@ -92,23 +92,26 @@ struct BlockedContactsView: View {
                                 Text(Self.name(for: entry))
                                     .font(Stillwater.Serif.regular(17))
                                     .foregroundStyle(Stillwater.Palette.foam)
-                                Text("blocked \(Self.dateText(entry.blockedAt))")
+                                Text(Self.subtitle(for: entry))
                                     .stillwaterMono(8.5, trackingEm: 0.18, color: Stillwater.Palette.mistDim)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        Button { unblock(entry) } label: {
-                            Text("Unblock")
-                                .font(Stillwater.Serif.regular(15))
-                                .foregroundStyle(Stillwater.Palette.biolume)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .overlay(Capsule().strokeBorder(Stillwater.Palette.biolume.opacity(0.4), lineWidth: 1))
-                                .contentShape(Capsule())
+                        // A reported contact can never be unblocked (Guideline 1.2).
+                        if Self.offersUnblock(entry) {
+                            Button { unblock(entry) } label: {
+                                Text("Unblock")
+                                    .font(Stillwater.Serif.regular(15))
+                                    .foregroundStyle(Stillwater.Palette.biolume)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .overlay(Capsule().strokeBorder(Stillwater.Palette.biolume.opacity(0.4), lineWidth: 1))
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -129,6 +132,15 @@ struct BlockedContactsView: View {
             }
         }
     }
+
+    /// "blocked 1 Oct 2026" / "reported · blocked 1 Oct 2026".
+    static func subtitle(for entry: BlockedContact) -> String {
+        let blocked = "blocked \(dateText(entry.blockedAt))"
+        return entry.reported ? "reported · \(blocked)" : blocked
+    }
+
+    /// Unblock is offered only for a plain block, never a reported contact.
+    static func offersUnblock(_ entry: BlockedContact) -> Bool { !entry.reported }
 
     static func name(for entry: BlockedContact) -> String {
         let trimmed = entry.petname?.trimmingCharacters(in: .whitespaces) ?? ""
