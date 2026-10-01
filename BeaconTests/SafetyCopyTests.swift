@@ -7,10 +7,14 @@
 //  Copy that would no longer be true must not come back:
 //   • reports are REVIEWED within 24 hours — never "answered";
 //   • a blocked or reported chat STAYS in the chat list, marked — it is
-//     never "removed from your chats" or "moved to Blocked Contacts".
+//     never "removed from your chats" or "moved to Blocked Contacts";
+//   • a report is never described as carrying no content or keys only
+//     (it carries what the user sees in the preview);
+//   • no unbuilt-feature notes left in the Terms (`// PENDING` comments).
 //
 
 import XCTest
+@testable import Beacon
 
 final class SafetyCopyTests: XCTestCase {
 
@@ -54,5 +58,34 @@ final class SafetyCopyTests: XCTestCase {
                        "stays readable under Settings", "preserved here, unread by the water"] {
             XCTAssertEqual(try occurrences(of: phrase), [], phrase)
         }
+    }
+
+    func testReportCopyMatchesTheReport() throws {
+        for phrase in ["never message content or keys", "fills in only"] {
+            XCTAssertEqual(try occurrences(of: phrase), [], phrase)
+        }
+    }
+
+    func testTheTermsHaveNoPendingNotes() throws {
+        let url = repoRoot.appendingPathComponent("Beacon/TermsContent.swift")
+        let pending = try String(contentsOf: url, encoding: .utf8)
+            .components(separatedBy: "\n")
+            .filter { $0.trimmingCharacters(in: .whitespaces).hasPrefix("// PENDING") }
+        XCTAssertEqual(pending, [])
+    }
+
+    /// Terms pages 3 and 4 describe the built block and report.
+    func testTheTermsDescribeTheBuiltBlockAndReport() {
+        let block = TermsContent.pages[2].paragraphs.joined(separator: " ")
+        XCTAssertTrue(block.contains("swipe left on their chat"))
+        XCTAssertTrue(block.contains("If you report them, they can never pair with you again."))
+        XCTAssertTrue(block.contains("stays in your chats, marked as blocked or reported"))
+        let report = TermsContent.pages[3].paragraphs.joined(separator: " ")
+        XCTAssertTrue(report.contains("You can include what you know about the person"))
+        XCTAssertTrue(report.contains("Photos, videos and voice notes are never included."))
+        XCTAssertTrue(report.contains("can never pair with you again"))
+        XCTAssertTrue(report.contains("contact the police first"))
+        XCTAssertFalse(report.contains("picture"), "no screenshot in a report")
+        XCTAssertFalse(report.contains("screenshot"))
     }
 }
