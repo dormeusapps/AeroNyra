@@ -417,7 +417,7 @@ struct StreamView: View {
             Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Send your report to \(ReportMail.address) from any email account. Reports are answered within 24 hours.")
+            Text("Send your report to \(ReportMail.address) from any email account. Reports are reviewed within 24 hours.")
         }
     }
 

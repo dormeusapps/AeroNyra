@@ -123,7 +123,7 @@ struct PeerSettingsView: View {
             }
             Button("OK", role: .cancel) { finishDeferredDismissalIfNeeded() }
         } message: {
-            Text("Send your report to \(ReportMail.address) from any email account. Reports are answered within 24 hours.")
+            Text("Send your report to \(ReportMail.address) from any email account. Reports are reviewed within 24 hours.")
         }
         .alert("Report this contact?", isPresented: $promptReportAfterBlock) {
             Button("Report") { reportBlockedContact() }
@@ -352,7 +352,7 @@ struct PeerSettingsView: View {
     // MARK: - Report
     private var reportSection: some View {
         SettingsGroup(
-            footer: "Reports go to the developer by email. The app adds only your app version, a timestamp, your local nickname for this contact, and internal reference numbers — never message content or keys. Answered within 24 hours."
+            footer: "Reports go to the developer by email. The app adds only your app version, a timestamp, your local nickname for this contact, and internal reference numbers — never message content or keys. Reviewed within 24 hours."
         ) {
             Button { reportContact() } label: {
                 SettingsRow {

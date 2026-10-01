@@ -54,7 +54,7 @@ enum ReportMail {
         var lines: [String] = [
             "Describe what happened here. You can include any information you choose — the context below is everything the app adds.",
             "",
-            "Reports are reviewed and answered within 24 hours.",
+            "Reports are reviewed within 24 hours.",
             "",
             "— context added by the app (no message content, no keys) —",
             "App version: \(appVersion)",
