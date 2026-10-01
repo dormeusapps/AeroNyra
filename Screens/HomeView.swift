@@ -55,6 +55,8 @@ struct HomeView: View {
     @State private var peerPendingClear: Peer?
     /// Block / Unblock awaiting its confirm alert (BlockConfirmations).
     @State private var blockRequest: BlockRequest?
+    /// The contact whose report flow is open (ReportFlowView).
+    @State private var reportPeer: Peer?
 
     /// Your local display name (Settings) — greets you on the surface line.
     @AppStorage("aeronyra.displayName") private var myName = ""
@@ -201,6 +203,9 @@ struct HomeView: View {
             Text(ChatActions.evidenceWarning(name: displayName(for: peer)))
         }
         .blockConfirmations($blockRequest, pairing: pairing)
+        .sheet(item: $reportPeer) { peer in
+            ReportFlowView(peer: peer, message: nil)
+        }
     }
 
     // ─────────────────────────────────────────────────────────────
@@ -286,8 +291,8 @@ struct HomeView: View {
                     // itself the link swallows the long-press and no menu shows.
                     peerRow(peer, presence: z.presence)
                         .contextMenu {
-                            // Guideline 1.2: Block / Unblock (ChatActions.row).
-                            ForEach(blockActions(for: peer), id: \.self) { action in
+                            // Guideline 1.2: Block / Unblock / Report (ChatActions.row).
+                            ForEach(ChatActions.row(safety(for: peer)), id: \.self) { action in
                                 Button(actionLabel(action), role: action == .block ? .destructive : nil) {
                                     requestBlockAction(action, for: peer)
                                 }
@@ -318,7 +323,7 @@ struct HomeView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityActions {
-                    ForEach(blockActions(for: peer), id: \.self) { action in
+                    ForEach(ChatActions.row(safety(for: peer)), id: \.self) { action in
                         Button(actionLabel(action)) { requestBlockAction(action, for: peer) }
                     }
                 }
@@ -389,12 +394,6 @@ struct HomeView: View {
 
     // MARK: Block / Unblock (Guideline 1.2)
 
-    /// The Block / Unblock entries of `ChatActions.row` (Report is wired with
-    /// the report flow).
-    private func blockActions(for peer: Peer) -> [ChatAction] {
-        ChatActions.row(safety(for: peer)).filter { $0 != .report }
-    }
-
     private func actionLabel(_ action: ChatAction) -> String {
         switch action {
         case .block: return "Block"
@@ -403,6 +402,7 @@ struct HomeView: View {
         }
     }
 
+    /// Block / Unblock confirm first (BlockConfirmations); Report opens the flow.
     private func requestBlockAction(_ action: ChatAction, for peer: Peer) {
         switch action {
         case .block, .unblock:
@@ -411,7 +411,7 @@ struct HomeView: View {
                                         name: displayName(for: peer),
                                         petname: peer.displayName)
         case .report:
-            break
+            reportPeer = peer
         }
     }
 

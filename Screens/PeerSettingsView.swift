@@ -49,10 +49,8 @@ struct PeerSettingsView: View {
     @State private var showColorPicker = false
     @State private var showVerify = false
 
-    /// Report (Guideline 1.2): true when no mail client accepted the mailto:
-    /// URL — shows the copy-the-address fallback alert.
-    @State private var reportMailUnavailable = false
-    @Environment(\.openURL) private var openURL
+    /// Report (Guideline 1.2): presents the report flow (ReportFlowView).
+    @State private var showReport = false
 
     /// Block / Unblock (Guideline 1.2): the pending confirm (BlockConfirmations).
     @State private var blockRequest: BlockRequest?
@@ -114,11 +112,10 @@ struct PeerSettingsView: View {
                 .preferredColorScheme(.dark)
             }
         }
-        .alert("No mail app available", isPresented: $reportMailUnavailable) {
-            Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Send your report to \(ReportMail.address) from any email account. Reports are reviewed within 24 hours.")
+        .sheet(isPresented: $showReport) {
+            if let peer = conversation.peer {
+                ReportFlowView(peer: peer, message: nil)
+            }
         }
         .blockConfirmations($blockRequest, pairing: pairing) { onBlocked?() }
     }
@@ -331,9 +328,9 @@ struct PeerSettingsView: View {
     // MARK: - Report
     private var reportSection: some View {
         SettingsGroup(
-            footer: "Reports go to the developer by email. The app adds only your app version, a timestamp, your local nickname for this contact, and internal reference numbers — never message content or keys. Reviewed within 24 hours."
+            footer: "Reports go to the developer by email. You see everything in the report before it's sent, and you can add what you know about this person. Photos, videos and voice notes are never included. Reviewed within 24 hours."
         ) {
-            Button { reportContact() } label: {
+            Button { showReport = true } label: {
                 SettingsRow {
                     HStack(spacing: 12) {
                         Text("Report contact").font(Stillwater.Serif.regular(17)).foregroundStyle(Stillwater.Palette.foam)
@@ -398,17 +395,6 @@ struct PeerSettingsView: View {
     }
 
     private var blockColor: Color { Color(hue: 0.02, saturation: 0.62, brightness: 0.86) }
-
-    /// Open the user's mail client pre-filled with the ReportMail body. Passes
-    /// the RAW local petname (`peer.displayName`) — deliberately NOT this
-    /// view's `displayName`, whose fallback is a key-derived fingerprint stub.
-    /// See ReportMail's rules for what may never be included.
-    private func reportContact() {
-        guard let url = ReportMail.url(contactNickname: conversation.peer?.displayName) else { return }
-        openURL(url) { accepted in
-            if !accepted { reportMailUnavailable = true }
-        }
-    }
 
     private var formattedFingerprint: String {
         guard let peer = conversation.peer else { return "" }

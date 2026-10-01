@@ -124,11 +124,14 @@ struct StreamView: View {
     @State private var videoSendNotice: String?
     @State private var showMicDenied = false
 
-    /// Report (Guideline 1.2): opens the user's mail client with a pre-filled
-    /// report to the support address. True when no mail client accepted the
-    /// mailto: URL — shows the copy-the-address fallback alert.
-    @State private var reportMailUnavailable = false
-    @Environment(\.openURL) private var openURL
+    /// Report (Guideline 1.2): the report flow (ReportFlowView) for this
+    /// contact — a message report carries the message, a contact report
+    /// (the banner) none.
+    @State private var reportTarget: ReportTarget?
+    private struct ReportTarget: Identifiable {
+        let id = UUID()
+        let message: Message?
+    }
 
     /// Content filter (Guideline 1.2). New filtered texts never reach the
     /// store (MessageInbox drops them); these settings only hide rows stored
@@ -446,11 +449,8 @@ struct StreamView: View {
         } message: { _ in
             Text(ChatActions.evidenceWarning(name: peerName))
         }
-        .alert("No mail app available", isPresented: $reportMailUnavailable) {
-            Button("Copy address") { UIPasteboard.general.string = ReportMail.address }
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Send your report to \(ReportMail.address) from any email account. Reports are reviewed within 24 hours.")
+        .sheet(item: $reportTarget) { target in
+            ReportFlowView(peer: peer, message: target.message)
         }
     }
 
@@ -542,6 +542,19 @@ struct StreamView: View {
                 .font(Stillwater.Serif.italic(13))
                 .foregroundStyle(Stillwater.Palette.mist)
                 .fixedSize(horizontal: false, vertical: true)
+            if ChatActions.offersReport(safety) {
+                Button { reportTarget = ReportTarget(message: nil) } label: {
+                    Text("Report")
+                        .font(Stillwater.Serif.regular(15))
+                        .foregroundStyle(Stillwater.Palette.biolume)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .overlay(Capsule().strokeBorder(Stillwater.Palette.biolume.opacity(0.4), lineWidth: 1))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
@@ -595,7 +608,7 @@ struct StreamView: View {
                                             }
                                             if ChatActions.offersReport(safety) {
                                                 Button("Report") {
-                                                    reportMessage(m)
+                                                    reportTarget = ReportTarget(message: m)
                                                 }
                                             }
                                             Button("Delete", role: .destructive) {
@@ -1125,21 +1138,6 @@ struct StreamView: View {
         guard !m.isDeleted, m.mediaData != nil else { return }
         m.mediaData = nil
         try? modelContext.save()
-    }
-
-    /// Report a specific message: open the user's mail client pre-filled with
-    /// the ReportMail body. Passes the RAW local petname (`peer.displayName`),
-    /// never a key-derived name fallback — see ReportMail's rules for what may
-    /// never be included.
-    private func reportMessage(_ m: Message) {
-        // Hide FIRST, unconditionally: initiating the report is the signal,
-        // not the mail actually sending — a user who backs out of Mail has
-        // still flagged the message, and it must leave the feed immediately.
-        reportedMessageIDs = ReportedMessages.adding(m.id, to: reportedMessageIDs)
-        guard let url = ReportMail.url(contactNickname: peer.displayName) else { return }
-        openURL(url) { accepted in
-            if !accepted { reportMailUnavailable = true }
-        }
     }
 
     /// Local delete of a single message (media bytes go with the row). The
