@@ -30,6 +30,18 @@ final class TermsPagerTests: XCTestCase {
         }
     }
 
+    /// Page 5 describes the built filter (drop, no reveal, sender block,
+    /// where the switch is); page 6 points to Safety & Support.
+    func testFilterAndSupportPagesMatchTheBuild() {
+        let filter = TermsContent.pages[4].paragraphs.joined(separator: " ")
+        XCTAssertFalse(filter.localizedCaseInsensitiveContains("tap"), filter)
+        XCTAssertTrue(filter.contains("never shown, stored or notified"))
+        XCTAssertTrue(filter.contains("isn't sent"))
+        XCTAssertTrue(filter.contains("Settings › Safety & Support › Content filter"))
+        let support = TermsContent.pages[5].paragraphs.joined(separator: " ")
+        XCTAssertTrue(support.contains("under Safety & Support"))
+    }
+
     func testGateAgreesEachPageThenAcceptsOnce() {
         var pager = TermsPager(mode: .gate)
         let pages = TermsContent.pages

@@ -82,27 +82,23 @@ enum TermsContent {
             agreeLabel: "I agree"
         ),
 
-        // 5 — Filtering.
-        // PENDING (filter step): filtered messages will never be displayed or
-        // stored — drop "hidden behind a notice, and you can tap to see it".
-        // PENDING (Safety & Support step): "Settings › Content filter" becomes
-        // "Settings › Safety & Support" once the filter row moves there.
+        // 5 — Filtering. Matches the built filter (receive drop, send block,
+        // one switch, text only).
         TermsPage(
-            title: "Filtered words stay hidden.",
+            title: "Filtered words never reach you.",
             paragraphs: [
-                "AeroNyra checks incoming text messages on your phone against a built-in list of slurs and any words you add. A message that matches is hidden behind a notice, and you can tap to see it if you choose.",
-                "Nothing is sent anywhere. Filtering is on unless you turn it off. Add your own words in Settings › Content filter.",
+                "AeroNyra checks text messages on your phone against a word list and any words you add. A message you receive with a filtered word is dropped: it is never shown, stored or notified, and turning the filter off later won't bring it back.",
+                "A message you write with a filtered word isn't sent.",
+                "The filter is on unless you turn it off in Settings › Safety & Support › Content filter, where you can also add your own words. It checks text only, not photos, videos or voice notes.",
             ],
             agreeLabel: "I agree"
         ),
 
         // 6 — Contact and support; the final Accept.
-        // PENDING (Safety & Support step): "under Report a problem" becomes
-        // "under Safety & Support" once the report row moves there.
         TermsPage(
             title: "We're here.",
             paragraphs: [
-                "To report inappropriate activity or get help, email \(supportAddress). You can also reach it in Settings at any time, under Report a problem.",
+                "To report inappropriate activity or get help, email \(supportAddress). You can also reach it in Settings at any time, under Safety & Support.",
                 "You are responsible for what you send and for who you pair with.",
                 "AeroNyra is provided as is, without warranty of any kind. The developer is not liable for damages arising from its use.",
             ],
