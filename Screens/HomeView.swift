@@ -57,6 +57,8 @@ struct HomeView: View {
     @State private var blockRequest: BlockRequest?
     /// The contact whose report flow is open (ReportFlowView).
     @State private var reportPeer: Peer?
+    /// The one row whose swipe actions are open (SwipeRevealRow); nil = none.
+    @State private var openSwipeRow: Data?
 
     /// Your local display name (Settings) — greets you on the surface line.
     @AppStorage("aeronyra.displayName") private var myName = ""
@@ -159,6 +161,10 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .id(accentHex)
                 }
+                // A tap anywhere closes an open swipe row (SwipeRevealRow).
+                .simultaneousGesture(TapGesture().onEnded {
+                    if openSwipeRow != nil { withAnimation(.easeOut(duration: 0.2)) { openSwipeRow = nil } }
+                })
 
                 // Pinned to the bottom — the peer list scrolls above it, this stays put.
                 pairingEntry
@@ -286,45 +292,49 @@ struct HomeView: View {
                 // Value link (step 5 deep link): the destination is declared
                 // once on the chats root's stack, so a programmatic path can
                 // reach the same screen. Same push, same back swipe.
-                NavigationLink(value: peer) {
-                    // The menu rides the INNER cell — on the NavigationLink
-                    // itself the link swallows the long-press and no menu shows.
-                    peerRow(peer, presence: z.presence)
-                        .contextMenu {
-                            // Guideline 1.2: Block / Unblock / Report (ChatActions.row).
-                            ForEach(ChatActions.row(safety(for: peer)), id: \.self) { action in
-                                Button(actionLabel(action), role: action == .block ? .destructive : nil) {
-                                    requestBlockAction(action, for: peer)
+                // Swipe left (Guideline 1.2): the row's actions side by side.
+                SwipeRevealRow(id: peer.publicKeyData, openID: $openSwipeRow,
+                               actions: swipeActions(for: peer)) {
+                    NavigationLink(value: peer) {
+                        // The menu rides the INNER cell — on the NavigationLink
+                        // itself the link swallows the long-press and no menu shows.
+                        peerRow(peer, presence: z.presence)
+                            .contextMenu {
+                                // Guideline 1.2: Block / Unblock / Report (ChatActions.row).
+                                ForEach(ChatActions.row(safety(for: peer)), id: \.self) { action in
+                                    Button(actionLabel(action), role: action == .block ? .destructive : nil) {
+                                        requestBlockAction(action, for: peer)
+                                    }
+                                }
+                                // "Clear History" — the contact (and its verification
+                                // state) survives; only the conversation goes. On a
+                                // reported chat, the evidence warning first.
+                                Button("Clear History", role: .destructive) {
+                                    if ChatActions.warnsBeforeDeleting(safety(for: peer)) {
+                                        peerPendingClear = peer
+                                    } else {
+                                        clearHistory(for: peer)
+                                    }
+                                }
+                                // "Remove Contact" — peer + conversation + crypto
+                                // trust all go, behind a confirm dialog. Not on a
+                                // BLOCKED chat: removal deletes the session, and a
+                                // later Unblock would re-enroll a contact with no
+                                // session (re-pairing an enrolled contact is a
+                                // no-op). Unblock first, then remove. A REPORTED
+                                // chat can be removed (never unblocked anyway).
+                                if safety(for: peer) != .blocked {
+                                    Button("Remove Contact", role: .destructive) {
+                                        peerPendingRemoval = peer
+                                    }
                                 }
                             }
-                            // "Clear History" — the contact (and its verification
-                            // state) survives; only the conversation goes. On a
-                            // reported chat, the evidence warning first.
-                            Button("Clear History", role: .destructive) {
-                                if ChatActions.warnsBeforeDeleting(safety(for: peer)) {
-                                    peerPendingClear = peer
-                                } else {
-                                    clearHistory(for: peer)
-                                }
-                            }
-                            // "Remove Contact" — peer + conversation + crypto
-                            // trust all go, behind a confirm dialog. Not on a
-                            // BLOCKED chat: removal deletes the session, and a
-                            // later Unblock would re-enroll a contact with no
-                            // session (re-pairing an enrolled contact is a
-                            // no-op). Unblock first, then remove. A REPORTED
-                            // chat can be removed (never unblocked anyway).
-                            if safety(for: peer) != .blocked {
-                                Button("Remove Contact", role: .destructive) {
-                                    peerPendingRemoval = peer
-                                }
-                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityActions {
+                        ForEach(ChatActions.row(safety(for: peer)), id: \.self) { action in
+                            Button(actionLabel(action)) { requestBlockAction(action, for: peer) }
                         }
-                }
-                .buttonStyle(.plain)
-                .accessibilityActions {
-                    ForEach(ChatActions.row(safety(for: peer)), id: \.self) { action in
-                        Button(actionLabel(action)) { requestBlockAction(action, for: peer) }
                     }
                 }
             }
@@ -399,6 +409,16 @@ struct HomeView: View {
         case .block: return "Block"
         case .unblock: return "Unblock"
         case .report: return "Report"
+        }
+    }
+
+    /// The swipe's buttons: ChatActions.row, side by side (none when reported).
+    private func swipeActions(for peer: Peer) -> [SwipeRevealAction] {
+        ChatActions.row(safety(for: peer)).map { action in
+            SwipeRevealAction(title: actionLabel(action),
+                              style: action == .report ? .destructive : .plain) {
+                requestBlockAction(action, for: peer)
+            }
         }
     }
 
