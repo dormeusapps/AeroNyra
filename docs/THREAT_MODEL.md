@@ -1,7 +1,7 @@
 # AeroNyra — Sender-Identity Threat Model
 
 **Phase 9a-1 · Metadata hardening**
-**Written 2026-06-29 · §2 and §3 rewritten 2026-09-19 (v59 connection-leak fix) · Status section updated 2026-09-19 · §9 updated 2026-09-27 (envelope seal, erase, mesh relaying, logs)**
+**Written 2026-06-29 · §2 and §3 rewritten 2026-09-19 (v59 connection-leak fix) · Status section updated 2026-09-19 · §9 updated 2026-09-27 (envelope seal, erase, mesh relaying, logs) · §11 added 2026-10-01 (reports to the developer)**
 
 Scope of this document: what an adversary can learn about **who sent a message**,
 across both transports, and which exposures Phase 9 will close, defer, or
@@ -619,3 +619,92 @@ channel (§4.1).
 | PTT nonce reuse | A, B | **Closed** — fresh key/session + directional keys + monotonic no-wrap counter; KAT-pinned (§10.2) |
 | PTT talk/silence + timing metadata | A, B, C | **Accepted/tracked** — traffic analysis only; content sealed (§10.5) |
 | Public-channel PTT (plaintext voice) | any-in-range | **Out of scope** — 1:1 sealed only; needs separate sign-off (§10.4) |
+
+## 11. Reports to the developer
+
+*Added 2026-10-01 with the Guideline 1.2 report step (commits `c61dd3f` … on
+`feature/live-ptt-over-ip`). Until then a report was a `mailto:` carrying only
+the app version, the time, the user's nickname for the contact and local
+reference numbers. This section covers what the report now carries and who
+learns it. Rules in code: the header of `Screens/ReportMail.swift`.*
+
+### 11.1 What a report is
+
+An email the user sends from their own mail app to `support@dormeusapps.com`:
+Apple Mail's composer inside the app, or the share sheet when Mail is not set
+up. The app builds it and shows all of it in a preview first; nothing leaves
+the phone unless the user sends it. There is no server, no upload, **no
+attachment and no image of any kind**. A report never travels over the app's
+own transports (Bluetooth or the relays).
+
+Only a SENT report changes anything for the contact: the contact is blocked,
+their libsignal session is deleted, and their identity key is refused for
+pairing (QR, invite, invite echo) for good on this install. Erase is the only
+reset. Cancelled, saved as a draft, or failed: nothing happens to the contact.
+
+### 11.2 What a report may contain
+
+- the reason the user chose (spam, harassment or bullying, sexual or explicit
+  content, threats or violence, other);
+- the user's local nickname for the contact;
+- a **contact code**: SHA-256(`"AeroNyra/report-contact/v1"` ‖ raw 32-byte
+  identity key), first 16 bytes, in hex. The same contact gives the same code
+  in every reporter's report; the code cannot be turned back into the key, so
+  it cannot be used to message or pair with anyone;
+- the app version and the time;
+- **anything the user chooses to type about the person**: name, phone,
+  email or social media, how they know them or where they met, how they got
+  the invite, and "What happened". Each only when filled. **A report may
+  therefore contain personal information about another person**, added by the
+  reporter;
+- for a message report, and only while its preview switch is on, the
+  reported message's text **verbatim** (the content filter never applies to
+  report content); a photo, video or voice note only as "[photo]" / "[video]"
+  / "[voice note]".
+
+Never: the identity key or any part of it, the npub, wire ids, local
+reference numbers, media bytes, images, the reporter's own key or code, or
+anything from another conversation. The typed fields exist only while the
+report screen is open: never saved on the device, never logged.
+
+### 11.3 Who learns what
+
+| Party | Learns |
+|---|---|
+| **The developer** (recipient of the email) | Everything in it, in plaintext; the reporter's email address (the sender), so a link between that address and the contact code; across reports, which codes are reported, how often, and by how many reporters |
+| **Both email providers** (the reporter's and the developer's) | The same email. Stored under their own policies; protected in transit by TLS at best, **not end-to-end** |
+| **The reported contact** | Not told. May infer a block: their messages stop being delivered and no delivery receipts come back |
+| Relays, Bluetooth observers (A, B, C, C2) | Nothing new: a report never uses the app's transports |
+
+### 11.4 Retention and disclosure
+
+Reports are kept for **up to 1 year, or longer if needed for a legal
+matter**. **We may share a report with law enforcement when required by law
+or when someone may be in danger.**
+
+### 11.5 Limits and accepted residuals
+
+- **A report is a claim, not proof.** The text comes from the reporter's own
+  phone and the email can be edited in the mail app before it is sent.
+- **No images, deliberately.** So that the developer never receives imagery by
+  email, including illegal imagery of minors. The preview tells the user not to
+  attach photos and to contact the police first if a crime has happened.
+- **No ejection.** The developer runs no server and cannot remove content from,
+  or disable, another person's app. Nothing in the app's copy claims otherwise.
+  Whether and how to add an "eject" mechanism is an open decision.
+- **Nothing is recalled.** Messages the contact already handed to a relay
+  before the block still arrive and are dropped on the reporter's phone
+  (`FirstContactCoordinator.receive`, both transports). Our own queued
+  messages to them never send (the verified gate refuses them after the
+  revoke).
+- **The contact code is a stable pseudonym** of the contact at the developer.
+
+### 11.6 Disposition
+
+| Exposure | Adversary | Disposition |
+|---|---|---|
+| Report content (reason, nickname, contact code, typed details, reported message text) | the developer; both email providers | **Accepted/disclosed** — user-initiated, shown in full first, sent only by the user; retention up to 1 year (§11.4) |
+| Personal information about another person, typed by the reporter | the developer; both email providers | **Accepted/disclosed** — optional fields, each sent only when filled |
+| Reporter's email address linked to a contact code | the developer | **Accepted** — inherent to a report by email |
+| Identity key, npub, wire ids, media, images in a report | — | **Closed by rule** — forbidden (`ReportMail.swift` header), pinned by tests |
+| Report inferred by the reported contact | the contact | **Accepted** — silent block; delivery stops |
