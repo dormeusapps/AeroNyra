@@ -143,6 +143,8 @@ final class PairingService {
     public enum BlockError: Error {
         /// No denylist store was wired (previews/tests) — never silently no-op.
         case storeUnavailable
+        /// A reported contact can never be unblocked.
+        case reported
     }
 
     /// The blocked raw-key set (snapshot). Reading this in a view body
@@ -151,6 +153,11 @@ final class PairingService {
 
     func isBlocked(_ rawKey: Data) -> Bool {
         blockedContacts.contains { $0.rawKey == rawKey }
+    }
+
+    /// Reported: blocked for good (see `reportAndBlock`).
+    func isReported(_ rawKey: Data) -> Bool {
+        blockedContacts.contains { $0.rawKey == rawKey && $0.reported }
     }
 
     /// Block a contact. Order:
@@ -166,6 +173,8 @@ final class PairingService {
     /// persist failure with nothing half-applied that the retry can't repair.
     func block(rawKey: Data, petname: String?) async throws {
         guard let blockedStore else { throw BlockError.storeUnavailable }
+        // A reported entry is stronger than a block: never downgrade it.
+        guard !isReported(rawKey) else { return }
         let entry = BlockedContact(rawKey: rawKey,
                                    blockedAt: Int64(Date().timeIntervalSince1970 * 1000),
                                    petname: petname,
@@ -188,12 +197,44 @@ final class PairingService {
     func unblock(rawKey: Data) async throws {
         guard let blockedStore else { throw BlockError.storeUnavailable }
         guard let entry = blockedContacts.first(where: { $0.rawKey == rawKey }) else { return }
+        // Reported = blocked for good: the contact can never pair again.
+        guard !entry.reported else { throw BlockError.reported }
         try await enrollment.enroll(identity: rawKey, verified: entry.wasVerified)
         let updated = blockedContacts.filter { $0.rawKey != rawKey }
         try blockedStore.save(updated)
         blockedContacts = updated
         await coordinator.setBlockedIdentities(blockedKeys)
         bumpVerificationEpoch()
+    }
+
+    /// Report + block + never pair again (Guideline 1.2): called only once a
+    /// report has been SENT. Order:
+    ///  1. persist the denylist entry flagged `reported` (keeping the first
+    ///     block's date and verified snapshot if already blocked),
+    ///  2. push the live drop set into the coordinator (inbound dies NOW),
+    ///  3. revoke enrollment (a no-op if a plain block already did),
+    ///  4. delete the libsignal session — nothing can ever resume on it,
+    ///     because `unblock` refuses a reported entry. Throws on failure; a
+    ///     retry is safe (every step is idempotent).
+    /// Like `block`, it does NOT touch Peer/Conversation/Message rows: the
+    /// chat stays, marked reported, as the user's evidence.
+    func reportAndBlock(rawKey: Data, petname: String?) async throws {
+        guard let blockedStore else { throw BlockError.storeUnavailable }
+        let existing = blockedContacts.first { $0.rawKey == rawKey }
+        let entry = BlockedContact(rawKey: rawKey,
+                                   blockedAt: existing?.blockedAt ?? Int64(Date().timeIntervalSince1970 * 1000),
+                                   petname: petname ?? existing?.petname,
+                                   wasVerified: existing?.wasVerified ?? enrollment.isVerified(rawKey),
+                                   reported: true)
+        var updated = blockedContacts.filter { $0.rawKey != rawKey }
+        updated.append(entry)
+        try blockedStore.save(updated)
+        blockedContacts = updated
+        await coordinator.setBlockedIdentities(blockedKeys)
+        try await enrollment.revoke(identity: rawKey)
+        defer { bumpVerificationEpoch() }
+        guard rawKey.count == 32 else { return }   // `peerIdentity` traps otherwise
+        try sessionStore.deleteSession(with: sessionStore.peerIdentity(fromRawKey: rawKey))
     }
 
     // MARK: - Our payload (QR / invite source)

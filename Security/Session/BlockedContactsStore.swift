@@ -13,7 +13,8 @@
 // invite echo) denied until the user unblocks. The entry carries a petname
 // SNAPSHOT (the Peer row's local nickname at block time, for the Blocked
 // Contacts list) and the prior verified flag so unblock can restore the
-// relationship exactly.
+// relationship exactly. A REPORTED entry (`reported`) is permanent: unblock
+// refuses it, so that identity can never pair again.
 //
 // FAILURE POSTURE: mirrors the allowlist — a MISSING file is the normal case
 // (empty denylist); a PRESENT-but-unopenable file THROWS, and the composition
@@ -39,14 +40,33 @@ public struct BlockedContact: Codable, Sendable, Identifiable, Equatable {
     public let petname: String?
     /// Whether the contact was SAS/QR-verified when blocked; unblock restores it.
     public let wasVerified: Bool
+    /// Reported (Guideline 1.2 report step): blocked FOR GOOD — never
+    /// unblocked, never paired again. Absent from files written before the
+    /// report step; those decode as not reported.
+    public let reported: Bool
 
     public var id: Data { rawKey }
 
-    public init(rawKey: Data, blockedAt: Int64, petname: String?, wasVerified: Bool) {
+    public init(rawKey: Data, blockedAt: Int64, petname: String?, wasVerified: Bool,
+                reported: Bool = false) {
         self.rawKey = rawKey
         self.blockedAt = blockedAt
         self.petname = petname
         self.wasVerified = wasVerified
+        self.reported = reported
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case rawKey, blockedAt, petname, wasVerified, reported
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        rawKey = try c.decode(Data.self, forKey: .rawKey)
+        blockedAt = try c.decode(Int64.self, forKey: .blockedAt)
+        petname = try c.decodeIfPresent(String.self, forKey: .petname)
+        wasVerified = try c.decode(Bool.self, forKey: .wasVerified)
+        reported = try c.decodeIfPresent(Bool.self, forKey: .reported) ?? false
     }
 }
 

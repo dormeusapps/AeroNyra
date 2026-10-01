@@ -71,8 +71,9 @@ final class BlockCharacterizationTests: XCTestCase {
                        contact: contact, contactStore: contactStore)
     }
 
+    /// Reads the stored session (`session(with:)` would hand back a new one).
     private func hasSession(_ h: Harness) -> Bool {
-        (try? h.sessionStore.session(with: h.sessionStore.peerIdentity(fromRawKey: h.contact))) != nil
+        h.sessionStore.hasSession(with: h.sessionStore.peerIdentity(fromRawKey: h.contact))
     }
 
     private func base64URL(_ data: Data) -> String {
