@@ -103,8 +103,8 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
     /// bypasses relay, so it exists only to match the BLE stream's shape. The
     /// same wrap arriving from multiple relays yields the same envelope id and
     /// collapses in the router's dedup.
-    public let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let inboundCont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    public let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let inboundCont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
 
     // MARK: Injected identity + relays
     private let relayURLs: [URL]
@@ -510,8 +510,8 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
         self.persistLedger = persistLedger
         self.now = now
 
-        var cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
-        self.incoming = AsyncStream<(link: UUID, envelope: Envelope)> { cont = $0 }
+        var cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
+        self.incoming = AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)> { cont = $0 }
         self.inboundCont = cont
     }
 
@@ -1065,11 +1065,12 @@ public final class NostrTransport: MeshTransport, AddressedTransport, @unchecked
             return
         }
         do {
-            let (envelope, _) = try NostrGiftWrap.unwrap(giftWrap: event,
-                                                         mySecret: ourSecretKey)
+            let (envelope, _, rumorCreatedAtSeconds) = try NostrGiftWrap.unwrapDetailed(
+                giftWrap: event, mySecret: ourSecretKey)
             processedLedger.containsOrInsert(event.id)
             scheduleLedgerSaveLocked()   // a new id was recorded — persist (debounced)
-            inboundCont.yield((link: Self.nostrSourceLink, envelope: envelope))
+            inboundCont.yield((link: Self.nostrSourceLink, envelope: envelope,
+                               relaySentAtSeconds: rumorCreatedAtSeconds))
             log.info("nostr: unwrapped inbound @ \(host, privacy: .public) → incoming")
         } catch {
             noteFailedWrapLocked(event.id)

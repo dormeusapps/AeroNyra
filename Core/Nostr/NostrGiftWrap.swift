@@ -131,6 +131,20 @@ enum NostrGiftWrap {
     /// verification or the sender binding (seal author != rumor author).
     static func unwrap(giftWrap: NostrEvent,
                        mySecret: Data) throws -> (envelope: Envelope, senderPublicKey: Data) {
+        let opened = try unwrapDetailed(giftWrap: giftWrap, mySecret: mySecret)
+        return (opened.envelope, opened.senderPublicKey)
+    }
+
+    /// `unwrap`, plus the INNER rumor's `created_at` in Unix SECONDS: the
+    /// sender's real clock at publish (`wrap` sets the rumor to `now`; only the
+    /// seal and the gift wrap are back-dated). Authenticated by the seal's
+    /// schnorr signature (its content is the rumor's NIP-44 ciphertext) and the
+    /// NIP-44 MAC, so a relay cannot change it; the sender sets it. The rumor's
+    /// own id is NOT recomputed — nothing reads it.
+    static func unwrapDetailed(giftWrap: NostrEvent,
+                               mySecret: Data) throws -> (envelope: Envelope,
+                                                          senderPublicKey: Data,
+                                                          rumorCreatedAtSeconds: Int64) {
 
         guard giftWrap.kind == wrapKind else { throw NostrGiftWrapError.wrongKind }
         guard giftWrap.isValid() else { throw NostrGiftWrapError.invalidSignature }
@@ -167,7 +181,7 @@ enum NostrGiftWrap {
               let envelope = Envelope(wire: wireBytes) else {
             throw NostrGiftWrapError.malformedEnvelope
         }
-        return (envelope, sealPub)
+        return (envelope, sealPub, rumor.createdAt)
     }
 
     // MARK: - Ephemeral key

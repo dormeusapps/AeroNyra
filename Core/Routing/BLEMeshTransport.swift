@@ -54,8 +54,8 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     // Phase 7b.1a: each inbound envelope is tagged with the SOURCE LINK it
     // arrived on, so the router can apply split-horizon — never relay a message
     // back to the peer it came from. Mirrors the `bundles` stream's shape.
-    public let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let inbound: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    public let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let inbound: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
 
     // MARK: - First-contact: inbound bundle stream (link-local key material)
     public let bundles: AsyncStream<(link: UUID, data: Data)>
@@ -242,8 +242,8 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
 
     // MARK: - Init
     public override init() {
-        var inb: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
-        self.incoming = AsyncStream<(link: UUID, envelope: Envelope)> { inb = $0 }
+        var inb: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
+        self.incoming = AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)> { inb = $0 }
         self.inbound = inb
 
         var bnd: AsyncStream<(link: UUID, data: Data)>.Continuation!
@@ -417,6 +417,11 @@ public final class BLEMeshTransport: NSObject, MeshTransport, @unchecked Sendabl
     func _testNotifyCharCount(_ link: UUID) -> Int { notifyReassembly[link]?.count ?? 0 }
     /// Runs the exact per-link disconnect cleanup the delegate uses.
     func _testDropNotifyLink(_ link: UUID) { notifyReassembly[link] = nil }
+    /// Runs the REAL frame dispatch for a completed envelope frame, as the
+    /// notify / write paths do once a frame is reassembled.
+    func _testDispatchEnvelopeFrame(_ payload: Data, from link: UUID) {
+        dispatchFrame(.envelope, payload, from: link)
+    }
     #endif
 
     // MARK: - Transmit: Envelope (relayable) — broadcast to all links
@@ -1200,7 +1205,7 @@ extension BLEMeshTransport {
                 return
             }
             log.info("RX envelope \(envelope.ciphertext.count) bytes → yielding")
-            inbound.yield((link: link, envelope: envelope))
+            inbound.yield((link: link, envelope: envelope, relaySentAtSeconds: nil))
         case .bundle:
             log.info("RX bundle \(payload.count) bytes → yielding")
             bundlesCont.yield((link: link, data: payload))

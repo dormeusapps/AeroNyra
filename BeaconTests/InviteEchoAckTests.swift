@@ -172,8 +172,8 @@ final class InviteEchoAckTests: XCTestCase {
 /// attempt and throws `noReachablePeers`, as the real one does with no link.
 private final class RecordingBLETransport: MeshTransport, @unchecked Sendable {
     let kind: TransportKind = .ble
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
     private let fails: Bool
     private let log = OSAllocatedUnfairLock(initialState: (attempts: 0, sent: [Envelope]()))
     var attempts: Int { log.withLock { $0.attempts } }
@@ -181,7 +181,7 @@ private final class RecordingBLETransport: MeshTransport, @unchecked Sendable {
 
     init(fails: Bool) {
         self.fails = fails
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }
@@ -199,13 +199,13 @@ private final class RecordingBLETransport: MeshTransport, @unchecked Sendable {
 /// An addressed (relay) transport that records every recipient it publishes to.
 private final class RecordingAddressedTransport: MeshTransport, AddressedTransport, @unchecked Sendable {
     let kind: TransportKind = .internet
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
     private let recipients = OSAllocatedUnfairLock(initialState: [Data]())
     var publishedTo: [Data] { recipients.withLock { $0 } }
 
     init() {
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }

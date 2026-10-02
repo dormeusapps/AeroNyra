@@ -115,17 +115,17 @@ final class EnvelopeSealWiringTests: XCTestCase {
 
 private final class RelayCountingTransport: MeshTransport, @unchecked Sendable {
     let kind: TransportKind = .ble
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
     private let relayLog = OSAllocatedUnfairLock(initialState: [MessageID]())
     var relayed: [MessageID] { relayLog.withLock { $0 } }
 
     init() {
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         incoming = AsyncStream { c = $0 }
         cont = c
     }
-    func inject(_ e: Envelope) { cont.yield((link: UUID(), envelope: e)) }
+    func inject(_ e: Envelope) { cont.yield((link: UUID(), envelope: e, relaySentAtSeconds: nil)) }
     func start() async throws {}
     func stop() { cont.finish() }
     func send(_ envelope: Envelope) async throws {}
@@ -142,8 +142,8 @@ private actor ForwardingReceiver: EnvelopeReceiver {
     private var waiters: [(Int, CheckedContinuation<Void, Never>)] = []
     init(inner: FirstContactCoordinator) { self.inner = inner }
 
-    func receive(_ envelope: Envelope) async {
-        await inner.receive(envelope)
+    func receive(_ envelope: Envelope, relaySentAtSeconds: Int64?) async {
+        await inner.receive(envelope, relaySentAtSeconds: relaySentAtSeconds)
         count += 1
         waiters.removeAll { n, c in
             if count >= n { c.resume(); return true }

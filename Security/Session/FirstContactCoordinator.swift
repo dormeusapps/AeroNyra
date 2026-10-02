@@ -1665,7 +1665,8 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// The router's `EnvelopeReceiver` entry point: an inbound envelope that
     /// survived dedup (and was relayed onward if it had hop budget) is handed
     /// here to be opened. Only this layer holds the keys.
-    func receive(_ envelope: Envelope) async {
+    /// `relaySentAtSeconds` (Unix SECONDS, relay copies only) is not read yet.
+    func receive(_ envelope: Envelope, relaySentAtSeconds: Int64?) async {
         do {
             let (peer, plaintext) = try store.openInbound(envelope.ciphertext)
             let rawKey = store.rawPublicKey(of: peer)

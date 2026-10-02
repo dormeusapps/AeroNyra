@@ -224,13 +224,13 @@ private final class RoutingEventLog: @unchecked Sendable {
 /// A BLE rail with no link: counts each attempt, then throws `noReachablePeers`.
 private final class FailingBLETransport: MeshTransport, @unchecked Sendable {
     let kind: TransportKind = .ble
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
     private let count = OSAllocatedUnfairLock(initialState: 0)
     var attempts: Int { count.withLock { $0 } }
 
     init() {
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }
@@ -247,15 +247,15 @@ private final class FailingBLETransport: MeshTransport, @unchecked Sendable {
 /// A relay rail that logs each publish into the shared log; throws if `fails`.
 private final class LoggingAddressedTransport: MeshTransport, AddressedTransport, @unchecked Sendable {
     let kind: TransportKind = .internet
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
     private let log: RoutingEventLog
     private let fails: Bool
 
     init(log: RoutingEventLog, fails: Bool) {
         self.log = log
         self.fails = fails
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }

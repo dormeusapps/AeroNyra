@@ -256,14 +256,14 @@ private final class EchoEventLog: @unchecked Sendable {
 /// `receive` asynchronously — an in-process radio between two coordinators.
 private final class PipeBLETransport: MeshTransport, @unchecked Sendable {
     let kind: TransportKind = .ble
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
     private let state = OSAllocatedUnfairLock<(target: FirstContactCoordinator?, sent: [Envelope])>(
         initialState: (target: nil, sent: []))
     var sent: [Envelope] { state.withLock { $0.sent } }
 
     init() {
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }
@@ -286,13 +286,13 @@ private final class PipeBLETransport: MeshTransport, @unchecked Sendable {
 /// shared ordered log and accepts it.
 private final class LoggingRelayTransport: MeshTransport, AddressedTransport, @unchecked Sendable {
     let kind: TransportKind = .internet
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
     private let log: EchoEventLog
 
     init(log: EchoEventLog) {
         self.log = log
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }

@@ -54,21 +54,21 @@ final class MessageRouterRelayPolicyTests: XCTestCase {
 /// async context, the test reads it after a sync point.
 private final class RecordingTransport: MeshTransport, @unchecked Sendable {
     let kind: TransportKind
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
 
     private let relayCounter = OSAllocatedUnfairLock(initialState: 0)
     var relayCount: Int { relayCounter.withLock { $0 } }
 
     init(kind: TransportKind) {
         self.kind = kind
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }
 
     func inject(link: UUID = UUID(), _ envelope: Envelope) {
-        cont.yield((link: link, envelope: envelope))
+        cont.yield((link: link, envelope: envelope, relaySentAtSeconds: nil))
     }
 
     func start() async throws {}
@@ -84,6 +84,6 @@ private final class RecordingReceiver: EnvelopeReceiver, @unchecked Sendable {
     private let onReceive: XCTestExpectation
     init(onReceive: XCTestExpectation) { self.onReceive = onReceive }
 
-    func receive(_ envelope: Envelope) async { onReceive.fulfill() }
+    func receive(_ envelope: Envelope, relaySentAtSeconds: Int64?) async { onReceive.fulfill() }
     func relayExclusions(forSourceLink link: UUID) async -> Set<UUID> { [] }
 }

@@ -78,11 +78,11 @@ final class MessageRouterNostrFallbackTests: XCTestCase {
 /// fallback branch.
 private final class FailingBLETransport: MeshTransport, @unchecked Sendable {
     let kind: TransportKind = .ble
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
 
     init() {
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }
@@ -97,8 +97,8 @@ private final class FailingBLETransport: MeshTransport, @unchecked Sendable {
 /// to publish to, and can be told to fail.
 private final class RecordingAddressedTransport: MeshTransport, AddressedTransport, @unchecked Sendable {
     let kind: TransportKind = .internet
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
 
     private let failure: NostrTransportError?
     private let recipients = OSAllocatedUnfairLock(initialState: [Data]())
@@ -110,7 +110,7 @@ private final class RecordingAddressedTransport: MeshTransport, AddressedTranspo
 
     init(failure: NostrTransportError?) {
         self.failure = failure
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }

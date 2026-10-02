@@ -45,7 +45,9 @@ import Foundation
 public protocol EnvelopeReceiver: AnyObject, Sendable {
     /// Attempt to open and process an inbound envelope (data message, ack,
     /// handshake, …). The receiver decides what it is; the router does not.
-    func receive(_ envelope: Envelope) async
+    /// `relaySentAtSeconds`: the relay copy's inner rumor `created_at` in Unix
+    /// SECONDS (sender's clock), nil for Bluetooth.
+    func receive(_ envelope: Envelope, relaySentAtSeconds: Int64?) async
 
     /// Which links a relay of an envelope that arrived on `link` must NOT go
     /// back out (split-horizon, Phase 7b.1a). The receiver alone knows identity,
@@ -176,8 +178,9 @@ public actor MessageRouter {
         for t in transports {
             let kind = t.kind
             let task = Task { [weak self, t] in
-                for await (link, envelope) in t.incoming {
-                    await self?.handleInbound(link: link, envelope, from: kind)
+                for await (link, envelope, relaySentAtSeconds) in t.incoming {
+                    await self?.handleInbound(link: link, envelope, from: kind,
+                                              relaySentAtSeconds: relaySentAtSeconds)
                 }
             }
             consumeTasks.append(task)
@@ -461,7 +464,8 @@ public actor MessageRouter {
 
     // MARK: Inbound
 
-    private func handleInbound(link: UUID, _ envelope: Envelope, from kind: TransportKind) async {
+    private func handleInbound(link: UUID, _ envelope: Envelope, from kind: TransportKind,
+                               relaySentAtSeconds: Int64?) async {
         // 1. Dedup. A message arriving by two relay paths (different ttl) has
         //    the same id and collapses to one here; loops break here too. This
         //    is also where the transport's notify+write duplicate of a single
@@ -494,7 +498,7 @@ public actor MessageRouter {
         // 3. Local delivery. Hand to Security, which alone can open it. (Same
         //    receiver for BOTH transports — Nostr inbound feeds the identical
         //    EnvelopeReceiver the BLE path uses.)
-        await receiver?.receive(envelope)
+        await receiver?.receive(envelope, relaySentAtSeconds: relaySentAtSeconds)
     }
 
     // MARK: Helpers

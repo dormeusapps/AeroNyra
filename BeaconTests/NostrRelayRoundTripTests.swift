@@ -47,7 +47,7 @@ final class NostrRelayRoundTripTests: XCTestCase {
 
         let returned = expectation(description: "our envelope returns via the relay")
         let consumer = Task {
-            for await (_, env) in transport.incoming where env.id == original.id {
+            for await (_, env, _) in transport.incoming where env.id == original.id {
                 returned.fulfill()
                 break
             }

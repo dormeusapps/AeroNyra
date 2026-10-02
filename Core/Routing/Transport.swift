@@ -73,7 +73,10 @@ public protocol MeshTransport: AnyObject, Sendable {
     /// paired with the ephemeral SOURCE LINK id it arrived on. The router
     /// consumes this; the transport produces it. The link lets the router (via
     /// the receiver) exclude the source peer when forwarding — Phase 7b.1a.
-    var incoming: AsyncStream<(link: UUID, envelope: Envelope)> { get }
+    /// `relaySentAtSeconds`: a relay copy's inner rumor `created_at` (Unix
+    /// SECONDS, the sender's clock); nil for anything that did not come
+    /// through a relay (Bluetooth has no send time).
+    var incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)> { get }
 
     /// Begin scanning/advertising and accepting connections.
     /// Throws if the radio is unavailable or permission is denied.

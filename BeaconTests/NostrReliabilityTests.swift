@@ -185,10 +185,10 @@ private final class FakeInviteRedeemer: InviteRedeeming, @unchecked Sendable {
 /// BLE that always misses, so routeOut takes the Tier-2 addressed rail.
 private final class FailingBLETransport: MeshTransport, @unchecked Sendable {
     let kind: TransportKind = .ble
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
     init() {
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }
@@ -202,12 +202,12 @@ private final class FailingBLETransport: MeshTransport, @unchecked Sendable {
 /// the test can replay it into the far side's real receive path.
 private final class CapturingAddressedTransport: MeshTransport, AddressedTransport, @unchecked Sendable {
     let kind: TransportKind = .internet
-    let incoming: AsyncStream<(link: UUID, envelope: Envelope)>
-    private let cont: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation
+    let incoming: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>
+    private let cont: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation
     private let record = OSAllocatedUnfairLock(initialState: [(envelope: Envelope, recipient: Data)]())
     var published: [(envelope: Envelope, recipient: Data)] { record.withLock { $0 } }
     init() {
-        var c: AsyncStream<(link: UUID, envelope: Envelope)>.Continuation!
+        var c: AsyncStream<(link: UUID, envelope: Envelope, relaySentAtSeconds: Int64?)>.Continuation!
         self.incoming = AsyncStream { c = $0 }
         self.cont = c
     }
