@@ -344,8 +344,10 @@ struct PairingView: View {
                 pairFailed = "not an AeroNyra code"
             } catch PairingService.PairError.malformed {
                 pairFailed = "that code was damaged — try again"
+            } catch PairingService.PairError.reported {
+                pairFailed = PairRefusalCopy.reported
             } catch PairingService.PairError.blocked {
-                pairFailed = "this contact is blocked — unblock them in Settings to pair again"
+                pairFailed = PairRefusalCopy.blocked
             } catch {
                 pairFailed = "couldn't connect — try again"
             }
@@ -384,8 +386,11 @@ struct PairingView: View {
             } catch PairingService.PairError.selfScan {
                 pairFailed = "that's your own invite"
                 RedactLog.event("invite-paste: FAILED self", "")
+            } catch PairingService.PairError.reported {
+                pairFailed = PairRefusalCopy.reported
+                RedactLog.event("invite-paste: FAILED reported", "")
             } catch PairingService.PairError.blocked {
-                pairFailed = "this contact is blocked — unblock them in Settings to pair again"
+                pairFailed = PairRefusalCopy.blocked
                 RedactLog.event("invite-paste: FAILED blocked", "")
             } catch PairingService.PairError.redeemInProgress {
                 pairFailed = "already redeeming that invite — one moment"

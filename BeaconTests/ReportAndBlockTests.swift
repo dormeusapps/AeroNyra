@@ -120,7 +120,7 @@ final class ReportAndBlockTests: XCTestCase {
         do {
             try await h.pairing.pairFromScanned(qr)
             XCTFail("a reported contact's QR must be refused")
-        } catch PairingService.PairError.blocked {}
+        } catch PairingService.PairError.reported {}
 
         let invite = Invite.mint(payload: PairingPayload(bundle: try h.contactStore.localPrekeyBundle(),
                                                          nostrPublicKey: nil),
@@ -128,7 +128,7 @@ final class ReportAndBlockTests: XCTestCase {
         do {
             _ = try await h.pairing.redeemInvite(PairingService.encodeInvite(invite))
             XCTFail("a reported contact's invite must be refused")
-        } catch PairingService.PairError.blocked {}
+        } catch PairingService.PairError.reported {}
         XCTAssertFalse(h.enrollment.contains(h.contact))
     }
 

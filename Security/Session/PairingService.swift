@@ -359,6 +359,7 @@ final class PairingService {
         case selfScan       // it's our own code
         case expired        // an invite whose TTL has passed (redeem path)
         case blocked        // identity is on the denylist — unblock to pair again
+        case reported       // identity was reported — never paired again, never unblocked
         case redeemInProgress // this minter's invite is already being redeemed
     }
 
@@ -414,6 +415,8 @@ final class PairingService {
         // BLOCKED (Guideline 1.2) — a blocked identity is refused BEFORE any
         // enroll or establishment. Silent re-admission is exactly what Block
         // must prevent; the user unblocks first (Settings → Blocked Contacts).
+        // A REPORTED identity is refused as such: it can never be unblocked.
+        guard !isReported(rawKey) else { throw PairError.reported }
         guard !isBlocked(rawKey) else { throw PairError.blocked }
 
         // ORDER (Finding A): enroll FIRST — onBundle's 7e closed-contact gate
@@ -479,6 +482,7 @@ final class PairingService {
 
         // BLOCKED (Guideline 1.2) — refuse an invite minted by a blocked
         // identity before any establishment/echo/enroll (see pairFromScanned).
+        guard !isReported(rawKey) else { throw PairError.reported }
         guard !isBlocked(rawKey) else { throw PairError.blocked }
 
         // DOUBLE-REDEEM GUARD. The same invite can arrive twice at once — a

@@ -1816,8 +1816,11 @@ private struct ReadyView: View {
         } catch PairingService.PairError.selfScan {
             redeemFailed = "that's your own invite"
             RedactLog.event("invite-redeem: FAILED self", "")
+        } catch PairingService.PairError.reported {
+            redeemFailed = PairRefusalCopy.reported
+            RedactLog.event("invite-redeem: FAILED reported", "")
         } catch PairingService.PairError.blocked {
-            redeemFailed = "this contact is blocked — unblock them in Settings to pair again"
+            redeemFailed = PairRefusalCopy.blocked
             RedactLog.event("invite-redeem: FAILED blocked", "")
         } catch PairingService.PairError.redeemInProgress {
             redeemFailed = "already redeeming that invite — one moment"
