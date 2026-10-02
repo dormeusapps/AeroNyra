@@ -3,9 +3,11 @@
 //  Beacon
 //
 //  Plain Block / Unblock (Guideline 1.2), shared by Home (long-press and
-//  accessibility actions) and contact settings: the confirm alerts, their
-//  copy, and the call into PairingService. A blocked chat stays in the chat
-//  list, read-only and marked "blocked"; nothing here deletes or hides a row.
+//  accessibility actions), contact settings and Settings › Blocked contacts:
+//  the confirm alerts, their copy, and the ONLY call into
+//  PairingService.unblock — every Unblock goes through this confirm. A
+//  blocked chat stays in the chat list, read-only and marked "blocked";
+//  nothing here deletes or hides a row.
 //
 //  Lives in Beacon/ (a synchronized folder), not Screens/ (a classic group).
 //
@@ -16,7 +18,7 @@ enum BlockCopy {
     static func blockTitle(_ name: String) -> String { "Block \(name)?" }
     static let blockMessage = "Their messages stop arriving, and they aren't told. They can't pair with you again unless you unblock them. Your chat stays in your chats, marked as blocked."
     static func unblockTitle(_ name: String) -> String { "Unblock \(name)?" }
-    static let unblockMessage = "They can message you again, and your chat goes back to normal."
+    static let unblockMessage = "They can message you again, and your chat goes back to normal. Messages they sent while blocked won't appear."
     static let blockFailedTitle = "Couldn't block"
     static let unblockFailedTitle = "Couldn't unblock"
     static let failedMessage = "Something went wrong saving the change. Please try again."

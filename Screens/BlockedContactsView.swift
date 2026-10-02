@@ -25,7 +25,10 @@ struct BlockedContactsView: View {
     @Environment(PairingService.self) private var pairing: PairingService?
 
     @State private var selected: BlockedContact?
-    @State private var unblockFailed = false
+    /// The pending Unblock, confirmed by the shared alert (BlockConfirmations)
+    /// — the same "Unblock [name]?" alert as Home and contact settings, which
+    /// also owns the "Couldn't unblock" failure alert and its log.
+    @State private var blockRequest: BlockRequest?
 
     private var hairlineColor: Color { Stillwater.Palette.biolume.opacity(0.09) }
     private var entries: [BlockedContact] { pairing?.blockedContacts ?? [] }
@@ -54,11 +57,7 @@ struct BlockedContactsView: View {
         .sheet(item: $selected) { entry in
             BlockedTranscriptView(entry: entry)
         }
-        .alert("Couldn't unblock", isPresented: $unblockFailed) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Something went wrong saving the change. Please try again.")
-        }
+        .blockConfirmations($blockRequest, pairing: pairing)
     }
 
     private var header: some View {
@@ -101,7 +100,7 @@ struct BlockedContactsView: View {
                         .buttonStyle(.plain)
                         // A reported contact can never be unblocked (Guideline 1.2).
                         if Self.offersUnblock(entry) {
-                            Button { unblock(entry) } label: {
+                            Button { blockRequest = Self.unblockRequest(for: entry) } label: {
                                 Text("Unblock")
                                     .font(Stillwater.Serif.regular(15))
                                     .foregroundStyle(Stillwater.Palette.biolume)
@@ -118,19 +117,17 @@ struct BlockedContactsView: View {
         }
     }
 
-    private func unblock(_ entry: BlockedContact) {
-        guard let pairing else {
-            unblockFailed = true
-            return
-        }
-        Task {
-            do {
-                try await pairing.unblock(rawKey: entry.rawKey)
-            } catch {
-                RedactLog.event("unblock: FAILED", "\(type(of: error))")
-                unblockFailed = true
-            }
-        }
+    /// The Unblock confirm for `entry`. Its name follows Home and contact
+    /// settings: the nickname, else the first six hex of the key, uppercased.
+    static func unblockRequest(for entry: BlockedContact) -> BlockRequest {
+        BlockRequest(kind: .unblock, rawKey: entry.rawKey,
+                     name: confirmName(for: entry), petname: entry.petname)
+    }
+
+    static func confirmName(for entry: BlockedContact) -> String {
+        if let n = entry.petname?.trimmingCharacters(in: .whitespacesAndNewlines), !n.isEmpty { return n }
+        let hex = entry.rawKey.map { String(format: "%02x", $0) }.joined()
+        return String(hex.prefix(6)).uppercased()
     }
 
     /// "blocked 1 Oct 2026" / "reported · blocked 1 Oct 2026".
