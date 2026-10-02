@@ -1,7 +1,7 @@
 # AeroNyra — Sender-Identity Threat Model
 
 **Phase 9a-1 · Metadata hardening**
-**Written 2026-06-29 · §2 and §3 rewritten 2026-09-19 (v59 connection-leak fix) · Status section updated 2026-09-19 · §9 updated 2026-09-27 (envelope seal, erase, mesh relaying, logs) · §11 added 2026-10-01 (reports to the developer)**
+**Written 2026-06-29 · §2 and §3 rewritten 2026-09-19 (v59 connection-leak fix) · Status section updated 2026-09-19 · §9 updated 2026-09-27 (envelope seal, erase, mesh relaying, logs) · §11 added 2026-10-01 (reports to the developer) · §11.5 updated and §12 added 2026-10-02 (block periods)**
 
 Scope of this document: what an adversary can learn about **who sent a message**,
 across both transports, and which exposures Phase 9 will close, defer, or
@@ -692,11 +692,21 @@ or when someone may be in danger.**
 - **No ejection.** The developer runs no server and cannot remove content from,
   or disable, another person's app. Nothing in the app's copy claims otherwise.
   Whether and how to add an "eject" mechanism is an open decision.
-- **Nothing is recalled.** Messages the contact already handed to a relay
-  before the block still arrive and are dropped on the reporter's phone
-  (`FirstContactCoordinator.receive`, both transports). Our own queued
-  messages to them never send (the verified gate refuses them after the
-  revoke).
+- **Nothing is recalled.** Nothing already on the reporter's phone is
+  removed by a block or a report: the chat stays, as evidence. Whatever the
+  contact sends from the block on is dropped on the reporter's phone before it
+  becomes a message (`FirstContactCoordinator.receive`, both transports):
+  never shown, stored, notified or acknowledged. A report can
+  never be undone, so for a reported contact this holds for good; for a plain
+  block it also holds after Unblock, by the block periods and refused ids of
+  §12, within the limits listed there (§12.5). Messages the contact handed to
+  a relay BEFORE the block, if the phone had not fetched them yet: while the
+  contact is blocked or reported they are not fetched (Block takes the
+  contact's tags out of the relay subscription), and any that still arrive are
+  dropped the same way; after a plain Unblock they arrive with a send time
+  before the block period and are delivered normally — correctly, since they
+  were sent before the block. Our own queued messages to them never send (the
+  verified gate refuses them after the revoke).
 - **The contact code is a stable pseudonym** of the contact at the developer.
 
 ### 11.6 Disposition
@@ -708,3 +718,161 @@ or when someone may be in danger.**
 | Reporter's email address linked to a contact code | the developer | **Accepted** — inherent to a report by email |
 | Identity key, npub, wire ids, media, images in a report | — | **Closed by rule** — forbidden (`ReportMail.swift` header), pinned by tests |
 | Report inferred by the reported contact | the contact | **Accepted** — silent block; delivery stops |
+
+## 12. Block periods — nothing sent while blocked appears after Unblock
+
+*Added 2026-10-02 (v68 §5a; commits `4b5fb24` store, `2572fc5` relay send
+time, `7830aea` the drop, `f20407a` tripwire, `4ff5a1a` Unblock copy). Before
+this, Unblock re-added the contact's inbox tags to the relay subscription; the
+REQ has no `since` (§3.2 item 7), so the relay replayed everything the contact
+had sent while blocked, and the phone opened, stored, notified and
+acknowledged it seconds after Unblock (seen twice on hardware, 2026-10-01). A
+sender's `flushUndelivered` resend under the same wire id could leak the same
+way over Bluetooth (from source; not seen on hardware).*
+
+**Invariant.** Anything a contact sends while blocked is never shown, stored,
+notified or acknowledged — not even after Unblock. For a contact who was never
+blocked, the receive path is unchanged. The fix lives only on the blocker's
+phone; the sender's app is unchanged and is never told.
+
+### 12.1 What is recorded
+
+`Security/Session/BlockHistoryStore.swift`: one file
+(`block-history.v1.seal`) sealed with ChaChaPoly under its own DEK (Keychain
+service `com.aeronyra.blockhistory.v1`), AAD-bound, in the same directory as
+the denylist, held in memory after one load at init.
+
+- **Block periods**, per contact (raw identity key): every
+  `[blockedAt, unblockedAt]` in Unix ms. `PairingService.unblock` writes the
+  period **first** — before re-enrolling and before removing the denylist
+  entry. If that write fails (file unreadable, store wiped or missing, disk
+  error), Unblock throws, nothing else changes, and the contact stays blocked.
+  `unblockedAt` is never before `blockedAt` (a clock set back cannot make a
+  period invalid and refuse Unblock forever).
+- **Refused envelope ids**: FIFO, capped at 8,192. Recorded for every envelope
+  dropped because of a block — at the blocked guard and by the period rule.
+  Written debounced (3 s), and flushed when the app goes to the background
+  and on the erase sequence's stop.
+
+Kept after Unblock (the denylist entry is not). Erase identity removes the key
+and then the file (`EmergencyWipe`), and so does the pre-onboarding leftover
+sweep, without opening the file (`BlockHistoryStore.LeftoverWipe`).
+
+### 12.2 The relay send time, and how far it is trusted
+
+A relay copy is a NIP-59 gift wrap (§3.1). `NostrGiftWrap.wrap` sets the
+inner **rumor's `created_at` to the sender's wall clock** (`now`,
+`Core/Nostr/NostrGiftWrap.swift:71`, used at `:82` and `:88`); only the seal
+and the outer wrap are back-dated, by a random 0–2 days (`:103`, `:120`,
+`NostrEvent.randomizedTimestamp`). The rumor's `created_at` has been the
+sender's wall clock, unchanged, since `d839406` (the gift wrap's first
+commit); this was checked at `4d2be3a` (the first relay transport), `ca988eb`
+(Build 10), `b1bb234` (Build 13), `dfbda7a` (Build 14) and HEAD. No
+production caller passes its own `now`. `unwrapDetailed`
+returns the rumor time in **seconds**; the transport hands it to `receive` as
+`relaySentAtSeconds`. Bluetooth has no send time (nil).
+
+- **A relay cannot change it.** The rumor's bytes are the plaintext of the
+  seal's NIP-44 payload: the NIP-44 MAC is checked when it is opened
+  (`NostrGiftWrap.swift:169`), and the seal's id covers that payload and is
+  schnorr-signed by the sender's key (`seal.isValid()`, `:162`). The rumor's
+  author must equal the seal's (`:177`).
+- **The sender sets it.** It is the sender's clock and the sender's claim; a
+  modified client could write any value. Accepted: the block is silent, so the
+  sender does not know when, or that, it ended.
+- **The rumor's own id is NOT recomputed.** Nothing reads it, so it cannot
+  affect this rule. A recompute check is a possible future hardening (its own
+  commit, with a known-answer test against captured old-build traffic).
+
+### 12.3 The rule
+
+In `FirstContactCoordinator.receive`, after decrypt and the blocked guard,
+before the announce and the payload switch (so before any event and any
+delivery receipt), for every payload kind:
+
+- only a relay copy (`relaySentAtSeconds` not nil) is checked; **Bluetooth is
+  exempt** — it carries no send time;
+- `sentMs = relaySentAtSeconds × 1000`, saturating at Int64's limits (a
+  sender-chosen value cannot trap);
+- for each of the sender's periods: `start` = `blockedAt` floored to the whole
+  second (the rumor time has one-second resolution); `end` = `unblockedAt` +
+  30 s (room for a sender clock a little ahead);
+- **drop if `start ≤ sentMs ≤ end`** — and record the envelope id as refused.
+
+`BlockPeriod.coversRelaySend(atSeconds:)`; logged as
+`first-contact: DROP sent while blocked` (no key, id or content).
+
+### 12.4 Refused ids
+
+Checked at the very top of `receive`, **before decrypt**: an envelope whose id
+was dropped for a block is dropped again, with no decrypt and no receipt
+(`first-contact: DROP refused id`). The sender's `flushUndelivered` resends an
+undelivered message under the same id, over Bluetooth or the relay; this
+catches that resend on both transports, during the block, after Unblock, and
+after a relaunch (the set is persisted). Envelope ids are 16 random bytes from
+the system CSPRNG (`MessageID.random()`, `Core/Models/Envelope.swift:45-50`;
+`byteCount = 16`, `:34`), assigned by the sender
+(`FirstContactCoordinator.swift:1128` text, `:1275` media; a resend reuses
+the original id). The set holds only ids dropped for a block, so a contact who
+was never blocked is never matched. A reported contact's messages are dropped
+by the denylist guard as before (and their session is deleted), whatever the
+history holds.
+
+### 12.5 Limits and accepted residuals
+
+- **R1 — a message first sent after Unblock is delivered, whenever it was
+  written.** If the sender had no internet and no Bluetooth route for the
+  whole block, their app could not send; the message goes out for the first
+  time after Unblock, under an id this phone never saw and with a relay time
+  after the period (or none, over Bluetooth). It is delivered. Closing this
+  needs a timestamp written when the message is composed, inside the payload:
+  `.text` has no room for one, so it means a new payload kind, which builds
+  ≤ 14 drop silently (no receipt) — a flag day. Accepted (Rubins, 2026-10-02).
+  **The Unblock alert's line "Messages they sent while blocked won't appear"
+  does not cover this case. That was a deliberate copy decision:** the line is
+  true in every case except a sender who was offline for the whole block,
+  which is rare, and a longer line would explain that rare case to every user.
+- **Sender clock behind.** If the sender's clock is N minutes behind, their
+  legitimate relay messages in the first N minutes + 30 s after Unblock fall
+  inside the period and are **silently dropped** (and their ids refused). This
+  only ever affects a contact who was blocked: the rule reads periods by the
+  sender's key, and a contact with none is never checked. A sender clock
+  **ahead** by more than 30 s lets a message sent just before Unblock through.
+  Phones set their clocks automatically; both are accepted.
+- **The sender can notice.** Messages they sent during the block never reach
+  Delivered (a relay copy stays "cast"; a Bluetooth one becomes "Not
+  delivered" and is retried, refused each time), while later ones do. A fake
+  receipt to hide this is forbidden: nothing sent while blocked is ever
+  acknowledged.
+- **A damaged history file fails open for delivery.** A present-but-unreadable
+  `block-history.v1.seal` boots empty for the life of the process
+  (`⚠️ block history load FAILED — booting empty`) and is **never written**, so
+  it stays exactly as found. Delivery fails open: the backlog of contacts
+  already unblocked is no longer filtered. Contacts **currently** blocked stay
+  protected by the separate denylist. Unblock is refused (the "Couldn't
+  unblock" alert). If the damage was temporary, a later launch that reads the
+  file restores normal behaviour; if the file is permanently damaged, only
+  Erase identity clears it.
+- **First-unlock assumption.** The store reads its file once, at init, and
+  treats any failure as damage. That is safe only because nothing can start
+  Beacon before the device's first unlock: the identity is a
+  `WhenUnlockedThisDeviceOnly` Keychain item and boot builds no store unless it
+  loads; the DEK is `AfterFirstUnlockThisDeviceOnly`; the only background modes
+  are Bluetooth, with no state restoration, no background tasks, no push, no
+  VoIP. `BeaconTests/FirstUnlockAssumptionTests.swift` fails if any of that
+  changes in `Info.plist` or the source. If background relaunch is ever added,
+  or the identity's Keychain protection class is relaxed, **add the retryable
+  locked state first** ("can't read yet" kept apart from "damaged").
+
+### 12.6 Disposition
+
+| Exposure | Adversary | Disposition |
+|---|---|---|
+| Relay backlog sent while blocked, delivered after Unblock | the blocked contact | **Closed** — dropped by the period rule before any event or receipt (§12.3) |
+| Same-id resend (Bluetooth or relay) after Unblock or relaunch | the blocked contact | **Closed** — refused id, dropped before decrypt (§12.4) |
+| Message first sent after Unblock, written while blocked (R1) | the blocked contact | **Accepted** — needs a sender timestamp (flag day); not covered by the Unblock alert line, by decision (§12.5) |
+| Forged or forward-dated rumor time | a modified sender client | **Accepted** — sender-controlled; a relay cannot alter it (seal signature + NIP-44 MAC, §12.2) |
+| Legitimate messages lost to a sender clock behind | the formerly blocked contact (loss, not exposure) | **Accepted** — first N min + 30 s after Unblock; never-blocked contacts unaffected (§12.5) |
+| Sender infers the block from never-Delivered messages | the blocked contact | **Accepted** — no fake receipts, ever (§12.5) |
+| Unreadable block-history file | — | **Accepted, fail open for delivery** — never written; currently blocked contacts still dropped; Unblock refused until readable or Erase (§12.5) |
+| Launch before first unlock reads the file as damaged | — | **Not reachable today** — pinned by `FirstUnlockAssumptionTests`; add the retryable locked state before changing it (§12.5) |
