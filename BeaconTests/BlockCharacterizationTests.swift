@@ -63,9 +63,13 @@ final class BlockCharacterizationTests: XCTestCase {
         let blockedStore = try BlockedContactsStore(directory: try makeDir("blocked"),
                                                     dek: SymmetricKey(size: .bits256),
                                                     keychainService: "test.bc.b.\(UUID().uuidString)")
+        let blockHistory = try BlockHistoryStore(directory: try makeDir("history"),
+                                                 dek: SymmetricKey(size: .bits256),
+                                                 keychainService: "test.bc.h.\(UUID().uuidString)")
         let pairing = PairingService(sessionStore: sessionStore, coordinator: coordinator,
                                      enrollment: enrollment, ourNostrPublicKey: nil,
-                                     blockedStore: blockedStore, initialBlocked: [])
+                                     blockedStore: blockedStore, blockHistory: blockHistory,
+                                     initialBlocked: [])
         return Harness(pairing: pairing, enrollment: enrollment, sessionStore: sessionStore,
                        blockedStore: blockedStore, coordinator: coordinator,
                        contact: contact, contactStore: contactStore)

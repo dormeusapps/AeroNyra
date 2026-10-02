@@ -307,3 +307,48 @@ public final class BlockHistoryStore: Wipeable, Sendable {
         }
     }
 }
+
+// MARK: - The period rule (v68 §5a)
+
+extension BlockPeriod {
+
+    /// Milliseconds after Unblock still treated as "sent while blocked": room
+    /// for a sender whose clock runs a little ahead (Rubins, 2026-10-02).
+    public static let afterUnblockMarginMs: Int64 = 30_000
+
+    /// Whether a relay copy whose inner rumor time is `seconds` (Unix SECONDS,
+    /// the sender's clock) was sent during this block. The rumor time has
+    /// whole-second resolution, so the block start is floored to its second;
+    /// the end is `unblockedAt` plus the margin, inclusive. The arithmetic
+    /// saturates: a sender-chosen time near Int64's limits cannot trap.
+    public func coversRelaySend(atSeconds seconds: Int64) -> Bool {
+        let (product, overflowed) = seconds.multipliedReportingOverflow(by: 1000)
+        let sentMs = overflowed ? (seconds < 0 ? Int64.min : Int64.max) : product
+        let startMs = (blockedAt / 1000) * 1000
+        let (sum, pastMax) = unblockedAt.addingReportingOverflow(Self.afterUnblockMarginMs)
+        let endMs = pastMax ? Int64.max : sum
+        return sentMs >= startMs && sentMs <= endMs
+    }
+}
+
+// MARK: - Leftover sweep
+
+extension BlockHistoryStore {
+
+    /// `LeftoverSweep`'s step for a PREVIOUS identity's history: destroys the
+    /// key, then removes the file, WITHOUT opening it (the store's init would
+    /// try to read it with the sweep's scratch key and log a false load
+    /// failure). Same key-before-file order as `wipe()`. Idempotent.
+    struct LeftoverWipe: Wipeable {
+        let directory: URL
+        let keychainService: String
+
+        func wipe() async throws {
+            try SessionStoreKey.destroy(service: keychainService)
+            let url = directory.appendingPathComponent(BlockHistoryStore.fileName, isDirectory: false)
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
+        }
+    }
+}

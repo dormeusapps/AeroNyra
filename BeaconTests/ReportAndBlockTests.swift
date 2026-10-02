@@ -59,9 +59,13 @@ final class ReportAndBlockTests: XCTestCase {
         let blockedStore = try BlockedContactsStore(directory: try makeDir("blocked"),
                                                     dek: SymmetricKey(size: .bits256),
                                                     keychainService: "test.rb.b.\(UUID().uuidString)")
+        let blockHistory = try BlockHistoryStore(directory: try makeDir("history"),
+                                                 dek: SymmetricKey(size: .bits256),
+                                                 keychainService: "test.rb.h.\(UUID().uuidString)")
         let pairing = PairingService(sessionStore: sessionStore, coordinator: coordinator,
                                      enrollment: enrollment, ourNostrPublicKey: nil,
-                                     blockedStore: blockedStore, initialBlocked: [])
+                                     blockedStore: blockedStore, blockHistory: blockHistory,
+                                     initialBlocked: [])
         return Harness(pairing: pairing, enrollment: enrollment, sessionStore: sessionStore,
                        blockedStore: blockedStore, identity: identity, sessionDir: sessionDir,
                        sessionDEK: sessionDEK, contact: contact, contactStore: contactStore)

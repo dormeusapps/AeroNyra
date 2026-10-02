@@ -37,6 +37,7 @@ struct LeftoverSweep {
         var pendingInvites = PendingInvitesStore.defaultKeychainService
         var blockedContacts = BlockedContactsStore.defaultKeychainService
         var eventLedger = ProcessedEventLedgerStore.defaultKeychainService
+        var blockHistory = BlockHistoryStore.defaultKeychainService
     }
 
     /// Deletes the libsignal snapshot file without opening the store.
@@ -68,6 +69,9 @@ struct LeftoverSweep {
                                      keychainService: services.blockedContacts),
             try ProcessedEventLedgerStore(directory: storeDirectory, dek: scratch,
                                           keychainService: services.eventLedger),
+            // v68 §5a: wiped WITHOUT opening (its init would read the file).
+            BlockHistoryStore.LeftoverWipe(directory: storeDirectory,
+                                           keychainService: services.blockHistory),
             NostrIdentityWipe(service: services.nostrIdentity),
             SessionStoreFileWipe(directory: storeDirectory),
             swiftData,

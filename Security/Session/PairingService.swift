@@ -42,6 +42,10 @@ final class PairingService {
     /// construct without one; nil makes `block`/`unblock` throw `.blocked`-
     /// adjacent errors rather than silently no-op. Production always passes it.
     @ObservationIgnored private let blockedStore: BlockedContactsStore?
+    /// Block periods + refused envelope ids (v68 §5a). Unblock records the
+    /// period here BEFORE anything else changes; the coordinator reads the
+    /// same instance. nil = Unblock refuses (never unblocks with no record).
+    @ObservationIgnored private let blockHistory: BlockHistoryStore?
 
     /// v59 Stage 4: registers the ONE-SHOT invite-echo tag on the Nostr
     /// transport for the minter's npub, keyed by the invite id, so the sealed
@@ -125,6 +129,7 @@ final class PairingService {
          enrollment: EnrollmentService,
          ourNostrPublicKey: Data?,
          blockedStore: BlockedContactsStore? = nil,
+         blockHistory: BlockHistoryStore? = nil,
          initialBlocked: [BlockedContact] = [],
          inviteEchoAckTimeout: Duration = .seconds(2),
          inviteEchoRelayRetryDelay: Duration = .seconds(2)) {
@@ -133,6 +138,7 @@ final class PairingService {
         self.enrollment = enrollment
         self.ourNostrPublicKey = ourNostrPublicKey
         self.blockedStore = blockedStore
+        self.blockHistory = blockHistory
         self.blockedContacts = initialBlocked
         self.inviteEchoAckTimeout = inviteEchoAckTimeout
         self.inviteEchoRelayRetryDelay = inviteEchoRelayRetryDelay
@@ -191,14 +197,27 @@ final class PairingService {
         bumpVerificationEpoch()
     }
 
-    /// Unblock: re-enroll from the snapshot (the libsignal session was never
-    /// torn down, so messaging resumes on the existing ratchet), then remove
-    /// the denylist entry and release the coordinator's drop set.
+    /// Unblock: record the block period, re-enroll from the snapshot (the
+    /// libsignal session was never torn down, so messaging resumes on the
+    /// existing ratchet), then remove the denylist entry and release the
+    /// coordinator's drop set.
+    ///
+    /// INVARIANT (v68 §5a): what the contact sent while blocked is never
+    /// shown, stored, notified or acknowledged, even after Unblock. The period
+    /// [blockedAt, now] is therefore written FIRST: if that write fails
+    /// (history unreadable, wiped, missing, or a disk error) this throws
+    /// before enrollment or the denylist change, and the contact stays blocked.
     func unblock(rawKey: Data) async throws {
         guard let blockedStore else { throw BlockError.storeUnavailable }
         guard let entry = blockedContacts.first(where: { $0.rawKey == rawKey }) else { return }
         // Reported = blocked for good: the contact can never pair again.
         guard !entry.reported else { throw BlockError.reported }
+        guard let blockHistory else { throw BlockError.storeUnavailable }
+        // A clock set back since the block must not make the period invalid
+        // (which would refuse Unblock forever): the end is never before the start.
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        try blockHistory.recordPeriod(rawKey: rawKey, blockedAt: entry.blockedAt,
+                                      unblockedAt: max(now, entry.blockedAt))
         try await enrollment.enroll(identity: rawKey, verified: entry.wasVerified)
         let updated = blockedContacts.filter { $0.rawKey != rawKey }
         try blockedStore.save(updated)

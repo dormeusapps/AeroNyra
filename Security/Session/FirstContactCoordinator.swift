@@ -306,6 +306,11 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// via the existing revoke machinery — this set is the belt on the seams
     /// revoke leaves open (.ack / .nostrIdentity / .inviteEcho).
     private var blockedIdentities: Set<Data> = []
+    /// v68 §5a — block periods + refused envelope ids, shared with
+    /// `PairingService` (which writes a period at Unblock). Set once at boot,
+    /// before the transports start. nil (tests, previews) = no block history:
+    /// the receive path below is then exactly what it was before §5a.
+    private var blockHistory: BlockHistoryStore?
     /// Injectable clock (seconds since Unix epoch) — wall-time in production, a
     /// fixed value in tests so epoch bucketing is deterministic.
     private var reconnectNow: @Sendable () -> UInt64 = { UInt64(Date().timeIntervalSince1970) }
@@ -892,6 +897,12 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     func setBlockedIdentities(_ identities: Set<Data>) {
         blockedIdentities = identities
         RedactLog.event("first-contact: blocked set updated (\(identities.count) blocked)", "")
+    }
+
+    /// v68 §5a — wire the block history. The composition root calls this at
+    /// boot next to `setBlockedIdentities`, before the transports start.
+    func setBlockHistory(_ history: BlockHistoryStore) {
+        blockHistory = history
     }
 
     /// Current epoch from the injected clock.
@@ -1665,8 +1676,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
     /// The router's `EnvelopeReceiver` entry point: an inbound envelope that
     /// survived dedup (and was relayed onward if it had hop budget) is handed
     /// here to be opened. Only this layer holds the keys.
-    /// `relaySentAtSeconds` (Unix SECONDS, relay copies only) is not read yet.
+    /// `relaySentAtSeconds`: a relay copy's inner rumor time (Unix SECONDS,
+    /// the sender's clock); nil for Bluetooth.
+    ///
+    /// INVARIANT (v68 §5a): anything a contact sends while blocked is never
+    /// shown, stored, notified or acknowledged — even after Unblock. Every
+    /// §5a drop below returns before the payload switch, so before any event
+    /// yield and any delivery receipt. For a contact with no block history
+    /// (never blocked), none of them can match: the refused-id set holds only
+    /// ids dropped for a block, and the period check finds no periods.
     func receive(_ envelope: Envelope, relaySentAtSeconds: Int64?) async {
+        // §5a REFUSED ID — an envelope id already dropped for a block (the
+        // sender's `flushUndelivered` resend reuses it, over either transport)
+        // is dropped BEFORE it is opened: no decrypt, no receipt.
+        let envelopeID = Data(envelope.id.bytes)
+        if let blockHistory, blockHistory.isRefused(envelopeID) {
+            RedactLog.event("first-contact: DROP refused id", "")
+            return
+        }
         do {
             let (peer, plaintext) = try store.openInbound(envelope.ciphertext)
             let rawKey = store.rawPublicKey(of: peer)
@@ -1683,7 +1710,24 @@ actor FirstContactCoordinator: EnvelopeReceiver {
             // peer's traffic flows through this function byte-for-byte as
             // before the guard existed.
             guard !blockedIdentities.contains(rawKey) else {
+                // §5a: remember the id, so a later copy of it is refused even
+                // after Unblock.
+                blockHistory?.recordRefused(envelopeID)
                 RedactLog.event("first-contact: DROP inbound from BLOCKED", "")
+                return
+            }
+
+            // §5a SENT WHILE BLOCKED — a relay copy whose inner send time falls
+            // in one of this sender's block periods (start floored to the
+            // second, end + 30 s) is dropped, whatever its payload kind, and
+            // its id refused from now on. Bluetooth carries no send time
+            // (nil), so this never applies to it.
+            if let relaySentAtSeconds, let blockHistory,
+               blockHistory.periods(for: rawKey).contains(where: {
+                   $0.coversRelaySend(atSeconds: relaySentAtSeconds)
+               }) {
+                blockHistory.recordRefused(envelopeID)
+                RedactLog.event("first-contact: DROP sent while blocked", "")
                 return
             }
 

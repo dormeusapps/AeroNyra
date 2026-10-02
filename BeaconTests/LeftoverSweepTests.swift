@@ -48,7 +48,9 @@ final class LeftoverSweepTests: XCTestCase {
         s.pendingInvites = "test.sweep.pending.\(u)"
         s.blockedContacts = "test.sweep.blocked.\(u)"
         s.eventLedger = "test.sweep.ledger.\(u)"
-        let all = [s.sessionKey, s.contactAllowlist, s.pendingInvites, s.blockedContacts, s.eventLedger]
+        s.blockHistory = "test.sweep.history.\(u)"
+        let all = [s.sessionKey, s.contactAllowlist, s.pendingInvites, s.blockedContacts, s.eventLedger,
+                   s.blockHistory]
         addTeardownBlock {
             for svc in all { try? SessionStoreKey.destroy(service: svc) }
             try? NostrSecretStore.destroy(service: s.nostrIdentity)

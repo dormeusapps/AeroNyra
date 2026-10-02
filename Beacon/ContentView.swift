@@ -180,6 +180,10 @@ struct ContentView: View {
     /// `makeSessionStack` and seeded BEFORE `mesh.start()` (no boot window);
     /// ReadyView wires the inbox's learned-npub hook to it.
     @State private var tagTableOwnerRef: NostrInboxTagTableOwner?
+    /// v68 §5a: the block history, so ReadyView can flush its debounced
+    /// refused ids when the app goes to the background. Built in
+    /// `makeSessionStack`; released with the erased stack.
+    @State private var blockHistoryRef: BlockHistoryStore?
 
     /// A2 (NOSTR_KEY_PROPAGATION): set by `bootstrap()` when the pubkey
     /// `loadOrCreate` returned differs from the last one this install recorded.
@@ -257,7 +261,8 @@ struct ContentView: View {
                               pendingInviteURL: $pendingInviteURL,
                               nostrIdentityChanged: $nostrIdentityChanged,
                               nostrTransport: nostrTransportRef,
-                              tagTableOwner: tagTableOwnerRef)
+                              tagTableOwner: tagTableOwnerRef,
+                              blockHistory: blockHistoryRef)
                         // The erase action is injected HERE, not on the outer
                         // body, because only `.ready` has the assembled store in
                         // scope. SettingsView (reachable only from within
@@ -723,6 +728,18 @@ struct ContentView: View {
             blockedLoaded = false
         }
 
+        // v68 §5a — block periods + refused envelope ids. Own DEK (a distinct
+        // Keychain service) seals a distinct file in the same store directory.
+        // It loads at init: a present-but-unreadable file boots EMPTY for
+        // delivery, logs, and refuses every write (so Unblock is refused) —
+        // see BlockHistoryStore. Its init throws only if the directory can't be
+        // created, which, like the DEK load, fails this stack build
+        // (`.bootFailed(.stackFailed)`). Registered in EmergencyWipe below.
+        let blockHistory = try BlockHistoryStore(
+            directory: directory,
+            dek: try SessionStoreKey.loadOrCreate(
+                service: BlockHistoryStore.defaultKeychainService))
+
         // ISSUE-5 — persisted Nostr backlog-replay ledger. Own DEK (a distinct
         // Keychain service) seals a distinct file in the same store directory.
         // Seeds NostrTransport's replay guard below and is registered in
@@ -964,6 +981,7 @@ struct ContentView: View {
                                                 enrollment: enroll,
                                                 ourNostrPublicKey: ourNostrPubkey,
                                                 blockedStore: blockedStore,
+                                                blockHistory: blockHistory,
                                                 initialBlocked: loadedBlocked)
 
         // v59 Stage 4 — the contact tag table's owner. Membership = the ENROLLED
@@ -985,6 +1003,7 @@ struct ContentView: View {
             sink: { table in tagTransport?.setTagTable(table) })
         tagAdapter.attach(tagOwner)
         tagTableOwnerRef = tagOwner
+        blockHistoryRef = blockHistory   // v68 §5a: background flush hook
         // The invite echo is the one message routed before the recipient is in
         // the table; PairingService registers its one-shot tag on the transport.
         pairingService?.registerInviteEchoTag = { minterNpub, inviteID in
@@ -1034,6 +1053,7 @@ struct ContentView: View {
                 contactStore,
                 pendingInvitesStore,
                 blockedStore,
+                blockHistory,
                 nostrEventLedgerStore,
                 try SwiftDataStoreWipe(),
                 DeviceResidueWipe(),   // self name/photo defaults + notifications + badge
@@ -1069,6 +1089,8 @@ struct ContentView: View {
             // transports start (mesh.start() below), so no envelope from a
             // blocked identity can slip through the boot window.
             await coord.setBlockedIdentities(Set(loadedBlocked.map(\.rawKey)))
+            // v68 §5a — the block history, wired before the transports start.
+            await coord.setBlockHistory(blockHistory)
             
             // v59 Stage 4 — seed the tag table BEFORE the first socket opens.
             // setTagTable and start() share the transport's serial queue, so
@@ -1156,7 +1178,14 @@ struct ContentView: View {
                 // router's; the process is retired, so it never restarts.
                 // Advertising can resume after a Bluetooth power toggle
                 // (constants only; known gap).
-                stopRouter: { await router?.stop() },
+                stopRouter: {
+                    await router?.stop()
+                    // v68 §5a: write any debounced refused ids (the ledger
+                    // flushes on its transport's stop the same way).
+                    do { try blockHistoryRef?.flush() } catch {
+                        RedactLog.event("block history: flush on stop FAILED", "\(type(of: error))")
+                    }
+                },
                 // DEFERRED (Option B, 2026-09-27): no call/walkie teardown
                 // hook. Add one only if a later test shows a mic light or
                 // walkie activity after an erase. The restart screen asks
@@ -1308,6 +1337,7 @@ struct ContentView: View {
         nostrIdentity = nil
         nostrTransportRef = nil
         tagTableOwnerRef = nil
+        blockHistoryRef = nil
         enrollmentService = nil
         pairingService = nil
     }
@@ -1462,6 +1492,8 @@ private struct ReadyView: View {
     /// v59 Stage 4: the tag-table owner, so the inbox's learned-npub hook can
     /// schedule a rebuild. nil when no Nostr identity exists.
     let tagTableOwner: NostrInboxTagTableOwner?
+    /// v68 §5a: flushed on `.background` (debounced refused ids). nil before boot.
+    let blockHistory: BlockHistoryStore?
 
     @State private var inbox: MessageInbox?
     /// FaceTime v1 (P3): app-wide call layer — a ring must reach the user on
@@ -1716,6 +1748,13 @@ private struct ReadyView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            // v68 §5a: iOS may end a suspended app without warning, so write any
+            // debounced refused ids now rather than within the next 3 s.
+            if phase == .background {
+                do { try blockHistory?.flush() } catch {
+                    RedactLog.event("block history: flush on background FAILED", "\(type(of: error))")
+                }
+            }
             // Foreground pass of the reaper (idempotent; nil-safe before the
             // boot task has built the inbox — that task runs its own pass).
             if phase == .active {
