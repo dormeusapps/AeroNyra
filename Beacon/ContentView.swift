@@ -521,6 +521,10 @@ struct ContentView: View {
     /// door (no exemption). The gate lives here, not in BootRouter, so the
     /// router's pinned decision table (BootRouterTests) stays untouched.
     private func bootstrap() {
+        // Nothing readable leaves the device: exclude Application Support (every
+        // store, created later or not) from backup BEFORE the terms gate reads
+        // its file and before any store opens. Never blocks launch.
+        BackupExclusion.excludeApplicationSupport()
         let step = LaunchGate.run(
             retirement: StackRetirementLatch.shared.bootstrapDecision,
             termsAccepted: { ((try? TermsAcceptanceStore.standard())?.isAccepted()) ?? false },
