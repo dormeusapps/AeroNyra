@@ -29,7 +29,6 @@
 
 import SwiftUI
 import SwiftData
-import CryptoKit
 
 struct HomeView: View {
 
@@ -508,27 +507,6 @@ struct HomeView: View {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // MARK: Per-peer breath desync — derived, so it needs no data field
-    // ─────────────────────────────────────────────────────────────
-    //
-    // Same idea as Peer.avatarHue: a stable SHA-256 of the key gives every
-    // person a fixed-but-distinct breath tempo + phase, so the lights don't
-    // pulse in lockstep and stay consistent across launches.
-
-    private func breath(for peer: Peer) -> Double {
-        let b = Double(digestByte(peer.publicKeyData, 0)) / 255.0
-        return Stillwater.Motion.breathFast
-             + b * (Stillwater.Motion.breathSlow - Stillwater.Motion.breathFast)  // 4.0 … 6.5
-    }
-    private func delay(for peer: Peer) -> Double {
-        Double(digestByte(peer.publicKeyData, 1)) / 255.0 * 1.5                     // 0 … 1.5s
-    }
-    private func digestByte(_ data: Data, _ index: Int) -> UInt8 {
-        let digest = Array(SHA256.hash(data: data))
-        return index < digest.count ? digest[index] : 0
-    }
-
-    // ─────────────────────────────────────────────────────────────
     // MARK: Pairing entry ("let someone in")
     // ─────────────────────────────────────────────────────────────
     private var pairingEntry: some View {
@@ -550,38 +528,6 @@ struct HomeView: View {
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// MARK: - A peer's presence light (breathing / rippling by depth)
-// ─────────────────────────────────────────────────────────────
-private struct PresenceLight: View {
-    let presence: Stillwater.Presence
-    let breath: Double
-    let delay: Double
-    var accent: Int = 0
-
-    var body: some View {
-        let _ = accent
-        ZStack {
-            switch presence {
-            case .near:
-                BreathingDot(color: presence.light, size: 13, glow: 20,
-                             duration: breath, delay: delay, accent: accent)
-            case .throughOthers:
-                RippleRing(color: Stillwater.Palette.biolume, duration: 3.4, accent: accent)
-                BreathingDot(color: presence.light, size: 11, glow: 14,
-                             duration: breath, delay: delay, accent: accent)
-            case .relay:
-                BreathingDot(color: presence.light, size: 10, glow: 0,
-                             duration: breath, delay: delay, dim: true, accent: accent)
-            case .gone:
-                Circle()
-                    .strokeBorder(Stillwater.Palette.goneRing, lineWidth: 1)
-                    .frame(width: 10, height: 10)
-            }
-        }
-    }
-}
-
 // A soft light that breathes: opacity + scale on a sine-eased loop, desynced.
 //
 // GATED (Stillwater): the loop runs only while `breathing` is true — motion
@@ -599,9 +545,8 @@ private struct BreathingDot: View {
     var delay: Double = 0
     var dim: Bool = false
     var accent: Int = 0
-    /// Presence gate. Defaults true: the per-peer `PresenceLight` dots exist
-    /// only while their peer IS present, so they always breathe; the wordmark
-    /// key light passes the real near-gate.
+    /// Presence gate. Defaults true; the wordmark key light, the only caller,
+    /// passes the real near-gate.
     var breathing: Bool = true
 
     /// rest = false … peak = true. Never set outside the transactions below.
