@@ -336,10 +336,6 @@ struct HomeView: View {
         // Guideline 1.2: a blocked or reported chat is muted and labelled.
         let marked = safety(for: peer).label
         return HStack(spacing: 18) {
-            PresenceLight(presence: tier, breath: breath(for: peer), delay: delay(for: peer), accent: accentHex)
-                .frame(width: 30, height: 30)
-                .opacity(marked == nil ? 1 : 0.45)
-
             contactIcon(for: peer)
                 .opacity(marked == nil ? 1 : 0.45)
 
