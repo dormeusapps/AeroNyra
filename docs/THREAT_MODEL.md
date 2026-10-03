@@ -1,7 +1,7 @@
 # AeroNyra — Sender-Identity Threat Model
 
 **Phase 9a-1 · Metadata hardening**
-**Written 2026-06-29 · §2 and §3 rewritten 2026-09-19 (v59 connection-leak fix) · Status section updated 2026-09-19 · §9 updated 2026-09-27 (envelope seal, erase, mesh relaying, logs) · §11 added 2026-10-01 (reports to the developer) · §11.5 updated and §12 added 2026-10-02 (block periods)**
+**Written 2026-06-29 · §2 and §3 rewritten 2026-09-19 (v59 connection-leak fix) · Status section updated 2026-09-19 · §9 updated 2026-09-27 (envelope seal, erase, mesh relaying, logs) · §11 added 2026-10-01 (reports to the developer) · §11.5 updated and §12 added 2026-10-02 (block periods) · §13 added 2026-10-03 (backups)**
 
 Scope of this document: what an adversary can learn about **who sent a message**,
 across both transports, and which exposures Phase 9 will close, defer, or
@@ -876,3 +876,131 @@ history holds.
 | Sender infers the block from never-Delivered messages | the blocked contact | **Accepted** — no fake receipts, ever (§12.5) |
 | Unreadable block-history file | — | **Accepted, fail open for delivery** — never written; currently blocked contacts still dropped; Unblock refused until readable or Erase (§12.5) |
 | Launch before first unlock reads the file as damaged | — | **Not reachable today** — pinned by `FirstUnlockAssumptionTests`; add the retryable locked state before changing it (§12.5) |
+
+---
+
+## 13. Device and iCloud backups
+
+*Added 2026-10-03 (commit `55b822e`, backup exclusion). Line numbers are at
+`a7475fd`. Before `55b822e`, an iPhone or iCloud backup carried the app's
+messages, media and contacts. The SwiftData store is not sealed by an app key
+(the user-presence `MessageVault` is not used in production), so anyone who
+could open the backup could read them.*
+
+**Invariant.** From the first launch of a build with `55b822e`, nothing the
+app stores under Application Support is included in a new backup. What still
+reaches backups is listed in §13.3. Private keys never leave the device in a
+form another device can use.
+
+### 13.1 What is kept out of backups
+
+- **All of Application Support, marked excluded at every launch.**
+  `BackupExclusion.excludeApplicationSupport()`
+  (`Beacon/BackupExclusion.swift:52-65`) sets `isExcludedFromBackup` on the
+  folder and reads it back (`:34-46`). It is the first line of `bootstrap()`
+  (`Beacon/ContentView.swift:527`), before the terms gate reads its file and
+  before any store opens. A folder's exclusion covers files created in it
+  later. A failure never blocks launch: it logs
+  `backup: exclusion FAILED — app data may be included in backups` (`:44`,
+  `:56`), and the next launch tries again.
+- **What that folder holds:**
+  - the SwiftData store: messages, media bytes (`Message.mediaData`,
+    `Core/Models/PersistentModels.swift:241`), contacts and contact photos
+    (`Peer.customAvatarData`, `:55`), in the default location
+    `Application Support/default.store` with its sidecars
+    (`Beacon/ContentView.swift:1404-1414`; `Security/Wipe/SwiftDataStoreWipe.swift:23-27`);
+  - `BeaconSignalStore/`: every sealed store and the session snapshot
+    (`Security/Session/PersistentBeaconStore.swift:178-182`);
+  - the terms acceptance file (`Beacon/TermsAcceptance.swift:40`).
+- **Media temp files live in `tmp/`,** which iOS never backs up:
+  `Screens/VoiceRecorder.swift:60`, `Core/Media/VideoTranscoder.swift:75, 119`,
+  `Screens/Conversation1View.swift:1843, 1961`, `Screens/VideoBubble.swift:111`,
+  `Stories/StoryComposerView.swift:388, 513`, `Core/Media/PTTCaptureEngine.swift:303`,
+  `Core/Media/WaveformExtractor.swift:28`.
+- Hardware: the iPad logged `backup: Application Support excluded=true`
+  before any store loaded (Debug build of `55b822e`, 2026-10-02). The line is
+  Debug-only (`Beacon/BackupExclusion.swift:60-64`).
+
+### 13.2 Limit: backups made before the update
+
+The exclusion is set when the updated app launches. A backup made before the
+first launch of a build with `55b822e`, including every backup of Build 14 and
+earlier, still contains that data until the backup is replaced or deleted. The
+app cannot reach or change an existing backup.
+
+### 13.3 What still lands in backups (UserDefaults)
+
+UserDefaults (`Library/Preferences`) is backed up by iOS and cannot be excluded
+this way (`Beacon/BackupExclusion.swift:19-21`). It holds:
+
+| Key | Holds | Where |
+|---|---|---|
+| `aeronyra.displayName` | the user's own display name | `Screens/SettingsView.swift:36`, `Screens/HomeView.swift:62` |
+| `aeronyra.selfPhoto` | the user's own photo (JPEG bytes) | `Screens/SettingsView.swift:37` |
+| `aeronyra.contentFilter.words.v1` | the words the user added to the content filter | `Screens/ContentFilter.swift:233` |
+| `aeronyra.reportedMessages.v1` | local ids of messages the user reported (shows that they reported) | `Screens/Conversation1View.swift:150`; `Screens/ReportMail.swift:94` |
+| `nostr.lastKnownLocalPubkey.v1` | the user's own Nostr **public** key | `Beacon/ContentView.swift:868-873`; `Security/Wipe/DeviceResidueWipe.swift:57` |
+| `aeronyra.contentFilter.enabled.v1` | filter on/off | `Screens/ContentFilter.swift:232` |
+| `aeronyra.contentFilter.introShown.v1` | filter pop-up already shown | `Beacon/ContentFilterView.swift:21` |
+| `aeronyra.accentHex` | accent colour | `DesignSystem/Stillwater.swift:84` |
+| `aeronyra.walkie.allowInbound.v1` | "Allow walkie from contacts" | `Core/Calls/WalkieSettings.swift:28` |
+| `aeronyra.eulaAccepted.v1` | version 1 terms record: never written by current code, removed on acceptance | `Beacon/TermsAcceptance.swift:43, 81` |
+
+No private key and no message content is stored in UserDefaults.
+**Fix B** (designed, parked, **not approved**) would move the first five rows
+into a sealed, backup-excluded store. Until it ships, they reach backups.
+
+### 13.4 Keychain
+
+Every Keychain item the app writes is a `ThisDeviceOnly` class and sets
+`kSecAttrSynchronizable: false`. The update paths change only
+`kSecValueData`, so they never change either setting.
+
+| Item | Accessibility | Synchronizable |
+|---|---|---|
+| Identity key (wrapped by the Secure Enclave key when present) | `WhenUnlockedThisDeviceOnly` (`Security/Identity/IdentityKeypair.swift:314-315`; production protection `Beacon/ContentView.swift:551`) | false (`IdentityKeypair.swift:303`) |
+| Secure Enclave key handle (the key itself never leaves the Enclave) | `WhenUnlockedThisDeviceOnly` (`Security/Identity/SecureEnclaveWrapper.swift:231, 269`) | false (`:268`) |
+| Six store keys (`session.dek.v1`, one per service) | `AfterFirstUnlockThisDeviceOnly` (`Security/Session/SessionStoreKey.swift:89`) | false (`:88`) |
+| Nostr secret key | `AfterFirstUnlockThisDeviceOnly` (`Core/Nostr/NostrSecretStore.swift:70`) | false (`:69`) |
+
+(`MessageVault`'s key, `Security/AtRest/MessageVault.swift:289, 297`, follows
+the same rule but is not created in production.)
+
+So no item is ever in iCloud Keychain, and no item moves to another device,
+whether by backup, restore or migration.
+
+### 13.5 Same-phone restore — UNTESTED
+
+Apple's documentation says `ThisDeviceOnly` Keychain items can be included in
+an **encrypted** backup, sealed to that phone's hardware, and restored only to
+the **same** phone. If so, restoring such a backup to the same phone could bring
+back the identity key, the Nostr secret and the store keys, while chats and
+contacts do not come back (Application Support is excluded, §13.1). The app
+would then boot with the old identity and no contacts; contacts would have to
+pair again. **Untested on this app**, and not relied on anywhere. A restore to
+a **different** phone brings back no Keychain item: the app finds no identity,
+and the sweep before onboarding clears any old store files and the UserDefaults
+in §13.3 except the accent colour and the legacy terms key
+(`Security/Wipe/LeftoverSweep.swift:6-14, 57-62`;
+`Security/Wipe/DeviceResidueWipe.swift:86-94`; `Beacon/ContentView.swift:601-606`).
+
+### 13.6 Delete and reinstall on the same phone
+
+Deleting the app removes its container: Application Support (messages, media,
+contacts, sealed stores, terms acceptance) and UserDefaults (name, photo,
+settings). The Keychain items survive. Reinstalling therefore boots the same
+identity with no messages, contacts or settings, and shows the terms again (the
+acceptance file lived in Application Support). Hardware: "Delete + reinstall
+(identity kept)" passed on 2026-10-01 (session handoff v68 §4). That check
+recorded the identity surviving. The removal of the container is standard iOS
+behaviour and was not separately recorded.
+
+### 13.7 Disposition
+
+| Exposure | Adversary | Disposition |
+|---|---|---|
+| Messages, media, contacts, contact photos and sealed stores in a new backup | whoever can open the backup | **Closed** for builds with `55b822e`, from their first launch (§13.1) |
+| Backups made before that first launch | whoever can open the backup | **Accepted** — the app cannot reach existing backups (§13.2) |
+| Own name, own photo, own filter words, reported-message ids, own Nostr public key, preferences in backups | whoever can open the backup | **Open** — Fix B parked, not approved (§13.3) |
+| Private keys in iCloud Keychain or on another device | — | **Closed** — every item `ThisDeviceOnly`, non-synchronizable (§13.4) |
+| Identity returning after a same-phone encrypted restore, without chats | — | **Untested** — Apple-documented behaviour, not checked on this app (§13.5) |
