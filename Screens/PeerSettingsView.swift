@@ -370,7 +370,7 @@ struct PeerSettingsView: View {
         case .normal, .blocked:
             return "Blocking is silent — they are never notified. Their messages stop arriving, they can't re-pair unless you unblock them, and your chat stays in your chats, marked as blocked."
         case .reported:
-            return "You reported this contact. They can never pair with you again, and your chat stays in your chats, marked as reported."
+            return "You reported this contact. They can never pair with you again. Your chat with them stays in your list, marked as reported."
         }
     }
 

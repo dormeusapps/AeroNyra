@@ -31,6 +31,14 @@ enum ReportFlowCopy {
     static let previewLead = "This is everything the email will contain. The developer will also see your email address."
     static let safetyLine = "Don't attach photos. Keep this chat; it stays in your app as evidence."
     static let previewFooter = "Photos, videos and voice notes are never included. The developer reviews every report within 24 hours."
+
+    /// First line of a not-sent result. A message report hid its message at
+    /// Confirm and that stays; a contact report has no message.
+    static func notSentLead(name: String, isMessageReport: Bool) -> String {
+        isMessageReport
+            ? "The reported message stays hidden from your chat. Nothing else has changed for \(name)."
+            : "Nothing has changed for \(name)."
+    }
 }
 
 struct ReportFlowView: View {
@@ -370,7 +378,7 @@ struct ReportFlowView: View {
     }
 
     private var notSentParagraphs: [String] {
-        var out = ["Nothing has changed for \(name)."]
+        var out = [ReportFlowCopy.notSentLead(name: name, isMessageReport: message != nil)]
         if plainBlockDone { out.append("\(name) is blocked. You can unblock them in their contact settings.") }
         if plainBlockFailed { out.append("\(name) couldn't be blocked. Please try again.") }
         return out

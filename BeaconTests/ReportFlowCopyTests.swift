@@ -24,4 +24,22 @@ final class ReportFlowCopyTests: XCTestCase {
         XCTAssertEqual(ReportFlowCopy.previewLead,
                        "This is everything the email will contain. The developer will also see your email address.")
     }
+
+    /// Not sent: a message report says its message stays hidden; a contact
+    /// report has no message to mention.
+    func testTheNotSentPageSaysWhatStillChanged() {
+        XCTAssertEqual(ReportFlowCopy.notSentLead(name: "Sam", isMessageReport: true),
+                       "The reported message stays hidden from your chat. Nothing else has changed for Sam.")
+        XCTAssertEqual(ReportFlowCopy.notSentLead(name: "Sam", isMessageReport: false),
+                       "Nothing has changed for Sam.")
+    }
+
+    /// The reported-contact footer in contact settings, word for word.
+    func testTheReportedContactFooter() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Screens/PeerSettingsView.swift")
+        let literals = SafetyCopyTests.stringLiterals(in: try String(contentsOf: url, encoding: .utf8))
+        XCTAssertTrue(literals.contains(
+            "\"You reported this contact. They can never pair with you again. Your chat with them stays in your list, marked as reported.\""))
+    }
 }
