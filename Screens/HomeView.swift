@@ -340,6 +340,9 @@ struct HomeView: View {
                 .frame(width: 30, height: 30)
                 .opacity(marked == nil ? 1 : 0.45)
 
+            contactIcon(for: peer)
+                .opacity(marked == nil ? 1 : 0.45)
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(displayName(for: peer))
                     .stillwaterSerif(21, color: marked == nil ? tier.nameColor : Stillwater.Palette.mistDim)
@@ -363,6 +366,28 @@ struct HomeView: View {
             }
         }
         .padding(.vertical, 10)
+    }
+
+    /// The contact's picture (picked in contact settings, `customAvatarData`)
+    /// as a round icon beside the name, or a grey person icon when there is
+    /// none. Decorative: VoiceOver reads the row by its name.
+    @ViewBuilder
+    private func contactIcon(for peer: Peer) -> some View {
+        Group {
+            if let data = peer.customAvatarData, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(Color(.systemGray))
+            }
+        }
+        .frame(width: 44, height: 44)
+        .accessibilityHidden(true)
     }
 
     /// STEP A1 — unread inbound count for a peer's direct conversation. Mirrors
